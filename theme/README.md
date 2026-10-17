@@ -50,13 +50,18 @@ style, by hash, same-origin stylesheets and the status route), reads the invoice
 200, 404 or 503. Without it, `PayPage` shows no payment details.
 
 The page is a complete HTML document of its own, so a site layout can't add third-party assets to a page whose URL
-holds the token. To restyle it, set the `--coffer-*` custom properties in your own stylesheet from the same site:
+holds the token. That also means it has its own look: it doesn't use your theme's layout, fonts or styles. To match your
+site, set the `--coffer-*` custom properties (colors, font, width; see `src/styles.ts`) in your own stylesheet from the
+same site:
 
 ```astro
 <PayPage pay={pay} title="Pay Example Shop">
 	<link slot="head" rel="stylesheet" href="/your.css" />
 </PayPage>
 ```
+
+EmDash's editor toolbar isn't shown on the pay page: the page's Content-Security-Policy would block its styles and
+scripts, so the page tells EmDash to skip it.
 
 ## Gated content
 

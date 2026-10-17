@@ -58,6 +58,10 @@ const isTip = s?.kind === "tip";
 		<slot name="head" />
 	</head>
 	<body>
+		{/* EmDash adds its editor toolbar to an editor's HTML pages unless one with this id is already there (EmDash 1.1.0,
+		    request-context middleware). Here our CSP would block its styles and scripts, so this empty placeholder makes
+		    EmDash skip it (Wyatt, phase 07; docs/emdash-upgrade-checklist.md). */}
+		<div id="emdash-toolbar" hidden></div>
 		<main
 			class="coffer-pay"
 			data-coffer-pay

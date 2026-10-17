@@ -194,5 +194,12 @@ describe("PayPage", () => {
 		const { html } = await render(TOKEN, locals(ok(status({ kind: "tip", amountAtomic: null, fiat: null, minAtomic: "100000000", status: "seen", receivedAtomic: "50000000" }))));
 		expect(html).toContain('Received <strong data-field="received">0.00005</strong> XMR, below the 0.0001 XMR minimum for a tip. Send more to the same address.');
 	});
+
+	it("EmDash's editor toolbar isn't added: an empty placeholder with its id makes EmDash skip it (our CSP would block its styles and scripts)", async () => {
+		const { html, res } = await render(TOKEN, locals(ok(status())));
+		expect(html).toContain('<div id="emdash-toolbar" hidden></div>');
+		expect(html.match(/id="emdash-toolbar"/g)).toHaveLength(1);
+		expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
+	});
 });
 

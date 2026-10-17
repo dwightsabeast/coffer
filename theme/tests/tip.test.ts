@@ -165,6 +165,7 @@ describe("tip endpoint: the spec change 18 A fallback address", () => {
 			expect(html).toContain("This site doesn't confirm these tips.");
 			expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
 			expect(res.headers.get("cache-control")).toBe("private, no-store");
+			expect(html).toContain('<div id="emdash-toolbar" hidden></div>');
 		}
 		expect(errors).toEqual([]);
 	});

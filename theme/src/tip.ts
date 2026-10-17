@@ -104,8 +104,11 @@ function tipBody(form: FormData): TipBody | null {
 	return body;
 }
 
+/** Makes EmDash skip its editor toolbar here, as on the pay page (see PayPage.astro): our CSP would block it. */
+const TOOLBAR_PLACEHOLDER = '<div id="emdash-toolbar" hidden></div>';
+
 async function page(status: number, title: string, main: string): Promise<Response> {
-	const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer"><title>${esc(title)}</title><style>${PAGE_CSS}</style></head><body>${main}<script>${CLIENT_SCRIPT}</script></body></html>`;
+	const html = `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="robots" content="noindex, nofollow"><meta name="referrer" content="no-referrer"><title>${esc(title)}</title><style>${PAGE_CSS}</style></head><body>${TOOLBAR_PLACEHOLDER}${main}<script>${CLIENT_SCRIPT}</script></body></html>`;
 	return new Response(html, { status, headers: { ...(await payPageHeaders()), "Content-Type": "text/html; charset=utf-8" } });
 }
 

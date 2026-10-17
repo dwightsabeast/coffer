@@ -2902,3 +2902,90 @@ Next: push; then 7c (TipButton, the tip endpoint, the 18 A fallback, the pay pag
 - **Found:**
   - **A cold-start flake:** `admin-health`'s first test sometimes hangs when it's the first test after a fresh build, on old and new code alike. The test host's D1 isn't migrated yet ("no such table" at plugin load). It passes in full runs.
   - **A leftover `astro dev`** (about 1.9 GB) from my Node check was still running after I thought I'd stopped it; the stop had hit an older instance. Stopped now, and two `admin-health` failures under that memory pressure didn't reproduce afterwards.
+
+## 2026-10-17 (UTC; evening of 10-16 MDT) · Phase 07 · Session 7c: tip button, endpoint, live tips; end-of-night handoff
+
+Pushed before 7c: `8208582..04f6c55`; CI run 38993398046 passed.
+
+Built (theme; local, not pushed):
+
+| Commit | What |
+| --- | --- |
+| `2cfcfcb` | **`TipButton.astro`:** a plain form, no script: $3, $5 and $10 (the middle one chosen), another amount in the currency or XMR, any amount, a note of up to 140 characters, hidden entry and `returnTo`. **`tip.ts`, `tipEndpoint()`:** form to checkout body, BigInt only; checkout in-process with the visitor's headers (minus cookies, credentials and Origin) and `cf`; 303 to `/pay/<token>`; error pages. **Spec change 18 A fallback,** see below. **The pay page for tips:** "Tip received: <amount> XMR. Thank you!", the "below the 0.0001 XMR minimum" line, and the confirmation-timing line. **Messages:** Wyatt's empty-pool line, plus `INVALID_REQUEST` and `ENTRY_NOT_FOUND`. **Exports:** `./TipButton.astro` and `./tip` |
+| `b97f3fc` | **Found live:** a cross-site form post to `/pay/tip` made a tip; Astro didn't refuse it, and the endpoint skips EmDash's CSRF check by calling checkout in-process. Now 403 for a cross-site `Sec-Fetch-Site`, or an `Origin` for another host (or `null`). Confirmed live |
+| `36384b6` | **EmDash's editor toolbar** (unstyled under our CSP, Wyatt) is skipped on the pay and tip pages: an empty `<div id="emdash-toolbar" hidden>` hits EmDash's dedupe marker; added to the upgrade checklist. **README:** the pay page has its own look; match it with `--coffer-*` or a same-origin stylesheet |
+
+**A change from the plan, for safety: the 18 A fallback address lives in the site's endpoint file,** `tipEndpoint({ address, network })`, not in a TipButton prop.
+- A form field would let anyone put their own address on the shop's domain.
+- **`address.ts`** decodes Monero base58 by block and checks 95 characters and the network byte (mainnet 18/42, stagenet 24/36, testnet 53/63). The checksum isn't checked (no Keccak in WebCrypto).
+- **A bad address** is logged at start and shows an error for the site's admin instead of a QR.
+- The decoder also read three real stagenet subaddresses correctly (a local check, not committed).
+
+Tests:
+- **Theme:** 56 pass and 1 skips (the zbar guard), with zbarimg required. Typecheck clean.
+  - address 4
+  - tip endpoint 10
+  - TipButton 3
+  - pay page +3
+- **Plugin:** unchanged since `a48d0b2`: default 240, switch-on 92.
+
+**Live on the dev site's built copy** (TipButton under the "Welcome" post; backups `…before-07c-20261017T021448Z`):
+
+| Tip | Pool address | Received | Settled (UTC) |
+| --- | --- | --- | --- |
+| A, $3 set amount | #277 | 0.008995718039 XMR | 02:32:30 |
+| B, any amount | #279 | 0.0001 XMR (the minimum) | 02:50:48 |
+
+- Paid from Feather. Both pay pages reached "Tip received" without a reload and showed the timing line (Wyatt).
+- Two more $3 tips (#276, #278), my two curl posts and the 7a dev tips expired unpaid, as expected.
+- **No JavaScript:** the form submitted and the pay page opened (Wyatt).
+- **Console:** no CSP errors on the post page (its look is the starter theme's).
+- **The admin Tips view,** read through the dev sign-in under `astro dev` (`~/xmr-pay-dev-data/07c-tips-view.txt`):
+  - "Test tips from Setup aren't counted here."
+  - Received 0.009095718039 XMR, 2 settled
+  - Welcome: 2 tips, 0.009095718039 XMR
+  - the newest 10 with notes as given and "Open entry" links
+  - **Wyatt hasn't looked at it in a browser yet.**
+
+### Phase 07 against its done criteria
+
+- **A stagenet tip from the dev site's tip button settles:** done (A and B).
+- **The release-1 switch is off and tested both ways:** done (`vitest.goods.config.ts` and CI).
+- **Per-entry totals on the admin page:** done in the data; Wyatt's look in a browser is pending.
+- **Tests cover every amount mode and the purge:** done (plugin `tip-checkout` and `admin-tips`; theme `tip.test.ts`).
+
+Left before Wyatt closes phase 07:
+1. **The installation text gets the tip button** (`plugin/docs/installation.md`; shown to Wyatt before committing). Draft in tonight's summary.
+2. **Wyatt looks at Tips in the admin.**
+3. **Push** `2cfcfcb`, `b97f3fc`, `36384b6` and these docs; then CI.
+4. **Optional:** the 18 A fallback seen live (a stagenet address in the dev site's endpoint).
+
+### State left
+
+- **Dev box:**
+  - dev site and built copy stopped; ports 4321, 4322 and 8099 free; no tmux sessions; no `astro dev` running
+  - about 5.8 GB available
+  - `monerod-stagenet` and the bridge active
+- **Dev site:** keeps the TipButton (`posts/[slug].astro`) and `pay/tip.ts` for the next session. The pre-07c copies are in `baseline/`. The dev data holds the 7c tips.
+- **Cloudflare spike site:** still deployed behind Access (`~/sites/xmr-cf-spike`), running an older Coffer build with the longer banner. Token expires 2026-10-30. Teardown: `SETUP.md` steps 11–13 (Wyatt), when the spike's no longer needed.
+- **Dev release:** `0.0.202610161433-dev.e360e6c` (signed) doesn't have the bridge's `UNSUPPORTED_PLATFORM` hint (`3139f79`). Rebuild with the next bridge change.
+
+### Open for later
+
+- **Before 07b** (2026-10-13 list):
+  - the security matrix in the repo as `docs/security-matrix.md`
+  - decisions on C01–C06
+  - 07b's rows include the tip endpoint's cross-site refusal, the `trustedProxyHeaders` spoofing test, and the Cloudflare refusal
+- **Before 09:**
+  - spec change 28 item 2
+  - the mainnet second-node list
+  - trusted publishing for `@cofferhq/astro`
+  - the setup docs line for `trustedProxyHeaders`
+- **Release 1.x or 2:** spec change 35 A (the 10-call redesign).
+- **Test flake:** `admin-health`'s first test can hang when it's the first test after a fresh build (the test host's D1 isn't migrated yet). Not fixed.
+
+Next session: `Continue phase 07. Read docs/progress.md (the 7c handoff), then plan the next step.` Steps:
+1. Wyatt approves the installation text, and looks at Tips.
+2. Push and CI.
+3. Wyatt closes phase 07.
+4. Phase 07b.

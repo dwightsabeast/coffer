@@ -89,5 +89,7 @@ Use hostname-based Access applications, which can exist before the Worker does. 
 
 ## If something's off
 
+- **The token verifies, but account calls get 401:** check its Account Resources (your account), its TTL start date (today, not the end date: that was the snag on 2026-10-16), and any client IP filtering.
+
 - **The deploy refuses `worker_loaders`:** Worker Loader (Dynamic Workers) may need enabling on the account, or may still be in beta. Stop; we check Cloudflare's current Dynamic Workers docs together.
 - **A permission error naming a resource:** tell me which. I'll tell you which single permission to add; nothing broader.

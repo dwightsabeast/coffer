@@ -177,4 +177,22 @@ describe("PayPage", () => {
 		const { res } = await render(TOKEN, locals(ok(status())));
 		for (const [name, value] of headers) expect(res.headers.get(name), name).toBe(value);
 	});
+
+	it("a tip: the Paid card shows what was received, and every tip page says confirmation can take a while (spec change 33)", async () => {
+		const tip = { kind: "tip" as const, amountAtomic: null, fiat: null, minAtomic: "100000000", uri: `monero:${ADDRESS}?tx_description=Tip` };
+		const paid = (await render(TOKEN, locals(ok(status({ ...tip, status: "settled", receivedAtomic: "2000000000", confirmations: 2 }))))).html;
+		expect(paid).toContain('Tip received: <strong data-field="received">0.002</strong> XMR. Thank you!');
+		expect(visibleStates(paid)).toEqual(["settled"]);
+		const waiting = (await render(TOKEN, locals(ok(status(tip))))).html;
+		const line = "Tips are confirmed when the shop's wallet sees them; this can take a while.";
+		expect(markup(waiting)).toContain(line);
+		expect(markup((await render(TOKEN, locals(ok(status())))).html)).not.toContain(line); // a product
+		expect(markup((await render(TOKEN, locals(ok(status({ status: "settled" }))))).html)).toContain("Paid. Thank you!");
+	});
+
+	it("a tip below the 0.0001 floor so far says so, not 'less than the amount due'", async () => {
+		const { html } = await render(TOKEN, locals(ok(status({ kind: "tip", amountAtomic: null, fiat: null, minAtomic: "100000000", status: "seen", receivedAtomic: "50000000" }))));
+		expect(html).toContain('Received <strong data-field="received">0.00005</strong> XMR, below the 0.0001 XMR minimum for a tip. Send more to the same address.');
+	});
 });
+

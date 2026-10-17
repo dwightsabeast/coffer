@@ -45,6 +45,7 @@ const utc = (iso: string) => `${new Date(iso).toISOString().slice(11, 16)} UTC`;
 const left = s ? Math.max(0, Math.floor((Date.parse(s.expiresAt) - Date.now()) / 1000)) : 0;
 const countdown = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
 const payable = ["waiting", "partial", "checking"];
+const isTip = s?.kind === "tip";
 ---
 <html lang="en">
 	<head>
@@ -105,7 +106,11 @@ const payable = ["waiting", "partial", "checking"];
 					Waiting for your payment. Pay within <strong data-field="countdown">{countdown}</strong>{s && ` (by ${utc(s.expiresAt)})`}.
 				</p>
 				<p class="coffer-status" data-show="partial" hidden={hiddenUnless("partial")}>
-					Received <strong data-field="received">{view?.received}</strong> XMR, less than the amount due. Send the rest to the same address within <strong data-field="countdown">{countdown}</strong>.
+					{isTip ? (
+						<>Received <strong data-field="received">{view?.received}</strong> XMR, below the {s?.minAtomic ? xmr(s.minAtomic) : "0.0001"} XMR minimum for a tip. Send more to the same address.</>
+					) : (
+						<>Received <strong data-field="received">{view?.received}</strong> XMR, less than the amount due. Send the rest to the same address within <strong data-field="countdown">{countdown}</strong>.</>
+					)}
 				</p>
 				<p class="coffer-status" data-show="checking" hidden={hiddenUnless("checking")}>
 					Checking for your payment. The time to pay has passed; this page is checking whether a payment arrived in time.
@@ -113,7 +118,9 @@ const payable = ["waiting", "partial", "checking"];
 				<p class="coffer-status" data-show="confirming" hidden={hiddenUnless("confirming")}>
 					Payment received. Confirming: <strong data-field="confirmations">{view?.confirmations}</strong> of <strong data-field="required">{view?.required}</strong>.
 				</p>
-				<p class="coffer-status" data-show="settled" hidden={hiddenUnless("settled")}>Paid. Thank you!</p>
+				<p class="coffer-status" data-show="settled" hidden={hiddenUnless("settled")}>
+					{isTip ? <>Tip received: <strong data-field="received">{view?.received}</strong> XMR. Thank you!</> : "Paid. Thank you!"}
+				</p>
 				<p class="coffer-status" data-show="reconfirming" hidden={hiddenUnless("reconfirming")}>
 					Paid. The network is confirming your payment again after a reorganization; there's nothing you need to do.
 				</p>
@@ -128,6 +135,8 @@ const payable = ["waiting", "partial", "checking"];
 				<p class="coffer-status" data-show="unconfigured" hidden={hiddenUnless("unconfigured")}>
 					This pay page isn't set up correctly, so it shows no payment details. The site needs to call preparePayPage in the page file (see @cofferhq/astro's README).
 				</p>
+				{/* A tip is never late (spec change 33): it can be confirmed long after its window, so the page says so. */}
+				{isTip && <p class="coffer-note">Tips are confirmed when the shop's wallet sees them; this can take a while.</p>}
 				{s && !view?.final && (
 					<noscript><p class="coffer-note">This page updates by itself with JavaScript on. Without it, reload the page to see the latest.</p></noscript>
 				)}

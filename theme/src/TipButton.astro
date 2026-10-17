@@ -1,0 +1,67 @@
+---
+/**
+ * The tip button (phase 07): a plain HTML form, no JavaScript, posting to the tip endpoint (src/pages/pay/tip.ts, see
+ * tip.ts), which makes the tip and sends the visitor to the pay page. Put it in an entry template:
+ *
+ *   import TipButton from "@cofferhq/astro/TipButton.astro";
+ *   <TipButton collection="posts" id={entry.data.id} />
+ *
+ * Suggested amounts are in the site's currency (USD or EUR, as set on Coffer's admin page; pass the same here). The
+ * visitor can also type another amount, in that currency or XMR, or leave it to their wallet. A tip settles on anything
+ * from 0.0001 XMR whatever was suggested (spec change 33).
+ */
+interface Props {
+	/** The entry the tip is for (its collection and id); leave both out for the whole site. */
+	collection?: string;
+	id?: string;
+	/** Whole amounts in the site currency (default 3, 5, 10). */
+	amounts?: number[];
+	currency?: "USD" | "EUR";
+	/** The note's length limit (at most 140, the plugin's). */
+	noteMax?: number;
+	/** The tip endpoint's path. */
+	action?: string;
+	label?: string;
+}
+
+const { collection, id, action = "/pay/tip", label = "Tip with Monero" } = Astro.props;
+const currency = Astro.props.currency === "EUR" ? "EUR" : "USD";
+const symbol = currency === "EUR" ? "€" : "$";
+const amounts = [...new Set((Astro.props.amounts ?? [3, 5, 10]).filter((a) => Number.isSafeInteger(a) && a > 0 && a < 1_000_000))];
+const noteMax = Math.min(140, Math.max(1, Math.floor(Astro.props.noteMax ?? 140)));
+const chosen = amounts[Math.floor((amounts.length - 1) / 2)];
+const returnTo = Astro.url.pathname;
+---
+<form class="coffer-tip" method="post" action={action}>
+	<fieldset>
+		<legend>Amount</legend>
+		{amounts.map((a) => (
+			<label class="coffer-tip-choice"><input type="radio" name="amount" value={String(a)} checked={a === chosen} /> {symbol}{a}</label>
+		))}
+		<label class="coffer-tip-choice">
+			<input type="radio" name="amount" value="custom" checked={amounts.length === 0} /> Other:
+			<input type="text" name="custom" inputmode="decimal" size="8" aria-label="Other amount" />
+			<select name="unit" aria-label="Currency of the other amount"><option value="fiat">{currency}</option><option value="xmr">XMR</option></select>
+		</label>
+		<label class="coffer-tip-choice"><input type="radio" name="amount" value="any" /> Any amount (choose it in your wallet)</label>
+	</fieldset>
+	<label class="coffer-tip-note">Note (optional, shown only to the site's owner) <textarea name="note" maxlength={noteMax} rows="2"></textarea></label>
+	<input type="hidden" name="currency" value={currency} />
+	{collection && id && (
+		<>
+			<input type="hidden" name="collection" value={collection} />
+			<input type="hidden" name="id" value={id} />
+		</>
+	)}
+	<input type="hidden" name="returnTo" value={returnTo} />
+	<button type="submit" class="coffer-tip-submit">{label}</button>
+</form>
+
+<style>
+	.coffer-tip { display: grid; gap: 0.75rem; max-width: var(--coffer-tip-width, 28rem); font: inherit; }
+	.coffer-tip fieldset { border: 1px solid var(--coffer-tip-border, currentColor); border-radius: 8px; padding: 0.75rem; margin: 0; display: grid; gap: 0.4rem; }
+	.coffer-tip-choice { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+	.coffer-tip-note { display: grid; gap: 0.25rem; }
+	.coffer-tip-note textarea { font: inherit; }
+	.coffer-tip-submit { font: inherit; font-weight: 600; padding: 0.55rem 1rem; border-radius: 8px; border: 0; cursor: pointer; background: var(--coffer-tip-accent, #c2410c); color: var(--coffer-tip-on-accent, #fff); justify-self: start; }
+</style>

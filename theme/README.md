@@ -3,6 +3,33 @@
 Astro components for Coffer, Monero payments for EmDash: the buyer's `/pay/<token>` page, and a server-side `isPaid`
 helper for gated content. Not published yet (phase 09); until then the dev site installs it from this folder.
 
+## Tips
+
+`src/pages/pay/tip.ts`, the endpoint the tip form posts to:
+
+```ts
+import { tipEndpoint } from "@cofferhq/astro/tip";
+export const POST = tipEndpoint();
+```
+
+In an entry template:
+
+```astro
+---
+import TipButton from "@cofferhq/astro/TipButton.astro";
+---
+<TipButton collection="posts" id={entry.data.id} currency="USD" />
+```
+
+The button is a plain form (no JavaScript): suggested amounts (`amounts`, default 3, 5, 10 in `currency`), another amount
+in that currency or XMR, or any amount, and an optional note for the site's owner. Leave out `collection` and `id` for a
+tip to the whole site. The endpoint makes the tip and redirects to the pay page.
+
+Optional fallback: `tipEndpoint({ address: "8…", network: "mainnet" })` shows that shop address, with a QR code, when
+Coffer can't make a tip invoice (no free payment address, too many open, or the plugin unavailable). The site doesn't
+confirm tips sent that way. The address is checked for format and network when the site starts; a bad one is logged and
+shows an error for the site's admin instead of a QR. It's never taken from the form.
+
 ## The pay page
 
 `src/pages/pay/[token].astro`:

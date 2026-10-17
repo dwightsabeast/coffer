@@ -108,6 +108,25 @@ describe("tip endpoint: to checkout", () => {
 		expect(h.origin).toBeUndefined();
 	});
 
+	it("a post from another site is refused before checkout (as EmDash refuses a cross-site Origin on the route itself)", async () => {
+		const crossSite: Array<Record<string, string>> = [{ origin: "https://evil.test" }, { origin: "null" }, { "sec-fetch-site": "cross-site", origin: ORIGIN }, { origin: "http://shop.example" }];
+		for (const headers of crossSite) {
+			const calls: Call[] = [];
+			const { res, html } = await post(endpoint, { amount: "3", currency: "USD" }, locals(ok(), calls), headers);
+			expect(res.status, JSON.stringify(headers)).toBe(403);
+			expect(html).toContain("This tip didn't come from this site's own page.");
+			expect(calls).toEqual([]);
+		}
+		// The site's own page (or no Origin at all, as from curl) goes through.
+		const sameSite: Array<Record<string, string>> = [{ origin: ORIGIN, "sec-fetch-site": "same-origin" }, {}];
+		for (const headers of sameSite) {
+			const calls: Call[] = [];
+			const { res } = await post(endpoint, { amount: "3", currency: "USD" }, locals(ok(), calls), headers);
+			expect(res.status, JSON.stringify(headers)).toBe(303);
+			expect(calls).toHaveLength(1);
+		}
+	});
+
 	it("a refusal: its message, a link back to the page the tip came from (same site only), the privacy headers", async () => {
 		const { res, html } = await post(endpoint, { amount: "any", returnTo: "/posts/hello" }, locals(fail("ENTRY_NOT_FOUND")));
 		expect(res.status).toBe(400);

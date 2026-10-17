@@ -40,6 +40,22 @@ const CURRENCIES = new Set(["USD", "EUR"]);
 
 const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 
+/**
+ * A post from another site. The checkout route itself refuses a cross-site Origin (EmDash's CSRF check), but this
+ * endpoint calls it in-process, so it checks first: Sec-Fetch-Site "cross-site", or an Origin for another host (or
+ * "null"). No Origin at all, as from curl, passes, as on the route itself. Found live in 7c: Astro didn't refuse it.
+ */
+function crossSite(request: Request, url: URL): boolean {
+	if (request.headers.get("sec-fetch-site") === "cross-site") return true;
+	const origin = request.headers.get("origin");
+	if (origin === null) return false;
+	try {
+		return new URL(origin).host !== url.host || new URL(origin).protocol !== url.protocol;
+	} catch {
+		return true;
+	}
+}
+
 /** A same-site path to go back to, or "/". */
 function backPath(v: FormDataEntryValue | null): string {
 	const s = typeof v === "string" ? v : "";
@@ -113,6 +129,7 @@ export function tipEndpoint(options: TipEndpointOptions = {}): APIRoute {
 	if (fallback && !fallback.ok) console.error(`[coffer] ${fallback.reason}`);
 
 	return async ({ request, url, locals }) => {
+		if (crossSite(request, url)) return errorPage(403, "This tip didn't come from this site's own page.", "/");
 		const form = await request.formData().catch(() => new FormData());
 		const back = backPath(form.get("returnTo"));
 		const body = tipBody(form);

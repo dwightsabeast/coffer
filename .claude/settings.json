@@ -30,9 +30,9 @@
       "Bash(git push --force*)",
       "Bash(git push -f*)",
       "Bash(git push *--force*)",
-      "Bash(git push * -f*)"
+      "Bash(git push * -f*)",
       "Edit(./scripts/with-cf-env.sh)",
-      "Bash(*cloudflare.env)",
+      "Bash(*cloudflare.env)"
     ],
     "ask": [
       "Bash(git push *)",

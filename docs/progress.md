@@ -3022,3 +3022,30 @@ Next:
 4. Push and CI.
 5. Wyatt closes phase 07.
 6. If R2 is approved for release 1, a session 7e (R2, asset and network on invoices, `asset`/`decimals` on status) before 07b.
+
+### 2026-10-18 (later) · Wyatt's answers; session 7e set
+
+- **Decided** (spec change 36 and `docs/decisions.md`):
+  - The default pay path is `/pay/coffer/[token]`, in a session 7e before 07b.
+  - The coin is stored as three separate fields: asset, chain (`"monero"` for now) and network. A missing value reads as `xmr` / `monero` / `mainnet`.
+  - Method IDs use asset and chain, never the network. The exact string is still open, before phase 08.
+- **The settings fix is Wyatt's,** committed (`01bd8ad`). The committed file hadn't parsed before; it does now.
+- **The installation text's tip-button step waits for 7e,** so its paths are written once. The 7d draft was taken out of the working tree; its text is in this session's plan, with the paths to change to `/pay/coffer/`.
+
+Session 7e (plan first):
+1. **R2:**
+   - theme defaults: `tipEndpoint` `payPath` `/pay/coffer`, `TipButton` `action` `/pay/coffer/tip`
+   - `theme/README.md`
+   - `plugin/docs/installation.md`: steps 2 and 3, with the tip button; shown to Wyatt before committing; under 2,000 graphemes
+   - theme tests
+   - the dev site's `pay/[token].astro` and `pay/tip.ts` moved under `pay/coffer/`
+2. **Stored coin fields:** `asset`, `chain` and `network` on new invoices. The network comes from the subaddress's network byte (port the theme's `address.ts` decoder to the plugin, with its tests). Readers default a missing value.
+3. **The status route:** `asset`, `chain` and `decimals`, if Wyatt confirms in 7e's plan. This was raised in 7d's report, not decided.
+4. **The R5 test:** `TipButton` renders no `<script>` and no unscoped selector.
+5. **Then:**
+   - Wyatt looks at Tips in the admin.
+   - Push and CI.
+   - Wyatt closes phase 07.
+   - Phase 07b.
+
+**Not pushed yet:** `2cfcfcb`..HEAD (Wyatt's OK needed).

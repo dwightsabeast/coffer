@@ -960,7 +960,7 @@ Decision (Wyatt, 2026-10-16): **B for release 1 (Node-hosted sites), with three 
    - **A** replaces the scan with a KV watch index.
 3. **In 7b and 7c, use `getMany`/`putMany` where it's cheap** (at most 98 ids a call), so A is smaller later.
 
-## 36. Store adapter and coexistence with other payment plugins  (status: proposed, 2026-10-16; checked against the code 2026-10-18)
+## 36. Store adapter and coexistence with other payment plugins  (status: R2 and the stored coin fields accepted for release 1, 2026-10-18; the rest proposed, 2026-10-16)
 Found in: Wyatt's planning notes, 2026-10-16 (not found by code or tests). Wyatt treats coexistence as a hard requirement: a shop will usually run Stripe or another gateway next to Coffer, so Coffer must have no shared names, no shared data, no effects outside its own pages, and no assumption that it is the main or only gateway.
 Spec says: Commerce readiness, "The payment contract (the pattern for others)": two calls and five statuses (`open`, `processing`, `paid`, `expired`, `needs_review`), "No shared secret between store and payment method", "No webhooks", the DashCommerce adapter first. Theme integration: the `/pay/[token]` page. API contracts: the checkout response's `"payUrl": "/pay/<token>"`.
 Proposal (Wyatt's note):
@@ -1004,6 +1004,13 @@ Checked against the code (2026-10-18, read-only; nothing changed):
 Proposed homes: the release-1 items (R2; asset and network on invoices; `asset` and `decimals` on status) as one phase 07 session before 07b, so 07b tests the final paths; the rest in phases 08 and 08b as the note says; the security-matrix rows with `docs/security-matrix.md` before 07b.
 Effect on the admin budget: none (R2 changes where the snippet's files go, not how many).
 Effect on the trust contract: none for the release-1 items (no route, capability, host, collection or index change; a new stored field and new status fields). A signed callback to a store would broaden `allowedHosts`.
+Wyatt's decisions (2026-10-18):
+1. **R2:** the default pay path is `/pay/coffer/[token]`, built in phase 07 session 7e, before 07b. The installation text's tip-button step waits for 7e, so its paths are written once.
+2. **The coin is stored as asset, chain and network, three separate fields.**
+   - **Chain** is `"monero"` for now.
+   - **A missing value reads as** `xmr` / `monero` / `mainnet`.
+   - **Method IDs use asset and chain, never the network.**
+Still proposed: the rest of the entry (release 2), and the note's open questions 2 and 3.
 
 ## 37. Same-machine wallet host: an "easy install" option  (status: proposed, 2026-10-16)
 Found in: Wyatt's planning chat, 2026-10-16, while asking whether FCMP++ lets Coffer drop the bridge (it doesn't; spec change 38) and whether admins could have a slightly less private option. Not found by code or tests; it reopens a decision at Wyatt's request.

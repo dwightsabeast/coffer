@@ -1010,6 +1010,10 @@ Wyatt's decisions (2026-10-18):
    - **Chain** is `"monero"` for now.
    - **A missing value reads as** `xmr` / `monero` / `mainnet`.
    - **Method IDs use asset and chain, never the network.**
+3. **The method-ID format** (decided 2026-10-18, built in phase 08):
+   - The short form `coffer:<asset>`, with the chain spelled out (`coffer:<asset>-<chain>`) only when it isn't the asset's home chain: `coffer:xmr`, `coffer:eth-base`, `coffer:usdc-base`.
+   - **Assets with no home chain,** such as stablecoins, always include it.
+   - The ID is made from the stored fields and never parsed back.
 Still proposed: the rest of the entry (release 2), and the note's open questions 2 and 3.
 
 ## 37. Same-machine wallet host: an "easy install" option  (status: proposed, 2026-10-16)

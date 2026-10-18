@@ -3049,3 +3049,8 @@ Session 7e (plan first):
    - Phase 07b.
 
 **Not pushed yet:** `2cfcfcb`..HEAD (Wyatt's OK needed).
+- **Method-ID format decided** (spec change 36, decision 3; built in phase 08):
+  - The format is `coffer:<asset>`, with `-<chain>` only when the chain isn't the asset's home chain: `coffer:xmr`, `coffer:eth-base`, `coffer:usdc-base`.
+  - Assets with no home chain, such as stablecoins, always include it.
+  - The ID is made from the stored fields and never parsed back.
+- **Pushed on Wyatt's OK** (2026-10-18). CI below.

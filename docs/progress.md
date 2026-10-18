@@ -2989,3 +2989,36 @@ Next session: `Continue phase 07. Read docs/progress.md (the 7c handoff), then p
 2. Push and CI.
 3. Wyatt closes phase 07.
 4. Phase 07b.
+
+## 2026-10-18 · Phase 07 · Session 7d: three spec notes logged; installation text drafted
+
+- **Wyatt's three notes** (`~/xmr-pay-dev-data/notes/`) logged as proposed spec changes, nothing built (`66dc75b`):
+  - **36:** store adapter and coexistence with other payment plugins
+  - **37:** same-machine wallet host
+  - **38:** FCMP++ / Carrot readiness spike
+  - **Where they went:** each has a row under "Still to decide" in `docs/decisions.md`. The coexistence note asked for `docs/decisions.md`, but that file holds made decisions only (CLAUDE.md), so the entry itself is in `docs/spec-changes.md`.
+- **Spec change 36's release-1 checks, read-only** (details in the entry):
+  - **R2 breaks today:** the pay page is at `/pay/[token]`, the tip endpoint at `/pay/tip`. The fix is small: two theme defaults, the snippets, the tests, and the dev site's two files.
+  - **R4 and R5 are met:** headers, CSP and the toolbar placeholder sit only on Coffer's own responses; no global CSS or scripts. No test pins it yet; one is proposed.
+  - **The plugin never learns the network,** and stored invoices have no asset field. Fix: derive the network from the subaddress's network byte at checkout. No protocol or trust-contract change.
+  - **The note uses "network" for both** the test tier and the chain.
+  - **The note's C2 state names match neither the code nor the spec's five contract statuses.**
+  - **The note meets the spec's contract** (no webhooks, no shared secret, DashCommerce first) in three places, for Wyatt.
+- **Spec change 38 needs two ground rules adjusted:**
+  - CLAUDE.md allows stagenet and regtest only, not testnet or stressnet.
+  - The beta binaries are probably not signed by the pinned Monero key.
+- **Installation text:** step 3 (the tip button) is in the working tree, **not committed**, waiting for Wyatt.
+  - 1,772 of the registry's 2,000-grapheme cap (`SECTION_MAX_GRAPHEMES` in `@emdash-cms/plugin-cli`).
+  - `emdash-plugin validate` passes.
+  - If R2 is approved, the paths in steps 2 and 3 change.
+- **`.claude/settings.json`:** the committed file isn't valid JSON (a missing comma and a trailing one in `deny`). The working tree's uncommitted fix is presumably Wyatt's; it waits for his confirmation before the push.
+- **Tests:** none run (docs only).
+- **State:** dev site and built copy stopped; nothing pushed since `04f6c55`.
+
+Next:
+1. Wyatt answers spec change 36's four questions in the plan (R2 path and timing, how network is stored, the settings fix, the installation text).
+2. Commit the installation text and the settings fix.
+3. Wyatt looks at Tips in the admin (dev site under `astro dev`).
+4. Push and CI.
+5. Wyatt closes phase 07.
+6. If R2 is approved for release 1, a session 7e (R2, asset and network on invoices, `asset`/`decimals` on status) before 07b.

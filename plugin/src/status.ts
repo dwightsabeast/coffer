@@ -4,7 +4,8 @@
  */
 import type { PluginContext } from "emdash/plugin";
 
-import { basis, evaluate, isOpen, totals } from "./core/invoice";
+import { XMR_DECIMALS } from "./core/constants";
+import { basis, coinOf, evaluate, isOpen, totals } from "./core/invoice";
 import { invoiceUri } from "./core/uri";
 import { KV, invoices } from "./store";
 import type { BridgeState } from "./sync/handle";
@@ -26,6 +27,11 @@ export type StatusResponse =
 			uri: string;
 			fiat: { amountMinor: string; currency: string } | null;
 			minAtomic: string | null;
+			/** The coin (spec change 36), and the decimals of its atomic amounts. */
+			asset: string;
+			chain: string;
+			network: string;
+			decimals: number;
 	  }
 	| { error: { code: "INVOICE_NOT_FOUND" } };
 
@@ -56,5 +62,7 @@ export async function handleStatus(ctx: PluginContext, query: Record<string, unk
 		uri: invoiceUri(inv),
 		fiat: inv.fiat ? { amountMinor: inv.fiat.amountMinor, currency: inv.fiat.currency } : null,
 		minAtomic: inv.minAtomic,
+		...coinOf(inv),
+		decimals: XMR_DECIMALS,
 	};
 }

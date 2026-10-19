@@ -5,7 +5,7 @@ import { expect, it } from "vitest";
 
 import { claimAndStore } from "../../src/checkout";
 import type { Invoice } from "../../src/core/invoice";
-import { fakeSubaddress } from "../addresses";
+import { fakeAddress, fakeSubaddress } from "../addresses";
 
 const ADDR = (i: number) => fakeSubaddress(i, "B");
 
@@ -20,7 +20,7 @@ function fakeCtx(freeRows: number, takenAddresses: string[]) {
 					const items = [...pool.entries()].filter(([, r]) => r.status === "free").sort(([, a], [, b]) => a.addrIndex - b.addrIndex).slice(0, 5).map(([id, data]) => ({ id, data }));
 					return { items, hasMore: false };
 				},
-				async updateIf(id: string, { set }: { set: { status: string; invoiceId: string } }) {
+				async updateIf(id: string, { set }: { set: { status: string; invoiceId?: string } }) {
 					const row = pool.get(id);
 					if (!row || row.status !== "free") return { applied: false };
 					Object.assign(row, set);
@@ -38,7 +38,7 @@ function fakeCtx(freeRows: number, takenAddresses: string[]) {
 	return { ctx, pool, invoices };
 }
 
-const build = (row: { addrIndex: number; address: string }) => ({ id: `inv_${row.addrIndex}`, subaddress: row.address, addrIndex: row.addrIndex }) as unknown as Invoice;
+const build = (row: { addrIndex: number; address: string; network: string }) => ({ id: `inv_${row.addrIndex}`, subaddress: row.address, addrIndex: row.addrIndex, network: row.network }) as unknown as Invoice;
 
 it("an address already on an invoice is refused; the row stays claimed and checkout uses another free one", async () => {
 	const f = fakeCtx(3, [ADDR(1)]);
@@ -54,4 +54,13 @@ it("NO_ADDRESS_AVAILABLE (null) when every free address is already used", async 
 	const f = fakeCtx(2, [ADDR(1), ADDR(2)]);
 	expect(await claimAndStore(f.ctx as never, build)).toBeNull();
 	expect([...f.pool.values()].every((r) => r.status === "claimed")).toBe(true);
+});
+
+it("a row whose network can't be read (only one stored before spec change 36's sync check) is claimed with no invoice and skipped", async () => {
+	const f = fakeCtx(2, []);
+	(f.pool.get("1") as { address: string }).address = fakeAddress(38, 1); // network byte 38: no network
+	const inv = await claimAndStore(f.ctx as never, build);
+	expect(inv).toMatchObject({ addrIndex: 2, subaddress: ADDR(2), network: "stagenet" });
+	expect(f.pool.get("1")).toEqual({ addrIndex: 1, address: fakeAddress(38, 1), status: "claimed" });
+	expect(f.invoices.size).toBe(1);
 });

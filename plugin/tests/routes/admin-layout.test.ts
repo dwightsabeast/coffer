@@ -29,7 +29,7 @@ async function setup(o: { done?: boolean; paired?: boolean; review?: boolean; si
 	for (let i = 1; i <= 3; i++) await h.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: ADDR(i), status: "free" });
 	if (o.done) await h.fixtures.plugin.kv("state:setupDone", true);
 	if (o.review) {
-		const inv = newInvoice({ id: "inv_r", token: "r".repeat(22), kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(9), addrIndex: 9, now: Date.now() - 3_600_000, chainHeight: H0 });
+		const inv = newInvoice({ network: "stagenet", id: "inv_r", token: "r".repeat(22), kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(9), addrIndex: 9, now: Date.now() - 3_600_000, chainHeight: H0 });
 		await h.fixtures.plugin.storage("invoices", inv.id, { ...inv, status: "review", reviewReason: "reversed" });
 	}
 	await h.http.respond("https://api.kraken.com/0/public/Ticker?pair=XMRUSD", new Response(JSON.stringify({ error: [], result: { XXMRZUSD: { c: ["150.00", "1.0"] } } })));

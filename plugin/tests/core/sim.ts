@@ -41,6 +41,7 @@ export class Sim {
 			rate: { minor: RATE, source: "test" },
 			speed: opts.speed ?? "standard",
 			subaddress: "7test",
+			network: "stagenet",
 			addrIndex: 1,
 			now: this.now,
 			chainHeight: this.height,

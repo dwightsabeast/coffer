@@ -36,7 +36,7 @@ describe("required is locked at checkout; an admin can raise it, never lower it"
 	const make = (speed: "fast" | "standard" | "strict") =>
 		newInvoice({
 			id: "inv_1", token: "t", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "test" },
-			speed, subaddress: "7abc", addrIndex: 1, now: 0, chainHeight: 100,
+			speed, subaddress: "7abc", addrIndex: 1, now: 0, chainHeight: 100, network: "stagenet",
 		});
 	it("stores the target from the speed at checkout", () => {
 		expect(make("standard").required).toBe(2);

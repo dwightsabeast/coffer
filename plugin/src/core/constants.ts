@@ -11,7 +11,8 @@
  */
 export const GOODS_ENABLED = false;
 
-/** 1 XMR = 10^12 atomic units. */
+/** 1 XMR = 10^12 atomic units; the status route reports the 12 as `decimals` (spec change 36). */
+export const XMR_DECIMALS = 12;
 export const ATOMIC_PER_XMR = 10n ** 12n;
 
 /** Received at or above 99.5% of expected counts as paid. */

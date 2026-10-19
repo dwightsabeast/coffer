@@ -26,7 +26,7 @@ function tip(n: number, over: Partial<Invoice> & { entry?: { id: string; title: 
 	const { entry, ...rest } = over;
 	const inv = newInvoice({
 		id: `inv_t${n}`, token: `t${String(n).padStart(21, "0")}`, kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard",
-		subaddress: fakeSubaddress(n, "T"), addrIndex: n, now: T0 + n * 60_000, chainHeight: H0,
+		subaddress: fakeSubaddress(n, "T"), addrIndex: n, network: "stagenet", now: T0 + n * 60_000, chainHeight: H0,
 		...(entry ? { contentRef: { collection: "posts", id: entry.id }, uriDescription: `Tip: ${entry.title}` } : { uriDescription: "Tip" }),
 	});
 	return { ...inv, via: "checkout", ...rest };

@@ -3,6 +3,7 @@
  * Pure: callers pass the time and the chain height; nothing here reads a clock, storage or the network.
  * Amounts are decimal strings at rest and BigInt in arithmetic.
  */
+import { type MoneroNetwork, subaddressNetwork } from "./address";
 import {
 	DUST_ATOMIC,
 	EXPIRY_GRACE_BLOCKS,
@@ -58,6 +59,10 @@ export interface Invoice {
 	required: number;
 	subaddress: string;
 	addrIndex: number;
+	/** The coin (spec change 36), set at checkout since 7e; older rows have none, so read it through coinOf(). */
+	asset?: "xmr";
+	chain?: "monero";
+	network?: MoneroNetwork;
 	status: InvoiceStatus;
 	reviewReason?: ReviewReason;
 	createdAt: number;
@@ -96,6 +101,8 @@ export interface NewInvoiceInput {
 	speed: Speed;
 	subaddress: string;
 	addrIndex: number;
+	/** The subaddress's network, read by the caller (subaddressNetwork). */
+	network: MoneroNetwork;
 	now: number;
 	chainHeight: number;
 	productRef?: Invoice["productRef"];
@@ -128,6 +135,9 @@ export function newInvoice(input: NewInvoiceInput): Invoice {
 		required: requiredConfirmations(input.kind, input.fiatMinor, input.speed),
 		subaddress: input.subaddress,
 		addrIndex: input.addrIndex,
+		asset: "xmr",
+		chain: "monero",
+		network: input.network,
 		status: "new",
 		createdAt: input.now,
 		expiresAt: input.now + INVOICE_WINDOW_MS,
@@ -143,6 +153,20 @@ export function newInvoice(input: NewInvoiceInput): Invoice {
 	if (input.uriDescription) inv.uriDescription = input.uriDescription;
 	if (input.buyer) inv.buyer = input.buyer;
 	return inv;
+}
+
+export interface Coin {
+	asset: "xmr";
+	chain: "monero";
+	network: MoneroNetwork;
+}
+
+/**
+ * The invoice's coin (spec change 36). An invoice stored before 7e has no coin fields: xmr on monero, the network read
+ * from its stored subaddress, and mainnet only if that can't be read (Wyatt, 2026-10-18).
+ */
+export function coinOf(inv: Pick<Invoice, "asset" | "chain" | "network" | "subaddress">): Coin {
+	return { asset: inv.asset ?? "xmr", chain: inv.chain ?? "monero", network: inv.network ?? subaddressNetwork(inv.subaddress) ?? "mainnet" };
 }
 
 /** Only spendable money counts: no time lock (unlock_time "0") and no double-spend flag. Never wallet-rpc's `locked`. */

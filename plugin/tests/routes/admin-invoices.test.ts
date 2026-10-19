@@ -28,7 +28,7 @@ const DAY = 24 * HOUR;
 const DUE = "0.080000000000";
 
 function invoice(n: number, over: Partial<Invoice> = {}): Invoice {
-	const inv = newInvoice({ id: `inv_${String(n).padStart(4, "0")}`, token: `t${String(n).padStart(21, "0")}`, kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "api.kraken.com" }, speed: "standard", subaddress: ADDR(n), addrIndex: n, now: T0 + n * 1000, chainHeight: H0 });
+	const inv = newInvoice({ network: "stagenet", id: `inv_${String(n).padStart(4, "0")}`, token: `t${String(n).padStart(21, "0")}`, kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "api.kraken.com" }, speed: "standard", subaddress: ADDR(n), addrIndex: n, now: T0 + n * 1000, chainHeight: H0 });
 	return { ...inv, ...over };
 }
 const transfer = (over: Partial<Transfer> = {}): Transfer => ({ txid: "ab".repeat(32), amountAtomic: "80000000000", confirmations: 3, height: H0 + 2, timestamp: 1_790_000_100, doubleSpendSeen: false, unlockTime: "0", seenAt: T0, poolTs: null, ...over });

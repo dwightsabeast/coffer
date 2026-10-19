@@ -72,7 +72,7 @@ const banners = (blocks: B[]) => blocks.filter((b) => b.type === "banner").map((
 const titles = (blocks: B[]) => banners(blocks).map((b) => b.title);
 
 function invoice(id: string, index: number, over: Partial<Invoice> = {}): Invoice {
-	const inv = newInvoice({ id, token: id.padEnd(22, "x").slice(0, 22), kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(index), addrIndex: index, now: Date.now() - 3_600_000, chainHeight: H0 });
+	const inv = newInvoice({ network: "stagenet", id, token: id.padEnd(22, "x").slice(0, 22), kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(index), addrIndex: index, now: Date.now() - 3_600_000, chainHeight: H0 });
 	return { ...inv, ...over };
 }
 const paidTransfer = { txid: "ab".repeat(32), amount: "80000000000", amountAtomic: "80000000000", confirmations: 12, height: H0 + 1, timestamp: 1_790_000_100, doubleSpendSeen: false, unlockTime: "0", seenAt: 1, poolTs: 1 };

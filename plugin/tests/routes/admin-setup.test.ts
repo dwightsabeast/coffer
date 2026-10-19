@@ -112,7 +112,7 @@ describe("setup checklist", () => {
 		const [tip] = await tips();
 		const link = (checklist(r.blocks as B[])?.blocks ?? []).find((x: B) => x.type === "code" && String(x.code).startsWith("monero:"))?.code;
 		const res = await h.actions.routes.request("status", { method: "GET", url: `https://site.test/_emdash/api/plugins/coffer/status?token=${tip.token}` });
-		expect(((await res.json()) as B).data).toMatchObject({ kind: "tip", address: ADDR(1), uri: link, fiat: null, minAtomic: "100000000", amountAtomic: null });
+		expect(((await res.json()) as B).data).toMatchObject({ kind: "tip", address: ADDR(1), uri: link, fiat: null, minAtomic: "100000000", amountAtomic: null, asset: "xmr", chain: "monero", network: "stagenet", decimals: 12 });
 	});
 
 	it("Get a test address is refused while the wallet host is silent or no address is free, claiming nothing", async () => {

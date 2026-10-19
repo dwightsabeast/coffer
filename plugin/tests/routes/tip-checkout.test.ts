@@ -7,7 +7,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 import { MAX_OPEN_TOTAL } from "../../src/checkout";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { PUBLIC_KEYS } from "../sync/helpers";
-import { fakeSubaddress } from "../addresses";
+import { fakeAddress, fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -49,7 +49,7 @@ describe("tip checkout", () => {
 		const r = await tip();
 		expect(r).toMatchObject({ address: ADDR(1), amountAtomic: null, amountXmr: null, status: "new", uri: `monero:${ADDR(1)}?tx_description=Tip` });
 		const [inv] = await stored();
-		expect(inv).toMatchObject({ kind: "tip", expectedAtomic: null, minAtomic: "100000000", fiat: null, rate: null, required: 10, via: "checkout", uriDescription: "Tip", createdHeight: H0 });
+		expect(inv).toMatchObject({ kind: "tip", expectedAtomic: null, minAtomic: "100000000", fiat: null, rate: null, required: 10, via: "checkout", uriDescription: "Tip", createdHeight: H0, asset: "xmr", chain: "monero", network: "stagenet" });
 		expect(inv.buyer).toBeUndefined();
 		expect(h.http.requests()).toEqual([]); // no price needed
 	});
@@ -163,7 +163,7 @@ describe("tip checkout", () => {
 		const h = await setup();
 		const now = Date.now();
 		for (let i = 0; i < MAX_OPEN_TOTAL; i++) {
-			const inv = newInvoice({ id: `inv_cap${i}`, token: `c${String(i).padStart(21, "0")}`, kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard", subaddress: ADDR(100 + i), addrIndex: 100 + i, now, chainHeight: H0 });
+			const inv = newInvoice({ network: "stagenet", id: `inv_cap${i}`, token: `c${String(i).padStart(21, "0")}`, kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard", subaddress: ADDR(100 + i), addrIndex: 100 + i, now, chainHeight: H0 });
 			await h.fixtures.plugin.storage("invoices", inv.id, inv);
 		}
 		expect(await tip()).toEqual({ error: { code: "TOO_MANY_OPEN" } });
@@ -180,10 +180,32 @@ describe("tip checkout", () => {
 		const r = await h.admin.act("/payments", "get_test_address");
 		expect(r.toast).toMatchObject({ type: "success" });
 		const test = (await stored()).find((i) => i.id !== visitor.id);
-		expect(test).toMatchObject({ kind: "tip", required: 1, uriDescription: "Coffer test tip" });
+		expect(test).toMatchObject({ kind: "tip", required: 1, uriDescription: "Coffer test tip", asset: "xmr", chain: "monero", network: "stagenet" });
 		expect(test?.via).toBeUndefined();
 		blocks = r.blocks as B[];
 		expect(JSON.stringify(blocks)).toContain(test?.subaddress);
 		expect(JSON.stringify(blocks)).not.toContain(visitor.subaddress);
+	});
+
+	it("status carries the coin (spec change 36): stored fields, or for an older invoice its subaddress's network, else mainnet", async () => {
+		const h = await setup();
+		const status = async (token: string) => {
+			const res = await h.actions.routes.request("status", { method: "GET", url: `https://site.test/_emdash/api/plugins/coffer/status?token=${token}` });
+			return ((await res.json()) as B).data;
+		};
+		const { token } = await tip();
+		expect(await status(token)).toMatchObject({ asset: "xmr", chain: "monero", network: "stagenet", decimals: 12 });
+
+		// Stored before 7e: no coin fields.
+		const old = (n: number, subaddress: string) => {
+			const { asset: _a, chain: _c, network: _n, ...inv } = newInvoice({ id: `inv_old${n}`, token: `old${String(n).padStart(19, "0")}`, kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard", subaddress, addrIndex: 100 + n, now: Date.now(), chainHeight: H0, network: "stagenet" });
+			return inv;
+		};
+		const readable = old(1, fakeSubaddress(101, "T"));
+		const unreadable = old(2, fakeAddress(38, 102)); // network byte 38: no network
+		await h.fixtures.plugin.storage("invoices", readable.id, readable);
+		await h.fixtures.plugin.storage("invoices", unreadable.id, unreadable);
+		expect(await status(readable.token)).toMatchObject({ asset: "xmr", chain: "monero", network: "stagenet", decimals: 12 });
+		expect(await status(unreadable.token)).toMatchObject({ asset: "xmr", chain: "monero", network: "mainnet", decimals: 12 });
 	});
 });

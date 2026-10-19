@@ -5,6 +5,7 @@
  */
 import type { PluginContext } from "emdash/plugin";
 
+import { type MoneroNetwork, subaddressNetwork } from "./core/address";
 import { ATOMIC_PER_XMR, DUST_ATOMIC, GOODS_ENABLED, type Speed, PRESETS, SILENT_MS } from "./core/constants";
 import { type Invoice, newInvoice } from "./core/invoice";
 import { atomicToXmr, priceToMinor } from "./core/money";
@@ -177,13 +178,22 @@ async function findProduct(ctx: PluginContext, idOrSlug: string) {
 	return null;
 }
 
-/** Claims a free pool row with updateIf (one winner per row), then stores the invoice; `subaddress` is unique on invoices. */
-export async function claimAndStore(ctx: PluginContext, build: (row: { addrIndex: number; address: string }) => Invoice): Promise<Invoice | null> {
+/**
+ * Claims a free pool row with updateIf (one winner per row), then stores the invoice; `subaddress` is unique on invoices.
+ * The build gets the row's network (spec change 36). A row whose network can't be read (sync drops those since 7e, so
+ * only an older row) is claimed with no invoice, so it's never handed out, as when the database refuses an invoice.
+ */
+export async function claimAndStore(ctx: PluginContext, build: (row: { addrIndex: number; address: string; network: MoneroNetwork }) => Invoice): Promise<Invoice | null> {
 	for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
 		const free = await pool(ctx).query({ where: { status: "free" }, orderBy: { addrIndex: "asc" }, limit: 5 });
 		if (free.items.length === 0) return null;
 		const pick = free.items[attempt % free.items.length];
-		const inv = build(pick.data);
+		const network = subaddressNetwork(pick.data.address);
+		if (network === null) {
+			await pool(ctx).updateIf(pick.id, { where: { status: "free" }, set: { status: "claimed" } }).catch(() => undefined);
+			continue;
+		}
+		const inv = build({ addrIndex: pick.data.addrIndex, address: pick.data.address, network });
 		try {
 			const claimed = await pool(ctx).updateIf(pick.id, { where: { status: "free" }, set: { status: "claimed", invoiceId: inv.id } });
 			if (!claimed.applied) continue; // lost the race: try another row
@@ -262,6 +272,7 @@ async function productInvoice(ctx: PluginContext, input: ProductInput, speed: Sp
 			speed,
 			subaddress: row.address,
 			addrIndex: row.addrIndex,
+			network: row.network,
 			now,
 			chainHeight,
 			productRef: { collection: "products", id: entry.id },
@@ -313,6 +324,7 @@ async function tipInvoice(ctx: PluginContext, input: TipInput, speed: Speed, sit
 			speed,
 			subaddress: row.address,
 			addrIndex: row.addrIndex,
+			network: row.network,
 			now,
 			chainHeight,
 			...(input.contentRef ? { contentRef: input.contentRef } : {}),

@@ -36,7 +36,7 @@ async function paired() {
 }
 
 async function claimedInvoice(h: PluginRuntimeTestHost, index: number, over: Partial<Invoice> = {}) {
-	const inv = { ...newInvoice({ id: `inv_${index}`, token: `tok${index}`, kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(index), addrIndex: index, now: Date.now(), chainHeight: H0 }), ...over };
+	const inv = { ...newInvoice({ network: "stagenet", id: `inv_${index}`, token: `tok${index}`, kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(index), addrIndex: index, now: Date.now(), chainHeight: H0 }), ...over };
 	await h.fixtures.plugin.storage("pool", String(index), { addrIndex: index, address: ADDR(index), status: "claimed", invoiceId: inv.id });
 	await h.fixtures.plugin.storage("invoices", inv.id, inv);
 	return inv;

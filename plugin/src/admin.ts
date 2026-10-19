@@ -349,7 +349,7 @@ async function testAddress(ctx: PluginContext, now: number): Promise<Toast> {
 	const speed: Speed = isSpeed(speedSetting) ? speedSetting : "standard";
 	const currencySetting = await ctx.settings.get<string>(SETTING.currency);
 	const inv = await claimAndStore(ctx, (row) =>
-		({ ...newInvoice({ ...newIds(), kind: "tip", fiatMinor: null, currency: isCurrency(currencySetting) ? currencySetting : "USD", rate: null, speed, subaddress: row.address, addrIndex: row.addrIndex, now, chainHeight, uriDescription: TEST_TIP_DESCRIPTION }), required: TEST_TIP_REQUIRED }),
+		({ ...newInvoice({ ...newIds(), kind: "tip", fiatMinor: null, currency: isCurrency(currencySetting) ? currencySetting : "USD", rate: null, speed, subaddress: row.address, addrIndex: row.addrIndex, network: row.network, now, chainHeight, uriDescription: TEST_TIP_DESCRIPTION }), required: TEST_TIP_REQUIRED }),
 	);
 	if (!inv) return { type: "error", message: "No payment address is free yet. The wallet host adds them at its next sync; try again in a minute." };
 	return { type: "success", message: "Test address ready. Send the test tip from any wallet." };

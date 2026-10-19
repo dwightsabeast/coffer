@@ -66,7 +66,7 @@ describe("checkout", () => {
 		expect(r.token).toMatch(/^[A-Za-z0-9_-]{22}$/);
 		expect(r.uri).toBe(`monero:${ADDR(1)}?tx_amount=0.080000000000&tx_description=Test%20handbook`);
 		const stored = (await h.inspect.storage.list<Invoice>("invoices"))[0].data;
-		expect(stored).toMatchObject({ kind: "product", required: 2, fiat: { amountMinor: "1200", currency: "USD" }, rate: { minor: "15000", source: "api.kraken.com" }, buyer: { email: "a@example.invalid" } });
+		expect(stored).toMatchObject({ kind: "product", required: 2, fiat: { amountMinor: "1200", currency: "USD" }, rate: { minor: "15000", source: "api.kraken.com" }, buyer: { email: "a@example.invalid" }, asset: "xmr", chain: "monero", network: "stagenet" });
 		expect(await h.inspect.storage.get("pool", "1")).toMatchObject({ status: "claimed", invoiceId: stored.id });
 		expect(h.http.requests().map((q) => q.url)).toEqual([KRAKEN("USD")]);
 	});
@@ -172,7 +172,7 @@ describe("checkout", () => {
 		const h = await setup();
 		const now = Date.now();
 		for (let i = 0; i < MAX_OPEN_TOTAL; i++) {
-			const inv = newInvoice({ id: `inv_open${i}`, token: `t${String(i).padStart(21, "0")}`, kind: "product", fiatMinor: 100n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(100 + i), addrIndex: 100 + i, now, chainHeight: H0 });
+			const inv = newInvoice({ network: "stagenet", id: `inv_open${i}`, token: `t${String(i).padStart(21, "0")}`, kind: "product", fiatMinor: 100n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(100 + i), addrIndex: 100 + i, now, chainHeight: H0 });
 			await h.fixtures.plugin.storage("invoices", inv.id, inv);
 		}
 		expect(await checkout({ kind: "product", product: "handbook" })).toEqual({ error: { code: "TOO_MANY_OPEN" } });
@@ -242,6 +242,8 @@ describe("status", () => {
 			expiresAt: c.expiresAt, settledAt: null, pendingExpiry: false, reconfirming: false,
 			// Spec change 32: what the pay page shows, from the token alone; the URI is checkout's, byte for byte.
 			kind: "product", address: c.address, uri: c.uri, fiat: { amountMinor: "1200", currency: "USD" }, minAtomic: null,
+			// Spec change 36: the coin, and the decimals of its atomic amounts.
+			asset: "xmr", chain: "monero", network: "stagenet", decimals: 12,
 		});
 		expect((await status("A".repeat(22))).data).toEqual({ error: { code: "INVOICE_NOT_FOUND" } });
 		expect((await status("short")).data).toEqual({ error: { code: "INVOICE_NOT_FOUND" } });
@@ -256,7 +258,7 @@ describe("status", () => {
 		expect((await status(c.token)).data.uri).toBe(c.uri);
 		expect((await h.inspect.storage.list<Invoice>("invoices"))[0].data.uriDescription).toBe("Mugs & Tea? 100%");
 		// Made before spec change 32: no stored description, so no tx_description.
-		const old = newInvoice({ id: "inv_old", token: "O".repeat(22), kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(8), addrIndex: 8, now: Date.now(), chainHeight: H0 });
+		const old = newInvoice({ network: "stagenet", id: "inv_old", token: "O".repeat(22), kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(8), addrIndex: 8, now: Date.now(), chainHeight: H0 });
 		await h.fixtures.plugin.storage("invoices", old.id, old);
 		expect((await status(old.token)).data.uri).toBe(`monero:${ADDR(8)}?tx_amount=0.080000000000`);
 	});
@@ -264,7 +266,7 @@ describe("status", () => {
 	it("shows pendingExpiry after the window without a sync, and doesn't write", async () => {
 		const h = await setup();
 		const now = Date.now();
-		const inv = { ...newInvoice({ id: "inv_late", token: "L".repeat(22), kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(9), addrIndex: 9, now: now - 3_600_000, chainHeight: H0 }) };
+		const inv = { ...newInvoice({ network: "stagenet", id: "inv_late", token: "L".repeat(22), kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(9), addrIndex: 9, now: now - 3_600_000, chainHeight: H0 }) };
 		await h.fixtures.plugin.storage("invoices", inv.id, inv);
 		expect((await status(inv.token)).data).toMatchObject({ status: "new", pendingExpiry: true });
 		expect(await h.inspect.storage.get("invoices", inv.id)).toEqual(inv);

@@ -25,6 +25,11 @@ export interface InvoiceStatus {
 	uri: string;
 	fiat: { amountMinor: string; currency: string } | null;
 	minAtomic: string | null;
+	/** The coin and the decimals of its atomic amounts (spec change 36); absent from a plugin before 7e. */
+	asset?: string;
+	chain?: string;
+	network?: "mainnet" | "stagenet" | "testnet";
+	decimals?: number;
 }
 
 export type StatusResult = { ok: true; status: InvoiceStatus } | { ok: false; code: "INVOICE_NOT_FOUND" | "UNAVAILABLE" };

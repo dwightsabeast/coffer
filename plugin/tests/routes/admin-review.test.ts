@@ -22,7 +22,7 @@ const ADDR = (i: number) => fakeSubaddress(i, "G");
 const T0 = Date.UTC(2026, 9, 6, 12);
 
 function invoice(n: number, over: Partial<Invoice> = {}): Invoice {
-	const inv = newInvoice({ id: `inv_${String(n).padStart(4, "0")}`, token: `t${String(n).padStart(21, "0")}`, kind: "product", fiatMinor: 100n, currency: "USD", rate: { minor: 56000n, source: "api.kraken.com" }, speed: "standard", subaddress: ADDR(n), addrIndex: n, now: T0 + n * 1000, chainHeight: H0, productRef: { collection: "products", id: `prod_${n}` } });
+	const inv = newInvoice({ network: "stagenet", id: `inv_${String(n).padStart(4, "0")}`, token: `t${String(n).padStart(21, "0")}`, kind: "product", fiatMinor: 100n, currency: "USD", rate: { minor: 56000n, source: "api.kraken.com" }, speed: "standard", subaddress: ADDR(n), addrIndex: n, now: T0 + n * 1000, chainHeight: H0, productRef: { collection: "products", id: `prod_${n}` } });
 	return { ...inv, status: "review", ...over };
 }
 // 1.00 USD at 560.00 USD/XMR: 1785714286 atomic expected (ceil).

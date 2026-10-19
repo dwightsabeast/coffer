@@ -106,7 +106,7 @@ describe("pairing", () => {
 	it("the pairing response suggests a restore height: the oldest watched invoice's createdHeight minus a margin (spec change 17)", async () => {
 		expect(RESTORE_MARGIN_BLOCKS).toBe(720);
 		const inv = (id: string, index: number, chainHeight: number, now = T0): Invoice =>
-			({ ...newInvoice({ id, token: "tok", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(index), addrIndex: index, now, chainHeight }) });
+			({ ...newInvoice({ network: "stagenet", id, token: "tok", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(index), addrIndex: index, now, chainHeight }) });
 		const paired = async (invoices: Invoice[]) => {
 			const store = new MemoryStore();
 			const { code, state } = await newPairingCode(T0);
@@ -192,7 +192,7 @@ describe("ordinary syncs", () => {
 	it("snapshots are judged at the stored height when the reported one is lower: no false reorg after a fresh wallet's first sync", async () => {
 		const store = pairedStore();
 		await send(store, syncBody({ addresses: [{ index: 1, address: ADDR(1) }] }));
-		const inv = newInvoice({ id: "inv_r", token: "tok", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: "", addrIndex: 0, now: T0, chainHeight: H0 });
+		const inv = newInvoice({ network: "stagenet", id: "inv_r", token: "tok", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: "", addrIndex: 0, now: T0, chainHeight: H0 });
 		store.claim(1, inv);
 		const amount = inv.expectedAtomic as string;
 		const snap = (confirmations: number, height: number) => [{ index: 1, transfers: [{ txid: TXID(1), amount, confirmations, height, timestamp: 1_790_000_100, doubleSpendSeen: false, unlockTime: "0" }] }];
@@ -227,7 +227,7 @@ describe("ordinary syncs", () => {
 	it("applies a snapshot to the invoice on that subaddress, ignores unknown indexes, and returns the watch list", async () => {
 		const store = pairedStore();
 		await send(store, syncBody({ addresses: [1, 2].map((i) => ({ index: i, address: ADDR(i) })) }));
-		const inv = newInvoice({ id: "inv_a", token: "tok", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: "", addrIndex: 0, now: T0, chainHeight: H0 });
+		const inv = newInvoice({ network: "stagenet", id: "inv_a", token: "tok", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: "", addrIndex: 0, now: T0, chainHeight: H0 });
 		store.claim(1, inv);
 		const amount = inv.expectedAtomic as string;
 		const pay = (seq: number, height: number, confirmations: number) => ({
@@ -254,7 +254,7 @@ describe("ordinary syncs", () => {
 	it("a replayed snapshot (seq not newer) is ignored, even re-signed with a fresh timestamp; retries are idempotent", async () => {
 		const store = pairedStore();
 		await send(store, syncBody({ addresses: [{ index: 1, address: ADDR(1) }] }));
-		const inv = newInvoice({ id: "inv_b", token: "tok", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: "", addrIndex: 0, now: T0, chainHeight: H0 });
+		const inv = newInvoice({ network: "stagenet", id: "inv_b", token: "tok", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: "", addrIndex: 0, now: T0, chainHeight: H0 });
 		store.claim(1, inv);
 		const amount = inv.expectedAtomic as string;
 		const snap = (n: number) => [{ index: 1, transfers: Array.from({ length: n }, (_, i) => ({ txid: TXID(i + 1), amount, confirmations: 3, height: H0 + 1, timestamp: 1_790_000_100, doubleSpendSeen: false, unlockTime: "0" })) }];
@@ -275,7 +275,7 @@ describe("ordinary syncs", () => {
 		store.pairing = state;
 		const paired = await send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS.test1 }, addresses: [1, 2, 3, 4, 5].map((i) => ({ index: i, address: ADDR(i) })) }));
 		expect(paired.response).toMatchObject({ ok: true, poolFree: 5, watch: [] });
-		const inv = newInvoice({ id: "inv_c", token: "tok", kind: "product", fiatMinor: 15000n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: "", addrIndex: 0, now: T0, chainHeight: H0 });
+		const inv = newInvoice({ network: "stagenet", id: "inv_c", token: "tok", kind: "product", fiatMinor: 15000n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: "", addrIndex: 0, now: T0, chainHeight: H0 });
 		store.claim(3, inv); // $150: 1 XMR, 5 confirmations
 		let now = T0;
 		const amount = inv.expectedAtomic as string;
@@ -312,7 +312,7 @@ describe("heard, not synced (spec change 29)", () => {
 
 	it("a starting message: heard, the last full sync and the height kept, nothing applied", async () => {
 		const store = pairedStore();
-		const inv = newInvoice({ id: "inv_1", token: "t".repeat(22), kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard", subaddress: ADDR(5), addrIndex: 5, now: T0, chainHeight: H0 });
+		const inv = newInvoice({ network: "stagenet", id: "inv_1", token: "t".repeat(22), kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard", subaddress: ADDR(5), addrIndex: 5, now: T0, chainHeight: H0 });
 		store.invoices.set(inv.id, inv);
 		await send(store, syncBody({ height: H0 + 7 }), { now: T0 + 500 });
 		const starting = { node: { state: "ok" }, wallet: { state: "starting", detail: "starting Monero's wallet program" } };

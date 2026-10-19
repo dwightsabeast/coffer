@@ -1076,7 +1076,7 @@ Effect on the admin budget: none for the spike. A follow-up that needs a second 
 Effect on the trust contract: none for the spike (dev-only build tag, nothing shipped). Follow-ups state their own.
 Sources: https://github.com/seraphis-migration/monero/releases/tag/v0.19.0.0-beta.3.0, https://github.com/seraphis-migration/monero/pull/52, https://github.com/jeffro256/carrot/blob/master/carrot.md, https://github.com/seraphis-migration/monero/issues/53, https://www.getmonero.org/2026/05/10/deprecating-unlock-time.html, https://github.com/monero-project/research-lab/issues/125, https://cryptoticker.io/en/monero-fcmp-stressnet-fork-october-2026/, https://docs.getmonero.org/rpc-library/wallet-rpc/
 
-## 39. A way back from the pay page  (status: proposed, 2026-10-18; for release 1, before 07b)
+## 39. A way back from the pay page  (status: accepted, 2026-10-18, with Wyatt's choices below; for release 1, before 07b)
 Found in: Wyatt's look at the dev site after session 7e, 2026-10-18 (note `spec-change-pay-page-return-link.md`).
 Spec says: Theme integration, the `/pay/[token]` page (now `/pay/coffer/[token]`, spec change 36): amount, address, QR, countdown, confirmations, the success state. Nothing about leaving the page.
 Evidence: after the tip button, the pay page has no link back to the post or the site. The only way out is the browser's back button. After paying, that can land on the tip form's POST result instead of the post. It's worst on the "Tip received" card, exactly when the buyer wants to leave.
@@ -1116,6 +1116,12 @@ Claude's notes (2026-10-18), checked against the code:
 Decisions for Wyatt: A, the wording ("← Back" at the top, "Back to the page you came from" on the paid card, proposed); B, an optional `siteName` prop on PayPage so the fallback reads "Back to <site name>" (proposed yes, default "Back to the site"); C, theme only with the path in the URL (proposed), or stored on the tip invoice in the plugin.
 Effect on the admin budget: none (nothing to set up; it works from the existing snippets).
 Effect on the trust contract: none.
+
+Wyatt's decisions (2026-10-18):
+- **A:** the top link only, in every state. No extra button on the paid card, so the polling script reveals nothing new.
+- **B:** yes, an optional `siteName` prop; default "Back to the site".
+- **C:** theme only, with the path in the URL.
+- **The field:** reuse `returnTo` (now path and query). The shared validator replaces `backPath()`, so the endpoint's error and fallback pages follow the same rules.
 
 ## 40. Tip in an overlay, with no scripts on site pages  (status: proposed, 2026-10-18; release 1.x or 2 only, nothing built in release 1)
 Found in: Wyatt's planning notes, 2026-10-18 (note `spec-change-tip-modal.md`). Depends on spec change 39, which ships in release 1 and stays the fallback.

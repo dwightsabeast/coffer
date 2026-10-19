@@ -2,6 +2,7 @@
  * The bridge/sync wire protocol (docs/spec.md, API contracts, `POST bridge/sync`): header checks, Ed25519 verification
  * over the exact bytes, strict UTF-8 decoding, and hand-written validation of the body. No storage here.
  */
+import { subaddressNetwork } from "../core/address";
 
 /** The bridge protocol version this plugin speaks. It also accepts the previous one (and flags it as outdated). */
 export const PROTOCOL_VERSION = 1;
@@ -119,7 +120,7 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 const nonNegInt = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
 const DIGITS_20 = /^\d{1,20}$/;
 const TXID = /^[0-9a-f]{64}$/;
-/** A Monero subaddress: 95 base58 characters (the bridge checks the network). */
+/** A Monero subaddress: 95 base58 characters, and a subaddress network byte the plugin can read (spec change 36). */
 const SUBADDRESS = /^[1-9A-HJ-NP-Za-km-z]{95}$/;
 export const PAIRING_CODE = /^[A-Za-z0-9_-]{22}$/;
 
@@ -177,7 +178,7 @@ export function parseSyncBody(text: string, current: number = PROTOCOL_VERSION):
 
 	const addresses: SyncBody["addresses"] = [];
 	for (const a of json.addresses) {
-		if (isObject(a) && Number.isSafeInteger(a.index) && (a.index as number) >= 1 && typeof a.address === "string" && SUBADDRESS.test(a.address)) {
+		if (isObject(a) && Number.isSafeInteger(a.index) && (a.index as number) >= 1 && typeof a.address === "string" && SUBADDRESS.test(a.address) && subaddressNetwork(a.address) !== null) {
 			addresses.push({ index: a.index as number, address: a.address });
 		}
 	}

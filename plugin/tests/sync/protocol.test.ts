@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { MAX_ADDRESSES, MAX_SNAPSHOTS, MAX_TRANSFERS, acceptsVersion, checkHeaders, decodeStrict, parseSyncBody } from "../../src/sync/protocol";
+import { TAGS, fakeAddress, fakeSubaddress } from "../addresses";
 
 const NOW = 1_790_000_000_000;
 const SIG = "A".repeat(86) + "==";
@@ -56,7 +57,7 @@ describe("body validation", () => {
 		}
 	});
 	it("enforces the caps", () => {
-		const addr = (i: number) => ({ index: i + 1, address: "7".repeat(95) });
+		const addr = (i: number) => ({ index: i + 1, address: fakeSubaddress(i + 1) });
 		expect(code(parseSyncBody(body({ addresses: Array.from({ length: MAX_ADDRESSES }, (_, i) => addr(i)) })))).toBe("ok");
 		expect(code(parseSyncBody(body({ addresses: Array.from({ length: MAX_ADDRESSES + 1 }, (_, i) => addr(i)) })))).toBe("INVALID_BODY");
 		expect(code(parseSyncBody(body({ snapshots: Array.from({ length: MAX_SNAPSHOTS + 1 }, (_, i) => ({ index: i + 1, transfers: [] })) })))).toBe("INVALID_BODY");
@@ -77,8 +78,13 @@ describe("body validation", () => {
 		expect(r.ok && r.value.snapshots[0].transfers[0]).toMatchObject({ amount: "18446744073709551615", unlockTime: "18446744073709551615" });
 	});
 	it("skips malformed pool addresses instead of rejecting the body", () => {
-		const r = parseSyncBody(body({ addresses: [{ index: 0, address: "7".repeat(95) }, { index: 2, address: "short" }, { index: 3, address: "0".repeat(95) }, { index: 4, address: "7".repeat(95) }] }));
-		expect(r.ok && r.value.addresses).toEqual([{ index: 4, address: "7".repeat(95) }]);
+		const r = parseSyncBody(body({ addresses: [{ index: 0, address: fakeSubaddress(0) }, { index: 2, address: "short" }, { index: 3, address: "0".repeat(95) }, { index: 4, address: fakeSubaddress(4) }] }));
+		expect(r.ok && r.value.addresses).toEqual([{ index: 4, address: fakeSubaddress(4) }]);
+	});
+	it("skips a pool address whose network can't be read (spec change 36): an unknown byte, or a standard address", () => {
+		const kept = [{ index: 5, address: fakeSubaddress(5) }, { index: 6, address: fakeAddress(TAGS.mainnet[1], 6) }];
+		const r = parseSyncBody(body({ addresses: [{ index: 2, address: fakeAddress(38, 2) }, { index: 3, address: fakeAddress(TAGS.stagenet[0], 3) }, ...kept] }));
+		expect(r.ok && r.value.addresses).toEqual(kept);
 	});
 	it("reads the bridge's checks: known states kept, long details cut, anything malformed dropped without rejecting the body", () => {
 		const checks = (c: unknown) => {

@@ -3169,3 +3169,74 @@ Next:
 2. Push and CI.
 3. Wyatt closes phase 07.
 4. Phase 07b.
+- **Pushed** `ff7041f..24a067e` on Wyatt's OK; **CI run 39189564660 passed** (plugin, theme, bridge with the race-detector tests).
+
+## 2026-10-18 · Phase 07 · Done: closed by Wyatt
+
+Phase 07's done criteria are met:
+- **A stagenet tip from the dev site's tip button settles:** tips A and B in 7c, paid from Feather, reached "Tip received" without a reload.
+- **The release-1 switch is off and tested both ways:** `vitest.goods.config.ts` locally and in CI.
+- **Per-entry totals on the admin page:** the Tips view (7b). Wyatt clicked through it in a browser on 2026-10-18, along with the tip button and the pay page's way back.
+- **Tests cover every amount mode and the purge:** plugin `tip-checkout` and `admin-tips`, theme `tip.test.ts`.
+- **CI is green** on `24a067e` (run 39189564660). The last counts: plugin default 251 and switch-on 92 (7e), theme 65 and 1 skip (7f), scripts 17.
+
+Built in phase 07 beyond the phase file:
+- **Spec changes 33, 34 (deferred) and 35 B:** Node-only for release 1, a clean refusal on Cloudflare, and the watch-scan fix.
+- **The tip endpoint's cross-site refusal and the toolbar placeholder** (7c).
+- **Spec change 36's release-1 items** (7e): `/pay/coffer/` paths; the network byte checked at sync; asset, chain and network stored; four new status fields.
+- **Spec change 39, the way back** (7f).
+- **The installation text** with the required tip button (`7b079fe`, Wyatt's wording).
+
+Carried over:
+- **For 07b:** the surfaces added during phase 07 are listed for the setup session in `docs/phases/07b-adversarial-testing.md`, "For the builder". They include refusing a pool that mixes networks (not built; Wyatt decides whether pass 1 fixes it or reports it).
+- **Release 1.x or 2:**
+  - spec change 35 A (the 10-call redesign for Cloudflare)
+  - spec change 40 (the tip overlay)
+  - spec change 37 (same-machine wallet host; release 1 or 1.1 is Wyatt's call)
+- **Phase 08:**
+  - spec change 36's adapter, method IDs and coexistence test
+  - the PayButton at `/pay/coffer/<token>`
+- **Phase 09:**
+  - spec change 28 item 2
+  - the mainnet second-node list
+  - trusted publishing for `@cofferhq/astro`
+  - the `trustedProxyHeaders` setup line
+  - EUR sites need `currency="EUR"` on TipButton; the installation text no longer says so (Wyatt's step 3)
+- **Timing for Wyatt:** the FCMP++ spike (spec change 38), recommended after 07b pass 1. Two ground rules need his word first: testnet or stressnet use, and verifying beta binaries not signed by the pinned key.
+- **Dev release:** `0.0.202610161433-dev.e360e6c` lacks the bridge's `UNSUPPORTED_PLATFORM` hint (`3139f79`). Rebuild with the next bridge change.
+- **Cloudflare spike site:**
+  - It runs an older build: the long banner, and the old `/pay/` paths.
+  - Its token expires 2026-10-30.
+  - Teardown is Wyatt's, in `spikes/cf-runner/SETUP.md` steps 11–13.
+- **Spec text for Wyatt to fold into the live spec:**
+  - 14 (the Coffer rename)
+  - 32 (the pay page's status fields)
+  - 33 (tips never late)
+  - 35 (Cloudflare)
+  - 36 (paths, stored coin fields, status fields, the sync's network byte)
+  - 39 (the pay page's way back)
+- **Test flake, not fixed:** `admin-health`'s first test can hang when it's the first after a fresh build (the test host's D1 isn't migrated yet).
+
+## 2026-10-18 · End-of-night handoff
+
+State:
+- **Git:** `main` at `24a067e` on GitHub (CI green). This handoff's docs commit is local, to push at the start of the next session.
+- **Dev box:**
+  - dev site and built copy stopped; ports 4321, 4322 and 8099 free; no tmux sessions; no `astro dev` running
+  - about 5.2 GB available
+  - `xmr-bridge` and `monerod-stagenet` active
+- **Dev site:**
+  - pay files at `src/pages/pay/coffer/` (pre-7e copies in `~/xmr-pay-dev-data/baseline/`)
+  - dev data restored after 7e's `dev-e2e` run, plus the 7e and 7f test tips (unpaid; they expire)
+  - the plugin build in `plugin/dist` is 7e's (`06bc905`); 7f changed only the theme, which the site links
+
+Before 07b pass 1 (Wyatt; from the phase file's checklist):
+1. Put the security matrix in the repo as `docs/security-matrix.md` (export the Claude Doc "Coffer — Security Traceability Matrix" as Markdown). Its first audit runs first, if it hasn't yet.
+2. Decide C01–C06 in `docs/spec-changes.md`, or accept that undecided candidates are only probed and reported.
+3. Feather's buyer wallet: at least eight separate unlocked stagenet amounts.
+4. Snapshot the dev box in Proxmox as `pre-redteam-1`.
+5. Optional: decide now whether pass 1 should fix the mixed-network pool or only report it.
+
+Next session (after the checklist): phase 07b setup, the builder session.
+
+    Phase 07b, adversarial testing pass 1, setup. Read docs/phases/07b-adversarial-testing.md and docs/progress.md, then plan the setup work in "For the builder".

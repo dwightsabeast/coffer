@@ -289,6 +289,14 @@ Reorgs, reversed payments, time-locked and double-spend transfers can't be produ
 - Pass 1: build the sandbox canary in `spikes/sandbox-canary/`. It is never shipped, and it is loaded on the dev site only while its tests run.
 - Pass 1: write the data-at-rest scanner as `scripts/redteam/scan-at-rest.mjs`. It runs under `scripts/with-shop-env.sh` and never prints a secret.
 - Pass 2: reuse all of the above, and add whatever orders and the store adapter need (a fake store calling the payment contract, for example).
+- **Pass 1, added during phase 07 (2026-10-16 to 10-18):** fold these surfaces into the catalog and matrix, tagged **1**:
+  - **The tip endpoint** (`/pay/coffer/tip`): it calls checkout in-process, so it does its own cross-site refusal (`Sec-Fetch-Site`, `Origin`). Also forged forms, amounts and notes.
+  - **The per-client cap on Node:** spoofing `CF-Connecting-IP` or `trustedProxyHeaders` with the origin exposed (7a).
+  - **The Cloudflare refusal** (`UNSUPPORTED_PLATFORM`, spec change 35), detected from `requestMeta.geo`.
+  - **The way back** (spec change 39): open redirects through `returnTo` and `?return=`, including double encoding and Unicode look-alike slashes.
+  - **Pool addresses** (spec change 36): the sync drops an unreadable network byte, but **a pool that mixes networks isn't refused yet.** Decide with Wyatt whether pass 1 fixes it or reports it.
+  - **Coexistence** (spec change 36, R4/R5): Coffer's headers, CSP and toolbar placeholder only on its own pages, and `TipButton` with no script.
+  - **The watch scan's 200-page cap** and its Health warning (spec change 35, condition 2), under a tip flood.
 - Already done when this file was added (2026-10-13): the 07b, 08b and 09b rows in `docs/phases/README.md`, and step 1 of `docs/phases/09-release.md` starting from `docs/redteam-findings.md` and the updated matrix. Check they still match before starting.
 
 **Fixes (sessions 5+)**

@@ -25,7 +25,7 @@ Phase 08, store adapter. Read docs/phases/08-store-adapter.md and docs/progress.
 **Plugin: the release-1 switch and the pay button**
 
 - Turn the release-1 switch on (spec change 22): product checkout and the admin page's product parts come back. Phase 07's tests for both positions must still pass.
-- `PayButton.astro` (moved from phase 06): "Pay with Monero" for a product entry. Posts `{ kind: "product", product }` to the plugin's `checkout` route (same origin) and redirects to `/pay/<token>`. Domain errors show a short, plain message.
+- `PayButton.astro` (moved from phase 06): "Pay with Monero" for a product entry. Posts `{ kind: "product", product }` to the plugin's `checkout` route (same origin) and redirects to `/pay/coffer/<token>` (spec change 36, R2). Domain errors show a short, plain message.
 - Release 2's trust contract: release 1 declared today's manifest as is. Anything more this phase needs (for example an `orderRef` index for a store that retries checkout) is a spec change first, then a version bump and the admin's fresh consent.
 
 **Plugin: `kind: "order"`**

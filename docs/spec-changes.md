@@ -1015,6 +1015,18 @@ Wyatt's decisions (2026-10-18):
    - **Assets with no home chain,** such as stablecoins, always include it.
    - The ID is made from the stored fields and never parsed back.
 Still proposed: the rest of the entry (release 2), and the note's open questions 2 and 3.
+Built (phase 07 session 7e, 2026-10-18):
+- **The pay path:** `tipEndpoint` defaults to `payPath: "/pay/coffer"` and `TipButton` to `action: "/pay/coffer/tip"`; the README and installation text give `src/pages/pay/coffer/[token].astro` and `src/pages/pay/coffer/tip.ts`.
+- **The network byte:** `subaddressNetwork()` (`plugin/src/core/address.ts`) reads it, and sync drops a pool address it can't read (Wyatt, 2026-10-18).
+- **Stored coin fields:** invoices store `asset`, `chain` and `network`; `coinOf()` reads an older invoice as xmr on monero, with the network from its stored subaddress, else mainnet (Wyatt). A pool row whose network can't be read is claimed with no invoice and skipped.
+- **Status** returns `asset`, `chain`, `network` and `decimals` (Wyatt, 2026-10-18).
+- **R5 is pinned by a theme test.**
+- **Not done:** method IDs (phase 08); refusing a pool that mixes networks (recorded for 07b, Wyatt).
+- **Spec text to fold in** (Wyatt; `docs/spec.md` is not edited here):
+  - Theme integration: the `/pay/[token]` page and tip button paths become `/pay/coffer/...`.
+  - The payment contract's `"payUrl": "/pay/<token>"` becomes `"/pay/coffer/<token>"`.
+  - API contracts, `GET status`: the four new fields.
+  - `bridge/sync`: an address must carry a subaddress network byte.
 
 ## 37. Same-machine wallet host: an "easy install" option  (status: proposed, 2026-10-16)
 Found in: Wyatt's planning chat, 2026-10-16, while asking whether FCMP++ lets Coffer drop the bridge (it doesn't; spec change 38) and whether admins could have a slightly less private option. Not found by code or tests; it reopens a decision at Wyatt's request.

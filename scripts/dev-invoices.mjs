@@ -99,7 +99,7 @@ if (cmd === "new") {
 	save(s);
 	const amount = data.amountAtomic ? `${atomicToXmr(BigInt(data.amountAtomic))} XMR` : "any amount from 0.0001 XMR (open tip)";
 	console.log(`${name}: ${body.kind}, index ${inv.addrIndex}, ${amount}, ${inv.required} confirmations, expires ${data.expiresAt} (height ${inv.expiresHeight})`);
-	console.log(`  pay page: ${new URL(`/pay/${data.token}`, site).href}`);
+	console.log(`  pay page: ${new URL(`/pay/coffer/${data.token}`, site).href}`);
 } else if (cmd === "pay-script") {
 	const [step, ...specs] = rest;
 	if (!step || specs.length === 0) throw new Error("pay-script <step> <name>=<fraction|rest> ...");

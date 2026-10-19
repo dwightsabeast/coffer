@@ -17,7 +17,8 @@
 // change. Only for a local dev site: the script refuses any site URL that isn't loopback.
 //
 // The fake bridge signs with an Ed25519 key generated in memory for this run and never written anywhere. Pool
-// addresses are well-formed fakes (95 base58 characters) that can't receive anything. Prices come from the plugin's
+// addresses are fakes in the right format (stagenet's subaddress byte, made-up keys, a zero checksum) that no wallet would
+// send to. Prices come from the plugin's
 // own live rate fetch (Kraken, then CoinGecko).
 //
 // Node's fetch sends no Origin header, like the Go bridge. Prints one line per check; exit code 0 when all pass.
@@ -113,12 +114,30 @@ if (found.length > 0) {
 const b64url = (buf) => Buffer.from(buf).toString("base64url");
 const route = (name) => new URL(`/_emdash/api/plugins/${PLUGIN}/${name}`, site).href;
 const DIGITS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-/** A well-formed fake stagenet subaddress for a pool index: "7", 88 filler characters, the index in base58 (6 chars). */
-function fakeAddress(index) {
-	let n = index;
-	let tail = "";
-	for (let i = 0; i < 6; i++, n = Math.floor(n / 58)) tail = DIGITS[n % 58] + tail;
-	return `7${"x".repeat(87)}D${tail}`;
+const BLOCK_CHARS = [0, 2, 3, 5, 6, 7, 9, 10, 11];
+/** Monero's block base58: 8-byte blocks to 11 characters, the last partial block to its own length. */
+function base58(bytes) {
+	let out = "";
+	for (let i = 0; i < bytes.length; i += 8) {
+		const block = bytes.subarray(i, i + 8);
+		let n = 0n;
+		for (const b of block) n = (n << 8n) | BigInt(b);
+		let s = "";
+		for (let k = 0; k < BLOCK_CHARS[block.length]; k++, n /= 58n) s = DIGITS[Number(n % 58n)] + s;
+		out += s;
+	}
+	return out;
+}
+/**
+ * A fake subaddress for a pool index: a network byte (36, stagenet's, by default), the index, made-up key bytes and a
+ * zero checksum. Since spec change 36 the plugin reads the network byte and drops an address it can't read.
+ */
+function fakeAddress(index, tag = 36) {
+	const bytes = Buffer.alloc(69);
+	bytes[0] = tag;
+	bytes.writeUInt32BE(index, 1);
+	for (let k = 5; k < 65; k++) bytes[k] = (k * 37 + 11) & 0xff;
+	return base58(bytes);
 }
 
 /** A bridge key for this run only (kept in memory). */
@@ -207,8 +226,9 @@ try {
 
 	// 5. Signed syncs: top-up, then forged, tampered and stale requests changing nothing.
 	const topUp = Array.from({ length: POOL_TARGET - 10 }, (_, i) => ({ index: i + 11, address: fakeAddress(i + 11) }));
-	r = await sync(syncBody({ addresses: topUp }));
-	check("top-up to 50 addresses", r.data?.ok === true && r.data.poolFree === POOL_TARGET && r.data.poolTarget === POOL_TARGET, show(r));
+	// One more, with a network byte no network uses (38): dropped (spec change 36).
+	r = await sync(syncBody({ addresses: [...topUp, { index: POOL_TARGET + 1, address: fakeAddress(POOL_TARGET + 1, 38) }] }));
+	check("top-up to 50 addresses; one with an unreadable network dropped", r.data?.ok === true && r.data.poolFree === POOL_TARGET && r.data.poolTarget === POOL_TARGET, show(r));
 	r = await sync(syncBody({}), { key: newKey() });
 	check("signed by another key: BAD_SIGNATURE", r.code === "BAD_SIGNATURE", show(r));
 	const good = syncBody({});
@@ -239,6 +259,8 @@ try {
 	r = await status();
 	const required = r.data?.required;
 	check("status: new, a tip", r.data?.status === "new" && r.data.kind === "tip" && Number.isInteger(required) && required >= 1, `status ${r.data?.status}, kind ${r.data?.kind}, required ${required}`);
+	const coin = r.data ? `${r.data.asset}/${r.data.chain}/${r.data.network}, decimals ${r.data.decimals}` : show(r);
+	check("status: the coin, xmr on monero, stagenet (spec change 36)", coin === "xmr/monero/stagenet, decimals 12", coin);
 
 	// 7. The payment: under the 0.0001 floor first (seen), a time-locked transfer of the full amount beside it (never
 	// counted), then the rest (confirming), then mined and confirmed to the required depth. A tip settles at the floor

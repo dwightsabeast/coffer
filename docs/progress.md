@@ -3053,4 +3053,6 @@ Session 7e (plan first):
   - The format is `coffer:<asset>`, with `-<chain>` only when the chain isn't the asset's home chain: `coffer:xmr`, `coffer:eth-base`, `coffer:usdc-base`.
   - Assets with no home chain, such as stablecoins, always include it.
   - The ID is made from the stored fields and never parsed back.
-- **Pushed on Wyatt's OK** (2026-10-18). CI below.
+- **Pushed on Wyatt's OK** (2026-10-18): `04f6c55..ff7041f`.
+  - **CI run 39177556608 passed:** bridge (with the race-detector tests), plugin and theme. This is the first CI run of 7c's theme code.
+  - `scripts/ci-status.py` needs the full SHA: a short one finds no runs and waits about 23 minutes.

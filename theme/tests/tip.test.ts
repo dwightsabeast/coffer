@@ -62,7 +62,7 @@ describe("tip endpoint: to checkout", () => {
 		const calls: Call[] = [];
 		const { res } = await post(endpoint, { amount: "5", currency: "EUR", collection: "posts", id: "01HELLO", note: "thanks!", returnTo: "/posts/hello" }, locals(ok(), calls));
 		expect(res.status).toBe(303);
-		expect(res.headers.get("location")).toBe("/pay/coffer/AbCdEfGhIjKlMnOpQrStUv"); // spec change 36, R2
+		expect(res.headers.get("location")).toBe("/pay/coffer/AbCdEfGhIjKlMnOpQrStUv?return=%2Fposts%2Fhello"); // spec changes 36 (R2) and 39
 		expect(res.headers.get("cache-control")).toBe("private, no-store");
 		expect(calls).toHaveLength(1);
 		expect(calls[0]).toMatchObject({ pluginId: "coffer", method: "POST", path: "checkout" });
@@ -72,6 +72,17 @@ describe("tip endpoint: to checkout", () => {
 	it("a site that puts the pay page elsewhere passes payPath", async () => {
 		const { res } = await post(tipEndpoint({ payPath: "/shop/pay/" }), { amount: "5" }, locals(ok(), []));
 		expect(res.headers.get("location")).toBe("/shop/pay/AbCdEfGhIjKlMnOpQrStUv");
+	});
+
+	it("the way back (spec change 39): the page's path and query go on to the pay page; anything unsafe is left off", async () => {
+		const location = async (returnTo: string) => (await post(endpoint, { amount: "5", returnTo }, locals(ok(), []))).res.headers.get("location");
+		expect(await location("/posts/hello?ref=x#top")).toBe("/pay/coffer/AbCdEfGhIjKlMnOpQrStUv?return=%2Fposts%2Fhello%3Fref%3Dx");
+		expect(await location("/")).toBe("/pay/coffer/AbCdEfGhIjKlMnOpQrStUv?return=%2F");
+		for (const unsafe of ["//evil.test/x", "https://evil.test/", "/\\evil.test", "javascript:alert(1)", "/pay/coffer/AbCdEfGhIjKlMnOpQrStUv", "/_emdash/admin", ""]) {
+			expect(await location(unsafe), unsafe).toBe("/pay/coffer/AbCdEfGhIjKlMnOpQrStUv");
+		}
+		const { res } = await post(endpoint, { amount: "5" }, locals(ok(), []));
+		expect(res.headers.get("location")).toBe("/pay/coffer/AbCdEfGhIjKlMnOpQrStUv");
 	});
 
 	it("custom amounts: fiat to minor units, XMR to atomic units, never floats; any amount sends none", async () => {
@@ -138,10 +149,10 @@ describe("tip endpoint: to checkout", () => {
 		expect(html).toContain(checkoutErrorMessage("ENTRY_NOT_FOUND"));
 		expect(html).toContain('href="/posts/hello"');
 		expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
-		for (const unsafe of ["//evil.test/x", "https://evil.test/", "/\\evil.test", "javascript:alert(1)", "posts"]) {
+		for (const unsafe of ["//evil.test/x", "https://evil.test/", "/\\evil.test", "javascript:alert(1)", "posts", "/_emdash/admin", "/pay/coffer/tip"]) {
 			const r = await post(endpoint, { amount: "any", returnTo: unsafe }, locals(fail("ENTRY_NOT_FOUND")));
 			expect(r.html, unsafe).toContain('href="/"');
-			expect(r.html).not.toContain("evil.test");
+			expect(r.html).not.toContain(unsafe.includes("evil") ? "evil.test" : unsafe);
 		}
 	});
 

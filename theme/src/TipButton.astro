@@ -30,7 +30,8 @@ const symbol = currency === "EUR" ? "€" : "$";
 const amounts = [...new Set((Astro.props.amounts ?? [3, 5, 10]).filter((a) => Number.isSafeInteger(a) && a > 0 && a < 1_000_000))];
 const noteMax = Math.min(140, Math.max(1, Math.floor(Astro.props.noteMax ?? 140)));
 const chosen = amounts[Math.floor((amounts.length - 1) / 2)];
-const returnTo = Astro.url.pathname;
+// The way back from the pay page (spec change 39): this page and its query; the endpoint checks it.
+const returnTo = Astro.url.pathname + Astro.url.search;
 ---
 <form class="coffer-tip" method="post" action={action}>
 	<fieldset>

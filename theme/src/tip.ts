@@ -18,6 +18,7 @@ import type { APIRoute } from "astro";
 import { getPublicPluginApiRouteHandler, type PublicPluginRuntimeLocals } from "emdash/plugin-utils";
 
 import { checkTipAddress, type MoneroNetwork } from "./address";
+import { safeReturn } from "./back";
 import { CLIENT_SCRIPT } from "./client";
 import { payPageHeaders } from "./headers";
 import { checkoutErrorMessage } from "./messages";
@@ -54,12 +55,6 @@ function crossSite(request: Request, url: URL): boolean {
 	} catch {
 		return true;
 	}
-}
-
-/** A same-site path to go back to, or "/". */
-function backPath(v: FormDataEntryValue | null): string {
-	const s = typeof v === "string" ? v : "";
-	return /^\/(?![/\\])[^\s\\]*$/.test(s) ? s : "/";
 }
 
 /** Decimal text to integer minor units with at most `places` decimals, or null. */
@@ -134,7 +129,9 @@ export function tipEndpoint(options: TipEndpointOptions = {}): APIRoute {
 	return async ({ request, url, locals }) => {
 		if (crossSite(request, url)) return errorPage(403, "This tip didn't come from this site's own page.", "/");
 		const form = await request.formData().catch(() => new FormData());
-		const back = backPath(form.get("returnTo"));
+		// The way back (spec change 39): the page the tip came from, checked; its error pages link "/" otherwise.
+		const returnTo = safeReturn(form.get("returnTo"), url.origin);
+		const back = returnTo ?? "/";
 		const body = tipBody(form);
 		if (!body) return errorPage(400, checkoutErrorMessage("INVALID_REQUEST"), back);
 
@@ -152,7 +149,7 @@ export function tipEndpoint(options: TipEndpointOptions = {}): APIRoute {
 				const res = await handler(PLUGIN_ID, "POST", "checkout", new Request(new URL(`/_emdash/api/plugins/${PLUGIN_ID}/checkout`, url), init));
 				const data = (res.success ? res.data : undefined) as { token?: unknown; error?: { code?: unknown } } | undefined;
 				if (typeof data?.token === "string" && /^[A-Za-z0-9_-]{22}$/.test(data.token)) {
-					return new Response(null, { status: 303, headers: { Location: `${payPath}/${data.token}`, "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
+					return new Response(null, { status: 303, headers: { Location: `${payPath}/${data.token}${returnTo !== null ? `?return=${encodeURIComponent(returnTo)}` : ""}`, "Cache-Control": "private, no-store", "Referrer-Policy": "no-referrer" } });
 				}
 				if (typeof data?.error?.code === "string") code = data.error.code;
 			} catch {

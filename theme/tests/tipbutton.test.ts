@@ -24,6 +24,8 @@ describe("TipButton", () => {
 		expect(html).toMatch(/<textarea name="note"[^>]* maxlength="140"/);
 		expect(html).toMatch(/<input type="hidden" name="currency" value="USD"[^>]*>/);
 		expect(html).toMatch(/<input type="hidden" name="returnTo" value="\/posts\/hello"[^>]*>/);
+		// The way back keeps the page's query (spec change 39); the endpoint checks it.
+		expect(await render({}, "/posts/hello?page=2")).toMatch(/<input type="hidden" name="returnTo" value="\/posts\/hello\?page=2"[^>]*>/);
 		expect(html).toMatch(/<button type="submit"[^>]*>Tip with Monero<\/button>/);
 		expect(html).not.toContain("<script");
 		expect(html).not.toContain('name="collection"');

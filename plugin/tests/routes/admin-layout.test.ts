@@ -7,6 +7,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { newInvoice } from "../../src/core/invoice";
 import { PUBLIC_KEYS } from "../sync/helpers";
+import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -16,7 +17,7 @@ afterEach(async () => {
 
 type B = Record<string, any>;
 const H0 = 3_000_000;
-const ADDR = (i: number) => `7${String(i).padStart(94, "H")}`;
+const ADDR = (i: number) => fakeSubaddress(i, "H");
 
 async function setup(o: { done?: boolean; paired?: boolean; review?: boolean; silent?: boolean } = {}) {
 	const h = await createPluginRuntimeTestHost();

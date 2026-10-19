@@ -7,6 +7,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { type Invoice, type Transfer, newInvoice } from "../../src/core/invoice";
 import { PUBLIC_KEYS } from "../sync/helpers";
+import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -16,7 +17,7 @@ afterEach(async () => {
 
 type B = Record<string, any>;
 const H0 = 3_000_000;
-const ADDR = (i: number) => `7${String(i).padStart(94, "G")}`;
+const ADDR = (i: number) => fakeSubaddress(i, "G");
 // 2026-10-06 12:00 UTC, so the created date reads "Oct 6".
 const T0 = Date.UTC(2026, 9, 6, 12);
 

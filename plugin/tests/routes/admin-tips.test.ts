@@ -7,6 +7,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { type Invoice, type Transfer, newInvoice } from "../../src/core/invoice";
 import { PUBLIC_KEYS } from "../sync/helpers";
+import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -25,7 +26,7 @@ function tip(n: number, over: Partial<Invoice> & { entry?: { id: string; title: 
 	const { entry, ...rest } = over;
 	const inv = newInvoice({
 		id: `inv_t${n}`, token: `t${String(n).padStart(21, "0")}`, kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard",
-		subaddress: `7${String(n).padStart(94, "T")}`, addrIndex: n, now: T0 + n * 60_000, chainHeight: H0,
+		subaddress: fakeSubaddress(n, "T"), addrIndex: n, now: T0 + n * 60_000, chainHeight: H0,
 		...(entry ? { contentRef: { collection: "posts", id: entry.id }, uriDescription: `Tip: ${entry.title}` } : { uriDescription: "Tip" }),
 	});
 	return { ...inv, via: "checkout", ...rest };

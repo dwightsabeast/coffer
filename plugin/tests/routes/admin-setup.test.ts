@@ -6,6 +6,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import type { Invoice } from "../../src/core/invoice";
 import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -17,7 +18,7 @@ type B = Record<string, any>;
 const H0 = 3_000_000;
 const KRAKEN = "https://api.kraken.com/0/public/Ticker?pair=XMRUSD";
 const krakenOk = () => new Response(JSON.stringify({ error: [], result: { XXMRZUSD: { c: ["150.00", "1.0"] } } }));
-const ADDR = (i: number) => `7${String(i).padStart(94, "E")}`;
+const ADDR = (i: number) => fakeSubaddress(i, "E");
 
 async function setup(o: { paired?: boolean; lastSyncAgo?: number | null; free?: number; price?: boolean; checks?: unknown } = {}) {
 	const h = await createPluginRuntimeTestHost();

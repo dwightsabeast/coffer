@@ -7,6 +7,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 import { MAX_OPEN_TOTAL } from "../../src/checkout";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { PUBLIC_KEYS } from "../sync/helpers";
+import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -16,7 +17,7 @@ afterEach(async () => {
 
 type B = Record<string, any>;
 const H0 = 3_000_000;
-const ADDR = (i: number) => `7${String(i).padStart(94, "T")}`;
+const ADDR = (i: number) => fakeSubaddress(i, "T");
 const KRAKEN = (pair: string) => `https://api.kraken.com/0/public/Ticker?pair=XMR${pair}`;
 const GECKO = (c: string) => `https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=${c}`;
 const kraken = (pair: string, price: string) => new Response(JSON.stringify({ error: [], result: { [`XXMRZ${pair}`]: { c: [price, "1.0"] } } }));

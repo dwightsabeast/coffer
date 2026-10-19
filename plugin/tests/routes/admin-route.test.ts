@@ -6,6 +6,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 import { INSTALL_URL, installCommand } from "../../src/admin";
 import { PAIRING_TTL_MS, hashPairingCode } from "../../src/sync/pairing";
 import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -133,7 +134,7 @@ describe("admin page", () => {
 		expect(find(page, (x) => x.type === "banner" && String(x.title).includes("update"))).toBeDefined();
 		expect(texts((await host.admin.loadWidget("xmr-status")).blocks as B[])).toContain("Wallet host silent");
 		await host.fixtures.plugin.kv("state:bridge", { height: 3_000_000, lastSyncAt: Date.now() - 30_000, version: 1, outdated: false });
-		await host.fixtures.plugin.storage("pool", "1", { addrIndex: 1, address: `7${"D".repeat(94)}`, status: "free" });
+		await host.fixtures.plugin.storage("pool", "1", { addrIndex: 1, address: fakeSubaddress(1, "D"), status: "free" });
 		const healthy = (await host.admin.loadPage("/payments")).blocks as B[];
 		expect(find(healthy, (x) => x.type === "banner" && /silent|update/.test(String(x.title)))).toBeUndefined();
 		expect(texts((await host.admin.loadWidget("xmr-status")).blocks as B[])).toContain("Healthy");

@@ -8,6 +8,7 @@ import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { PURGE_MS } from "../../src/housekeeping";
 import { newPairingCode } from "../../src/sync/pairing";
 import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -16,7 +17,7 @@ afterEach(async () => {
 });
 
 const H0 = 3_000_000;
-const ADDR = (i: number) => `7${String(i).padStart(94, "A")}`;
+const ADDR = (i: number) => fakeSubaddress(i, "A");
 const TXID = (n: number) => n.toString(16).padStart(64, "0");
 
 async function sync(body: Record<string, unknown>, key: "test1" | "test2" = "test1") {

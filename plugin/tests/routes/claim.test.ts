@@ -5,8 +5,9 @@ import { expect, it } from "vitest";
 
 import { claimAndStore } from "../../src/checkout";
 import type { Invoice } from "../../src/core/invoice";
+import { fakeSubaddress } from "../addresses";
 
-const ADDR = (i: number) => `7${String(i).padStart(94, "B")}`;
+const ADDR = (i: number) => fakeSubaddress(i, "B");
 
 function fakeCtx(freeRows: number, takenAddresses: string[]) {
 	const pool = new Map<string, { addrIndex: number; address: string; status: string; invoiceId?: string }>();

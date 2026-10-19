@@ -9,6 +9,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 import { MAX_REQUIRED } from "../../src/core/constants";
 import { type Invoice, type Transfer, newInvoice } from "../../src/core/invoice";
 import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -19,7 +20,7 @@ afterEach(async () => {
 type B = Record<string, any>;
 const H0 = 3_000_000;
 const KRAKEN = "https://api.kraken.com/0/public/Ticker?pair=XMRUSD";
-const ADDR = (i: number) => `7${String(i).padStart(94, "F")}`;
+const ADDR = (i: number) => fakeSubaddress(i, "F");
 const T0 = Date.now() - 3_600_000;
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;

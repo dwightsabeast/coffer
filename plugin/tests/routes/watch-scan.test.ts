@@ -7,6 +7,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -20,7 +21,7 @@ const DAY = 86_400_000;
 
 function tip(i: number, createdAgo: number, over: Partial<Invoice> = {}): Invoice {
 	const created = Date.now() - createdAgo;
-	const inv = newInvoice({ id: `inv_w${i}`, token: `w${String(i).padStart(21, "0")}`, kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard", subaddress: `7${String(i).padStart(94, "W")}`, addrIndex: i, now: created, chainHeight: H0 });
+	const inv = newInvoice({ id: `inv_w${i}`, token: `w${String(i).padStart(21, "0")}`, kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard", subaddress: fakeSubaddress(i, "W"), addrIndex: i, now: created, chainHeight: H0 });
 	return { ...inv, status: "expired", seq: created + 31 * 60_000, finalAt: created + 31 * 60_000, via: "checkout", ...over };
 }
 

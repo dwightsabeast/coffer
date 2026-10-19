@@ -7,6 +7,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 import { GAP_ALERT, UNPAID_RUN_ALERT } from "../../src/core/constants";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { PUBLIC_KEYS } from "../sync/helpers";
+import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -19,7 +20,7 @@ const H0 = 3_000_000;
 const KRAKEN = "https://api.kraken.com/0/public/Ticker?pair=XMRUSD";
 const GECKO = "https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=usd";
 const krakenOk = () => new Response(JSON.stringify({ error: [], result: { XXMRZUSD: { c: ["150.00", "1.0"] } } }));
-const ADDR = (i: number) => `7${String(i).padStart(94, "C")}`;
+const ADDR = (i: number) => fakeSubaddress(i, "C");
 
 interface Setup {
 	paired?: boolean;

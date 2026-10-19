@@ -8,6 +8,7 @@ import { MAX_OPEN_TOTAL, MAX_PER_CLIENT, checkoutHeight } from "../../src/checko
 import { SILENT_MS } from "../../src/core/constants";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
 afterEach(async () => {
@@ -18,7 +19,7 @@ afterEach(async () => {
 const KRAKEN = (pair: string) => `https://api.kraken.com/0/public/Ticker?pair=XMR${pair}`;
 const GECKO = (c: string) => `https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=${c}`;
 const krakenBody = (pair: string, price: string) => JSON.stringify({ error: [], result: { [`XXMRZ${pair}`]: { c: [price, "1.0"] } } });
-const ADDR = (i: number) => `7${String(i).padStart(94, "B")}`;
+const ADDR = (i: number) => fakeSubaddress(i, "B");
 const H0 = 3_000_000;
 
 async function setup(opts: { pool?: number; products?: boolean; lastSyncAgo?: number | null; checks?: unknown } = {}) {

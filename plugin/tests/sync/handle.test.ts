@@ -7,10 +7,11 @@ import { handleSync } from "../../src/sync/handle";
 import { PAIRING_TTL_MS, newPairingCode } from "../../src/sync/pairing";
 import { PAIR_MAX_BYTES } from "../../src/sync/protocol";
 import { type KeyName, MemoryStore, PUBLIC_KEYS, bytesOf, signedHeaders } from "./helpers";
+import { fakeSubaddress } from "../addresses";
 
 const T0 = 1_790_000_000_000;
 const H0 = 3_000_000;
-const ADDR = (i: number) => `7${String(i).padStart(94, "A")}`;
+const ADDR = (i: number) => fakeSubaddress(i, "A");
 const TXID = (n: number) => n.toString(16).padStart(64, "0");
 
 function syncBody(over: Record<string, unknown> = {}) {

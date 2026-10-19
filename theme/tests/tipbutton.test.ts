@@ -3,6 +3,7 @@ import { experimental_AstroContainer as AstroContainer } from "astro/container";
 import { beforeAll, describe, expect, it } from "vitest";
 
 import TipButton from "../src/TipButton.astro";
+import source from "../src/TipButton.astro?raw";
 
 let container: AstroContainer;
 beforeAll(async () => {
@@ -11,9 +12,9 @@ beforeAll(async () => {
 const render = (props: Record<string, unknown> = {}, path = "/posts/hello") => container.renderToString(TipButton, { props, request: new Request(`https://shop.example${path}`) });
 
 describe("TipButton", () => {
-	it("a form posting to /pay/tip: 3, 5, 10 in the site currency (5 chosen), another amount in it or XMR, any amount, a note", async () => {
+	it("a form posting to /pay/coffer/tip (spec change 36, R2): 3, 5, 10 in the site currency (5 chosen), another amount in it or XMR, any amount, a note", async () => {
 		const html = await render();
-		expect(html).toMatch(/<form class="coffer-tip[^"]*" method="post" action="\/pay\/tip"/);
+		expect(html).toMatch(/<form class="coffer-tip[^"]*" method="post" action="\/pay\/coffer\/tip"/);
 		for (const a of ["3", "5", "10"]) expect(html).toMatch(new RegExp(`<input type="radio" name="amount" value="${a}"[^>]*>\\s*\\$${a}`));
 		expect(html).toMatch(/<input type="radio" name="amount" value="5"[^>]* checked/);
 		expect(html).toMatch(/<input type="radio" name="amount" value="custom"/);
@@ -47,5 +48,20 @@ describe("TipButton", () => {
 		for (const bad of ["0", "-3", "2.5", "1000000"]) expect(html).not.toContain(`name="amount" value="${bad}"`);
 		expect(html).toContain('name="currency" value="USD"');
 		expect(html).toMatch(/maxlength="140"/);
+	});
+
+	it("leaves the rest of the site alone (spec change 36, R5): no script, and only its own scoped coffer-tip styles", async () => {
+		expect(await render()).not.toContain("<script");
+		expect(source).not.toContain("<script");
+		const styles = [...source.matchAll(/<style([^>]*)>([\s\S]*?)<\/style>/g)];
+		expect(styles).toHaveLength(1);
+		const [, attrs, css] = styles[0];
+		expect(attrs).not.toMatch(/is:global|is:inline/);
+		expect(css).not.toContain(":global");
+		const selectors = [...css.replace(/\/\*[\s\S]*?\*\//g, "").matchAll(/([^{}]+)\{[^{}]*\}/g)].flatMap((m) => m[1].split(",").map((x) => x.trim()));
+		expect(selectors.length).toBeGreaterThan(0);
+		for (const sel of selectors) expect(sel, sel).toMatch(/^\.coffer-tip(?:-[a-z-]+)?(?:[\s:>[]|$)/);
+		// It reads --coffer-tip-* custom properties and never sets one.
+		expect(css).not.toMatch(/(^|[;{\s])--[\w-]+\s*:/);
 	});
 });

@@ -1,6 +1,6 @@
 ---
 /**
- * The tip button (phase 07): a plain HTML form, no JavaScript, posting to the tip endpoint (src/pages/pay/tip.ts, see
+ * The tip button (phase 07): a plain HTML form, no JavaScript, posting to the tip endpoint (src/pages/pay/coffer/tip.ts, see
  * tip.ts), which makes the tip and sends the visitor to the pay page. Put it in an entry template:
  *
  *   import TipButton from "@cofferhq/astro/TipButton.astro";
@@ -19,12 +19,12 @@ interface Props {
 	currency?: "USD" | "EUR";
 	/** The note's length limit (at most 140, the plugin's). */
 	noteMax?: number;
-	/** The tip endpoint's path. */
+	/** The tip endpoint's path (default `/pay/coffer/tip`; spec change 36). */
 	action?: string;
 	label?: string;
 }
 
-const { collection, id, action = "/pay/tip", label = "Tip with Monero" } = Astro.props;
+const { collection, id, action = "/pay/coffer/tip", label = "Tip with Monero" } = Astro.props;
 const currency = Astro.props.currency === "EUR" ? "EUR" : "USD";
 const symbol = currency === "EUR" ? "€" : "$";
 const amounts = [...new Set((Astro.props.amounts ?? [3, 5, 10]).filter((a) => Number.isSafeInteger(a) && a > 0 && a < 1_000_000))];

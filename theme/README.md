@@ -1,11 +1,11 @@
 # @cofferhq/astro
 
-Astro components for Coffer, Monero payments for EmDash: the buyer's `/pay/<token>` page, and a server-side `isPaid`
+Astro components for Coffer, Monero payments for EmDash: the buyer's `/pay/coffer/<token>` page, and a server-side `isPaid`
 helper for gated content. Not published yet (phase 09); until then the dev site installs it from this folder.
 
 ## Tips
 
-`src/pages/pay/tip.ts`, the endpoint the tip form posts to:
+`src/pages/pay/coffer/tip.ts`, the endpoint the tip form posts to:
 
 ```ts
 import { tipEndpoint } from "@cofferhq/astro/tip";
@@ -25,6 +25,10 @@ The button is a plain form (no JavaScript): suggested amounts (`amounts`, defaul
 in that currency or XMR, or any amount, and an optional note for the site's owner. Leave out `collection` and `id` for a
 tip to the whole site. The endpoint makes the tip and redirects to the pay page.
 
+Both pages live under `/pay/coffer/`, so they can't clash with another payment plugin's pages. To put them
+elsewhere, move the two files and pass the paths: `<TipButton action="/shop/pay/tip">` and
+`tipEndpoint({ payPath: "/shop/pay" })`.
+
 Optional fallback: `tipEndpoint({ address: "8…", network: "mainnet" })` shows that shop address, with a QR code, when
 Coffer can't make a tip invoice (no free payment address, too many open, or the plugin unavailable). The site doesn't
 confirm tips sent that way. The address is checked for format and network when the site starts; a bad one is logged and
@@ -32,7 +36,7 @@ shows an error for the site's admin instead of a QR. It's never taken from the f
 
 ## The pay page
 
-`src/pages/pay/[token].astro`:
+`src/pages/pay/coffer/[token].astro`:
 
 ```astro
 ---

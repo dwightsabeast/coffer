@@ -50,7 +50,7 @@ const fail = (code: string) => ({ success: true, data: { error: { code } } });
 async function post(handler: ReturnType<typeof tipEndpoint>, fields: Record<string, string>, loc: unknown, headers: Record<string, string> = {}) {
 	const form = new FormData();
 	for (const [k, v] of Object.entries(fields)) form.set(k, v);
-	const request = new Request(`${ORIGIN}/pay/tip`, { method: "POST", body: form, headers });
+	const request = new Request(`${ORIGIN}/pay/coffer/tip`, { method: "POST", body: form, headers });
 	const res = (await handler({ request, url: new URL(request.url), locals: loc } as never)) as Response;
 	return { res, html: res.status === 303 ? "" : await res.text() };
 }
@@ -62,11 +62,16 @@ describe("tip endpoint: to checkout", () => {
 		const calls: Call[] = [];
 		const { res } = await post(endpoint, { amount: "5", currency: "EUR", collection: "posts", id: "01HELLO", note: "thanks!", returnTo: "/posts/hello" }, locals(ok(), calls));
 		expect(res.status).toBe(303);
-		expect(res.headers.get("location")).toBe("/pay/AbCdEfGhIjKlMnOpQrStUv");
+		expect(res.headers.get("location")).toBe("/pay/coffer/AbCdEfGhIjKlMnOpQrStUv"); // spec change 36, R2
 		expect(res.headers.get("cache-control")).toBe("private, no-store");
 		expect(calls).toHaveLength(1);
 		expect(calls[0]).toMatchObject({ pluginId: "coffer", method: "POST", path: "checkout" });
 		expect(calls[0].body).toEqual({ kind: "tip", amount: { fiatMinor: "500", currency: "EUR" }, contentRef: { collection: "posts", id: "01HELLO" }, note: "thanks!" });
+	});
+
+	it("a site that puts the pay page elsewhere passes payPath", async () => {
+		const { res } = await post(tipEndpoint({ payPath: "/shop/pay/" }), { amount: "5" }, locals(ok(), []));
+		expect(res.headers.get("location")).toBe("/shop/pay/AbCdEfGhIjKlMnOpQrStUv");
 	});
 
 	it("custom amounts: fiat to minor units, XMR to atomic units, never floats; any amount sends none", async () => {

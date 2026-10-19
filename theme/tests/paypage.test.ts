@@ -20,7 +20,7 @@ beforeAll(async () => {
 });
 
 async function render(token: string | undefined, loc: unknown) {
-	const res = await container.renderToResponse(PayRoute, { props: { token }, locals: loc as App.Locals, request: new Request(`https://shop.example/pay/${token}`), partial: false });
+	const res = await container.renderToResponse(PayRoute, { props: { token }, locals: loc as App.Locals, request: new Request(`https://shop.example/pay/coffer/${token}`), partial: false });
 	return { res, html: await res.text() };
 }
 
@@ -147,7 +147,7 @@ describe("PayPage", () => {
 			props: { token: TOKEN, title: "Pay Wyatt's shop" },
 			slots: { head: '<link rel="stylesheet" href="/site.css">' },
 			locals: locals(ok(status())) as App.Locals,
-			request: new Request(`https://shop.example/pay/${TOKEN}`),
+			request: new Request(`https://shop.example/pay/coffer/${TOKEN}`),
 			partial: false,
 		});
 		expect(res).toContain("<title>Pay Wyatt&#39;s shop</title>");
@@ -157,7 +157,7 @@ describe("PayPage", () => {
 	it("fails closed without preparePayPage or its headers: no payment details, no token, no plugin call", async () => {
 		const calls: Call[] = [];
 		const loc = locals(ok(status()), calls) as App.Locals;
-		const request = new Request(`https://shop.example/pay/${TOKEN}`);
+		const request = new Request(`https://shop.example/pay/coffer/${TOKEN}`);
 		const prepared: PreparedPayPage = { token: TOKEN, result: { ok: true, status: status() } };
 		// No prepared result; a prepared result but no headers (as if the page skipped preparePayPage's header step).
 		for (const props of [{}, { pay: prepared }]) {

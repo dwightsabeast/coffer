@@ -3,7 +3,7 @@
  * Astro has started the response, so headers and the status code set there are lost; found on the dev site in
  * session 6c):
  *
- *   src/pages/pay/[token].astro
+ *   src/pages/pay/coffer/[token].astro
  *   ---
  *   import PayPage from "@cofferhq/astro/PayPage.astro";
  *   import { preparePayPage } from "@cofferhq/astro/page";

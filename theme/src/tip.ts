@@ -2,7 +2,7 @@
  * The tip endpoint (phase 07): the TipButton form posts here, with no JavaScript needed. It makes the tip through the
  * plugin's checkout route in-process and redirects to the pay page. The site's file is two lines:
  *
- *   src/pages/pay/tip.ts
+ *   src/pages/pay/coffer/tip.ts
  *   import { tipEndpoint } from "@cofferhq/astro/tip";
  *   export const POST = tipEndpoint({ address: "8…", network: "mainnet" });
  *
@@ -29,7 +29,7 @@ export interface TipEndpointOptions {
 	/** Spec change 18 A: a shop address to show when no tip invoice can be made. */
 	address?: string;
 	network?: MoneroNetwork;
-	/** Where the pay page lives (`/pay/<token>`). */
+	/** Where the pay page lives (default `/pay/coffer`, so `/pay/coffer/<token>`; spec change 36: namespaced, so another payment plugin's pages can't clash). */
 	payPath?: string;
 }
 
@@ -127,7 +127,7 @@ const fallbackPage = (address: string, back: string) =>
 	);
 
 export function tipEndpoint(options: TipEndpointOptions = {}): APIRoute {
-	const payPath = (options.payPath ?? "/pay").replace(/\/$/, "");
+	const payPath = (options.payPath ?? "/pay/coffer").replace(/\/$/, "");
 	const fallback = options.address === undefined ? null : checkTipAddress(options.address, options.network ?? "mainnet");
 	if (fallback && !fallback.ok) console.error(`[coffer] ${fallback.reason}`);
 

@@ -1075,3 +1075,79 @@ Decisions for Wyatt: A, when; B, the container's disk and RAM (reported after A1
 Effect on the admin budget: none for the spike. A follow-up that needs a second key from the owner (decision C) would add a typed value.
 Effect on the trust contract: none for the spike (dev-only build tag, nothing shipped). Follow-ups state their own.
 Sources: https://github.com/seraphis-migration/monero/releases/tag/v0.19.0.0-beta.3.0, https://github.com/seraphis-migration/monero/pull/52, https://github.com/jeffro256/carrot/blob/master/carrot.md, https://github.com/seraphis-migration/monero/issues/53, https://www.getmonero.org/2026/05/10/deprecating-unlock-time.html, https://github.com/monero-project/research-lab/issues/125, https://cryptoticker.io/en/monero-fcmp-stressnet-fork-october-2026/, https://docs.getmonero.org/rpc-library/wallet-rpc/
+
+## 39. A way back from the pay page  (status: proposed, 2026-10-18; for release 1, before 07b)
+Found in: Wyatt's look at the dev site after session 7e, 2026-10-18 (note `spec-change-pay-page-return-link.md`).
+Spec says: Theme integration, the `/pay/[token]` page (now `/pay/coffer/[token]`, spec change 36): amount, address, QR, countdown, confirmations, the success state. Nothing about leaving the page.
+Evidence: after the tip button, the pay page has no link back to the post or the site. The only way out is the browser's back button. After paying, that can land on the tip form's POST result instead of the post. It's worst on the "Tip received" card, exactly when the buyer wants to leave.
+Proposal (Wyatt's note; theme only):
+1. **TipButton carries the return path:** a hidden field with the current page's path and query. No script and no global style, so R5 holds.
+2. **The tip endpoint passes it on:** it validates the value (item 4) and, if valid, appends `?return=<encoded path>` to the 303 `Location` for `/pay/coffer/<token>`. Invalid or missing leaves it off. The raw value is never echoed.
+3. **The pay page shows the link:** `preparePayPage` reads `return` from the URL, validates it again (never trusting the query), and gives PayPage a safe `backHref`, falling back to `/`.
+   - A small "← Back" link at the top, in every state.
+   - A button on the "Tip received" / "Paid" card: "Back to the page you came from", or "Back to the site" for the fallback.
+   - A server-rendered plain `<a href>`, so it works without JavaScript and survives reloads. The polling script only reveals the already-rendered button on paid; it never builds an href.
+4. **One validator in `theme/src`,** used by both the endpoint and the page:
+   - **Refused:** anything not starting with exactly one `/`; `//…`, `/\…` and any `\`; any scheme; control characters; anything over 512 characters.
+   - **Same origin only:** resolved with `new URL(value, siteOrigin)`, the origin must match.
+   - **Output:** `pathname + search` only, with the fragment dropped.
+   - **Refused targets:** paths under `/pay/coffer/` and `/_emdash/`.
+   - Anything refused gives `/`.
+5. **No Referer header:** Coffer's privacy headers suppress it, and it's unreliable.
+6. **Order pay pages (release 2):** no `return` yet, so they link home. The phase 08 store adapter can pass one through the same validator.
+7. **No change** to the plugin, routes, capabilities, collections, settings, CSP or dependencies. A same-origin `<a>` needs nothing new in the CSP.
+Tests (the note's):
+- **The validator:**
+  - accepts `/`, `/posts/welcome` and `/posts/welcome?ref=x`
+  - refuses `//evil.com`, `/\evil.com`, `\\evil.com`, `https://evil.com`, `javascript:alert(1)`, `/%2F%2Fevil.com` (checking what URL resolution does with it), `/pay/coffer/abc`, `/_emdash/admin`, a 513-character path, a newline or tab, and an empty string
+  - strips `#frag`
+- **TipButton** renders the hidden input with the page's path, and the R5 test still passes.
+- **The endpoint:** a valid value appears encoded in `Location`; an invalid or missing one is left out; the body never contains the raw value.
+- **The pay page:** a valid `?return=` renders that href, and an invalid or missing one renders `/`. The top link shows in waiting, paid and expired; the paid card has the button.
+- **No-JS:** the link works with scripts disabled.
+- **Live:** a tip from `/posts/welcome`, the link on the waiting page and on "Tip received", and a hand-edited `?return=//example.com` falling back to `/`.
+07b and the security matrix: an open-redirect row (a crafted `return` on the form post or the pay URL; expected result: `/`). Pass 1's attack list gains the variants above, double encoding and Unicode look-alike slashes.
+Docs: one README line (TipButton sends the buyer back to where they tipped from; order pay pages link home). Installation step 3 changes only if it fits under the registry limit (now 1,789 of 2,000).
+Claude's notes (2026-10-18), checked against the code:
+- **Item 1 exists in part:** `TipButton` already sends a hidden `returnTo` (`Astro.url.pathname`, no query). `tipEndpoint` checks it with `backPath()` (`/^\/(?![/\\])[^\s\\]*$/`) and uses it only for the "Back" link on its error and fallback pages.
+- **Proposed:** keep the one field, adding the query to it rather than a second `return` field. `backPath()` gives way to the new validator, so the error pages get the same rules, including the refused `/pay/coffer/` and `/_emdash/` targets.
+- **The query parameter on the pay URL** stays named `return`, as proposed.
+- **The pay page's polling URL and headers don't change.** `Referrer-Policy: no-referrer` stays, so the return path in the URL isn't sent on anywhere.
+Decisions for Wyatt: A, the wording ("← Back" at the top, "Back to the page you came from" on the paid card, proposed); B, an optional `siteName` prop on PayPage so the fallback reads "Back to <site name>" (proposed yes, default "Back to the site"); C, theme only with the path in the URL (proposed), or stored on the tip invoice in the plugin.
+Effect on the admin budget: none (nothing to set up; it works from the existing snippets).
+Effect on the trust contract: none.
+
+## 40. Tip in an overlay, with no scripts on site pages  (status: proposed, 2026-10-18; release 1.x or 2 only, nothing built in release 1)
+Found in: Wyatt's planning notes, 2026-10-18 (note `spec-change-tip-modal.md`). Depends on spec change 39, which ships in release 1 and stays the fallback.
+Spec says: Theme integration, the tip button and the `/pay` page (full-page flow). Spec change 36, R5: no global styles or scripts.
+Goal: the pay page opens in an overlay on top of the post, so the buyer never leaves the page they tip from. Look and feel only; the full-page flow plus spec change 39's link is fine for release 1.
+Hard constraints (Wyatt):
+1. **TipButton ships no script.** R5 stays: no `<script>`, no global styles, only `.coffer-tip` selectors. "Coffer adds no scripts to your pages" stays a promise admins can check.
+2. **The full-page flow keeps working** wherever the overlay isn't supported, and with JavaScript off.
+3. **The payment details stay out of the host page's reach:** theme scripts, analytics and other plugins must not read or change the address, amount or QR. So drawing the pay UI on the post page is ruled out.
+Approach to spike (no JavaScript on the post page):
+- **A plain `<button popovertarget="coffer-tip-…">`** opens a popover with the tip form and a "Continue" button. It's two steps, because `popovertarget` is ignored on submit buttons inside a form.
+- **The form posts with `target="coffer-pay-…"`** into a named `<iframe>` in the popover, so the endpoint's 303 lands the pay page in the frame.
+- **Close:** `popovertargetaction="hide"`, light dismiss, and a `::backdrop`.
+- **Fallback without popover support:** keep the plain form reachable (for example, outside the popover by default and moved in only under `@supports selector(:popover-open)`), or a `<details>` fallback.
+- **Also check** `commandfor` / `command="show-modal"` on `<dialog>` (truly modal, page behind inert), if browser support is good enough at build time.
+Isolation and framing (the security work):
+- **Framing:** `frame-ancestors` goes from `'none'` to `'self'` on the pay page and the tip endpoint's responses, only when framed mode is asked for (for example `?frame=1` from the form). The full-page pay page stays unframeable.
+- **A same-origin iframe isn't isolated,** so the frame needs `sandbox` without `allow-same-origin` (an opaque origin). The spike checks what that breaks:
+  - **Status polling** from a null origin: (a) a CORS allowance for `Origin: null` on the status route only; (b) in framed mode, a `<meta http-equiv="refresh">` reload instead of the fetch; (c) whatever else the spike finds. Proposed: (b), no route change.
+  - **The form post into a sandboxed frame:** does it still get the 303 and the page?
+  - **Copy buttons:** possibly `allow="clipboard-write"`, with select-the-text as the fallback.
+- **"Open in wallet":** a `monero:` link from a sandboxed frame is likely blocked without `allow-top-navigation-by-user-activation` (or `allow-popups`). Tested in Firefox, Chrome, Safari and a phone browser. If it can't work, the framed page shows the QR and copy fields with an "Open full page" link (`target="_top"`).
+- **Clickjacking:** with `frame-ancestors 'self'` only the site can frame it. Acceptable, because the site already controls the post page.
+Tests (when built):
+- the R5 test still passes; the popover and iframe attributes (the `sandbox` value, no `allow-same-origin`)
+- framed mode sends `frame-ancestors 'self'`, the full page today's value
+- from the post page, `iframe.contentDocument` is null
+- "Tip received" reached in framed mode with no reload by the buyer
+- with popover off and with JS off, the full-page flow plus the back link still works
+- live in Firefox, Chrome, Safari and a phone browser: open and close, the QR scans, copy, "Open in wallet" or its fallback
+Security matrix (in the adversarial pass that covers it, 08b or a 1.x pass): framing and clickjacking per mode; host-page script against the framed page; any CORS allowance; sandbox escape by top navigation.
+Recorded fallback, not preferred: a tiny inline script in TipButton to open a `<dialog>` (no network calls, no globals, a CSP hash or nonce on strict sites). **It breaks R5 and the no-scripts promise, so it needs Wyatt's explicit approval first.** Even then the payment details stay in the sandboxed frame.
+Decisions for Wyatt (at spike time): A, popover or `commandfor`/`show-modal`, from browser support then; B, meta refresh (proposed) or a null-origin CORS allowance; C, if "Open in wallet" can't work framed, drop it there with an "Open full page" link (proposed) or allow top navigation on click; D, release 1.x or 2.
+Effect on the admin budget: none.
+Effect on the trust contract: none for the plugin's manifest unless option B (a CORS allowance on `status`) is chosen; the pay page's `frame-ancestors` changes in framed mode only.

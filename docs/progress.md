@@ -3115,3 +3115,18 @@ Next:
 3. Push and CI.
 4. Wyatt closes phase 07.
 5. Phase 07b (its list includes refusing a pool that mixes networks).
+
+### 2026-10-18 (later) · Wyatt's three new notes
+
+- **`step3.md` done** (`7b079fe`): installation step 3 is Wyatt's text, the tip endpoint required.
+  - **The snippet drops `currency="USD"`:** `TipButton`'s prop is optional (default USD) and not tied to the admin page's setting; checkout prices a fiat tip in the form's currency, whatever the site's (`tip-checkout` test).
+  - **For Wyatt:** a EUR site still needs `currency="EUR"` on the button, or its suggested amounts show in dollars. The text no longer says so.
+  - 1,789 of 2,000 graphemes; `emdash-plugin validate` passes.
+- **Spec change 39, the return link:** logged, for release 1 before 07b. **Found:** `TipButton` already sends `returnTo` (path only), used today only for the tip endpoint's error and fallback pages. Proposed: one field, with the shared validator replacing `backPath()`. Waiting for Wyatt's decisions A–C and plan approval.
+- **Spec change 40, the tip overlay:** logged for release 1.x or 2, nothing built.
+- **The dev site** is running under `astro dev` (started by Claude, in the background) for Wyatt's click-through. Stop it with `npx astro dev stop` in the site folder.
+
+Next:
+1. Wyatt's decisions on spec change 39.
+2. Session 7f builds it, plan first.
+3. Then Wyatt's look at Tips, the push, closing phase 07, and 07b.

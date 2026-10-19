@@ -64,6 +64,10 @@ same site:
 </PayPage>
 ```
 
+The page links back at the top, in every state. After a tip it's the page the tip came from (TipButton sends it, and
+it's checked on the way: same site only, never another pay page or the admin); otherwise "Back to the site", or
+`siteName="Example Shop"` for "Back to Example Shop". Order pay pages (release 2) link to the home page.
+
 EmDash's editor toolbar isn't shown on the pay page: the page's Content-Security-Policy would block its styles and
 scripts, so the page tells EmDash to skip it.
 

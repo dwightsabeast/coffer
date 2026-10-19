@@ -1123,6 +1123,14 @@ Wyatt's decisions (2026-10-18):
 - **C:** theme only, with the path in the URL.
 - **The field:** reuse `returnTo` (now path and query). The shared validator replaces `backPath()`, so the endpoint's error and fallback pages follow the same rules.
 
+Built (phase 07 session 7f, 2026-10-18):
+- **The validator:** `safeReturn()` (`theme/src/back.ts`). It refuses other origins, schemes, `//`, backslashes, control characters, over 512 characters, and `/pay/coffer` or `/_emdash`, also through dot segments and percent-encoding.
+- **TipButton's `returnTo`** carries path and query.
+- **`tipEndpoint`** uses the validator in place of `backPath()` and adds `?return=` to the 303.
+- **`preparePayPage`** checks it again, and PayPage renders a top link in every state: "← Back", or "← Back to {siteName}" (default "the site").
+- **Live** on the dev site (`~/xmr-pay-dev-data/7f-live-back.txt`).
+- **Spec text to fold in** (Wyatt): Theme integration, the pay page's way back and the `siteName` prop.
+
 ## 40. Tip in an overlay, with no scripts on site pages  (status: proposed, 2026-10-18; release 1.x or 2 only, nothing built in release 1)
 Found in: Wyatt's planning notes, 2026-10-18 (note `spec-change-tip-modal.md`). Depends on spec change 39, which ships in release 1 and stays the fallback.
 Spec says: Theme integration, the tip button and the `/pay` page (full-page flow). Spec change 36, R5: no global styles or scripts.

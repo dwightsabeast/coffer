@@ -3130,3 +3130,42 @@ Next:
 1. Wyatt's decisions on spec change 39.
 2. Session 7f builds it, plan first.
 3. Then Wyatt's look at Tips, the push, closing phase 07, and 07b.
+
+## 2026-10-18 (night MDT; 2026-10-19 UTC) · Phase 07 · Session 7f: a way back from the pay page (spec change 39)
+
+Wyatt's choices:
+- the top link only, in every state
+- an optional `siteName`
+- theme only, with the path in the URL
+- reuse `returnTo`
+
+Built (theme only; local, not pushed):
+
+| Commit | What |
+| --- | --- |
+| `ee482fb` | `safeReturn()` (`theme/src/back.ts`): a same-origin `pathname + search`, or null. Refuses other origins, schemes, `//`, `\`, control characters, over 512 characters, and `/pay/coffer` or `/_emdash`, also through dot segments and percent-encoding. 5 tests, the note's list |
+| `16eebee` | TipButton's `returnTo` carries the query; `tipEndpoint` checks it in place of `backPath()` (its error pages follow the same rules) and adds `?return=` to the 303 |
+| `46757a7` | `preparePayPage` checks `?return=` again; PayPage's top link in every state: "← Back", or "← Back to {siteName}" (default "the site"). One `.coffer-back` CSS rule |
+
+Tests (from this session's output):
+- **Theme:** 65 pass and 1 skips, with zbar required. Typecheck clean.
+- **Plugin and scripts:** unchanged, not rerun.
+
+Live, on the running dev site (`~/xmr-pay-dev-data/7f-live-back.txt`):
+- The Welcome post's form carries `returnTo=/posts/welcome`.
+- A tip post answered 303 to `/pay/coffer/<token>?return=%2Fposts%2Fwelcome`, and that page links `href="/posts/welcome"` "← Back".
+- A hand-edited `?return=//example.com`, and no `return` at all, both give `href="/"` "← Back to the site".
+- A post with `returnTo=//example.com` gets no `return` in its 303.
+- **Two more unpaid tips** (0.0002 XMR and any amount) will expire.
+- **Wyatt's click-through in the browser:** pending.
+
+For 07b's pass 1: open-redirect attempts through `returnTo` and `?return=`, double encoding, and Unicode look-alike slashes (spec change 39). Tested now: `%2F`, `%5F` and `%70`, plus dot segments.
+
+State:
+- **The dev site** is still running under `astro dev` (Claude-started, in the background) for Wyatt. Stop it with `cd ~/sites/xmr-dev-site && npx astro dev stop`.
+
+Next:
+1. Wyatt clicks through: the tip button, the pay page's back link, and Tips in the admin.
+2. Push and CI.
+3. Wyatt closes phase 07.
+4. Phase 07b.

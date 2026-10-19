@@ -9,7 +9,7 @@
    npm install @cofferhq/astro
    ```
 
-   `src/pages/pay/[token].astro`:
+   `src/pages/pay/coffer/[token].astro`:
 
    ```astro
    ---
@@ -23,6 +23,24 @@
    The page sets its own privacy headers (no caching, no Referer, no indexing, a strict Content-Security-Policy) and
    loads nothing from other sites. Restyle it with the `--coffer-*` CSS custom properties, or your own stylesheet:
    `<link slot="head" rel="stylesheet" href="/your.css">` inside `<PayPage>`.
+
+3. **Add the tip button.** Required: tips are this release's only payment mode. Create `src/pages/pay/coffer/tip.ts`:
+
+   ```ts
+   import { tipEndpoint } from "@cofferhq/astro/tip";
+   export const POST = tipEndpoint();
+   ```
+
+   Then place the button wherever you like, e.g. an entry template:
+
+   ```astro
+   ---
+   import TipButton from "@cofferhq/astro/TipButton.astro";
+   ---
+   <TipButton collection="posts" id={entry.data.id} />
+   ```
+
+   No JavaScript. Tips appear under **Tips** on the Monero payments page.
 
 If your site is behind a login or access rules, let `/_emdash/api/plugins/coffer/*` through without one, and don't
 add an `Origin` or `Authorization` header to those requests: the wallet host and buyers' pay pages call them.

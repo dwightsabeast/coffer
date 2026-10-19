@@ -20,6 +20,8 @@ export const PAGE_CSS = `
 body { margin: 0; background: var(--coffer-bg); color: var(--coffer-fg); font: 16px/1.5 var(--coffer-font); }
 .coffer-pay { max-width: var(--coffer-width); margin: 0 auto; padding: 2rem 1rem 3rem; }
 .coffer-pay h1 { font-size: 1.375rem; margin: 0 0 1rem; }
+.coffer-back { font-size: 0.875rem; margin: 0 0 0.75rem; }
+.coffer-back a { color: var(--coffer-muted); }
 .coffer-card { background: var(--coffer-surface); border: 1px solid var(--coffer-border); border-radius: var(--coffer-radius); padding: 1.25rem; margin: 0 0 1rem; }
 .coffer-amount { font-size: 1.75rem; font-weight: 650; margin: 0; overflow-wrap: anywhere; }
 .coffer-fiat, .coffer-note { color: var(--coffer-muted); margin: 0.25rem 0 0; }

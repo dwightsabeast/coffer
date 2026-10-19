@@ -19,8 +19,8 @@ beforeAll(async () => {
 	container = await AstroContainer.create();
 });
 
-async function render(token: string | undefined, loc: unknown) {
-	const res = await container.renderToResponse(PayRoute, { props: { token }, locals: loc as App.Locals, request: new Request(`https://shop.example/pay/coffer/${token}`), partial: false });
+async function render(token: string | undefined, loc: unknown, query = "", props: Record<string, unknown> = {}) {
+	const res = await container.renderToResponse(PayRoute, { props: { token, ...props }, locals: loc as App.Locals, request: new Request(`https://shop.example/pay/coffer/${token}${query}`), partial: false });
 	return { res, html: await res.text() };
 }
 
@@ -201,5 +201,32 @@ describe("PayPage", () => {
 		expect(html.match(/id="emdash-toolbar"/g)).toHaveLength(1);
 		expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
 	});
-});
 
+	it("a way back in every state (spec change 39): the page the tip came from, checked again, else the site's home", async () => {
+		/** The top link: its href and text, or null. */
+		const back = (html: string) => {
+			const m = /<p class="coffer-back"><a href="([^"]*)"[^>]*>([^<]*)<\/a><\/p>/.exec(markup(html));
+			return m ? { href: m[1], text: m[2] } : null;
+		};
+		expect(back((await render(TOKEN, locals(ok(status())), "?return=%2Fposts%2Fwelcome")).html)).toEqual({ href: "/posts/welcome", text: "← Back" });
+		expect(back((await render(TOKEN, locals(ok(status())), "?return=%2Fposts%2Fwelcome%3Fref%3Dx")).html)).toEqual({ href: "/posts/welcome?ref=x", text: "← Back" });
+		for (const q of ["", "?return=%2F%2Fexample.com", "?return=https%3A%2F%2Fexample.com", "?return=%2Fpay%2Fcoffer%2Fx", "?return=javascript%3Aalert(1)", "?return="]) {
+			const { html } = await render(TOKEN, locals(ok(status())), q);
+			expect(back(html), q).toEqual({ href: "/", text: "← Back to the site" });
+			expect(markup(html)).not.toContain("example.com");
+		}
+		expect(back((await render(TOKEN, locals(ok(status())), "", { siteName: "Example Shop" })).html)).toEqual({ href: "/", text: "← Back to Example Shop" });
+		expect(back((await render(TOKEN, locals(ok(status())), "?return=%2Fposts%2Fwelcome", { siteName: "Example Shop" })).html)?.text).toBe("← Back");
+
+		// Every state, including a final one and the not-found page; server-rendered, so it's there with scripts off.
+		for (const s of [status(), status({ status: "settled", receivedAtomic: "80000000000", settledAt: new Date().toISOString(), confirmations: 2 }), status({ status: "expired" })]) {
+			const { html } = await render(TOKEN, locals(ok(s)), "?return=%2Fposts%2Fwelcome");
+			expect(back(html), s.status).toEqual({ href: "/posts/welcome", text: "← Back" });
+			expect(markup(html)).not.toMatch(/class="coffer-back"[^>]*hidden/);
+		}
+		expect(back((await render(TOKEN, locals(NOT_FOUND), "?return=%2Fposts%2Fwelcome")).html)?.href).toBe("/posts/welcome");
+		// Unconfigured (no prepared result): home.
+		const html = await container.renderToString(PayPage, { props: {}, locals: locals(ok(status())) as App.Locals, request: new Request(`https://shop.example/pay/coffer/${TOKEN}?return=%2Fposts%2Fwelcome`), partial: false });
+		expect(back(html)).toEqual({ href: "/", text: "← Back to the site" });
+	});
+});

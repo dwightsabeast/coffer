@@ -30,9 +30,11 @@ interface Props {
 	pay: PreparedPayPage | undefined;
 	/** The page's heading and title. */
 	title?: string;
+	/** For the way back when there's no page to return to: "Back to {siteName}" (default "the site"). */
+	siteName?: string;
 }
 
-const { pay, title = "Pay with Monero" } = Astro.props;
+const { pay, title = "Pay with Monero", siteName = "the site" } = Astro.props;
 const configured = pay !== undefined && (await hasPayPageHeaders(Astro.response.headers));
 const result = configured ? pay.result : null;
 const token = configured ? pay.token : null;
@@ -46,6 +48,8 @@ const left = s ? Math.max(0, Math.floor((Date.parse(s.expiresAt) - Date.now()) /
 const countdown = `${Math.floor(left / 60)}:${String(left % 60).padStart(2, "0")}`;
 const payable = ["waiting", "partial", "checking"];
 const isTip = s?.kind === "tip";
+// The way back (spec change 39), in every state: the checked page the tip came from, else the site's home.
+const back = configured && pay.back && !pay.back.fallback ? pay.back.href : null;
 ---
 <html lang="en">
 	<head>
@@ -70,6 +74,7 @@ const isTip = s?.kind === "tip";
 			data-status-url={s ? `${STATUS_PATH}?token=${token}` : undefined}
 			data-expires-at={s?.expiresAt}
 		>
+			<p class="coffer-back"><a href={back ?? "/"}>{back ? "← Back" : `← Back to ${siteName}`}</a></p>
 			<h1>{title}</h1>
 			{s && (
 				<section class="coffer-card">

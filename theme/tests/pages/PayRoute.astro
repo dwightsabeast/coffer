@@ -4,4 +4,4 @@ import PayPage from "../../src/PayPage.astro";
 import { preparePayPage } from "../../src/page";
 const pay = await preparePayPage(Astro, Astro.props.token);
 ---
-<PayPage pay={pay} title={Astro.props.title}><slot name="head" slot="head" /></PayPage>
+<PayPage pay={pay} title={Astro.props.title} siteName={Astro.props.siteName}><slot name="head" slot="head" /></PayPage>

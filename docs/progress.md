@@ -3056,3 +3056,62 @@ Session 7e (plan first):
 - **Pushed on Wyatt's OK** (2026-10-18): `04f6c55..ff7041f`.
   - **CI run 39177556608 passed:** bridge (with the race-detector tests), plugin and theme. This is the first CI run of 7c's theme code.
   - `scripts/ci-status.py` needs the full SHA: a short one finds no runs and waits about 23 minutes.
+
+## 2026-10-18 (evening MDT; 2026-10-19 UTC) · Phase 07 · Session 7e: /pay/coffer/, the stored coin fields
+
+Plan approved by Wyatt with one change: `coinOf()` reads a missing network from the invoice's stored subaddress first, and falls back to mainnet only if that fails. Refusing a pool that mixes networks stays recorded for 07b.
+
+Built (local, not pushed):
+
+| Commit | What |
+| --- | --- |
+| `38f1d84` | `subaddressNetwork()` (`plugin/src/core/address.ts`): Monero base58, copied from the theme. Subaddress bytes only: 42, 36, 63. `tests/addresses.ts` makes valid-format fakes (zero checksum) |
+| `c4f1048` | **The test fixtures switch to `fakeSubaddress()`:** the old `7…padStart(94, X)` shape decodes to byte 38 for most filler letters. No behavior change |
+| `bf938b1` | **Sync drops a pool address whose network can't be read,** the same silent drop as a malformed one |
+| `06bc905` | **Invoices store `asset`, `chain` and `network`; `coinOf()` fills in older rows; status adds the four fields.** `claimAndStore` claims an unreadable row with no invoice and skips it. The theme's `InvoiceStatus` type gains the fields, optional |
+| `b99e664` | **Theme:** `payPath` defaults to `/pay/coffer` and `action` to `/pay/coffer/tip`; README; a `payPath` override test; the R5 test (TipButton: no script, one style block, every selector `.coffer-tip*`, no `:global`, sets no custom property) |
+| `4585742` | **`dev-e2e`:** its fakes now carry byte 36 (the old ones didn't decode at all); new checks for a dropped byte-38 address and the coin in status. `dev-invoices` prints `/pay/coffer/<token>` |
+| `f129d6f` | **Docs:** spec change 36's "Built (7e)" and the spec text to fold in; phase 08's PayButton path |
+
+Tests (from this session's output):
+- **Plugin:** default 251 and switch-on 92 pass (one skip each). Typecheck clean, `emdash-plugin validate` passes, bundle 58.3 KB.
+- **Theme:** 58 pass and 1 skips, with zbar required. Typecheck clean.
+- **Scripts:** 17 pass.
+- **Two of my own test cases were wrong at first, not the code:**
+  - `"7".repeat(95)` and the `B`-filler fixture both decode as real stagenet subaddresses (byte 36).
+  - The tests now use `fakeAddress(38, …)`, which no network uses by construction.
+
+Live, dev site (`astro dev`):
+- **Before:** all 329 pool rows and 29 invoices decode to stagenet (read-only tally), so no real row gets skipped.
+- **Fresh install:** reset with backup `baseline/data.db.before-setup-test-20261019T012350096Z`, then `dev-e2e` 32 of 32 (`~/xmr-pay-dev-data/7e-e2e.txt`):
+  - the top-up of 40 plus one byte-38 address left 50 free (the bad one dropped)
+  - status reported `xmr/monero/stagenet, decimals 12`
+  - a $1.00 tip settled
+  - **Restored after;** the state it replaced is `…before-restore-20261019T012426004Z`.
+- **The real bridge's sync was accepted on the new build** at 01:25:31 UTC, height 2,232,639. It added real address #330 to the pool.
+- **The tip at the new paths** (`7e-live-paths.txt`):
+  - `POST /pay/coffer/tip` (0.0002 XMR) answered 303 to `/pay/coffer/<token>`, and that page answered 200.
+  - Status: `xmr` / `monero` / `stagenet`, `decimals` 12. The invoice (#280) stores the three fields.
+  - The old `/pay/<token>` and `/pay/tip` answer 404.
+  - The Welcome post's form posts to `/pay/coffer/tip`.
+  - That tip stays unpaid and will expire.
+- **The dev site's files** moved to `src/pages/pay/coffer/`; the pre-7e copies are in `baseline/*before-07e*`.
+
+Not covered:
+- **A pool mixing networks:** not refused (07b).
+- **The bridge:** not changed.
+- **Wyatt's look at Tips in a browser:** still pending.
+- **The Cloudflare spike site:** still runs an older build with the old paths.
+
+State:
+- dev site stopped; ports 4321, 4322 and 8099 free
+- about 5.1 GB available
+- `xmr-bridge` and `monerod-stagenet` active
+- **`plugin/docs/installation.md`:** steps 2 and 3 with the `/pay/coffer/` paths, **uncommitted, waiting for Wyatt.** 1,786 of 2,000 graphemes; `emdash-plugin validate` passes.
+
+Next:
+1. Wyatt approves the installation text, which is then committed.
+2. Wyatt looks at Tips in the admin. Start the site with `tmux new -d -s site -c ~/sites/xmr-dev-site 'npm run dev; exec bash'`, then sign in through the tunnel. Stop it with `tmux kill-session -t site`.
+3. Push and CI.
+4. Wyatt closes phase 07.
+5. Phase 07b (its list includes refusing a pool that mixes networks).

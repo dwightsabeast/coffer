@@ -3271,3 +3271,29 @@ Open:
 **Wyatt's decisions (later the same day):** A, automated releases with provenance required and approval for every release; B, wait for EmDash 1.3.1 to come of age on 2026-10-25 (no exclude); C, release 1 is 1.0.0; D, the listing text approved as written, and item 3's ranges with Astro's floor at the tested 7.3.5 (`env:astro >=7.3.5 <8.0.0`). Recorded in `docs/decisions.md` (decided rows) and spec change 41.
 
 Next step: on or after 2026-10-25, before 07b, the "7g: EmDash 1.3 check" session (items 3, 4, 9: the upgrade checklist against 1.3.1, plugin-cli 0.13.4, `release.requires`, the listing text). The phase 09 file now carries items 1, 2, 5–8 and decisions A and C (steps 3, 4 and 6, the checklist, and release 2's version). The 2026-10-18 handoff's before-07b checklist still stands.
+
+## 2026-10-20 · End-of-session handoff
+
+State:
+- **Git:** `main` at `a165ded` on GitHub, CI green on every commit pushed today (`2db9fef`, `5baf369`, `a427c60`, `a165ded`). This handoff's commit is local, to push at the start of the next session.
+- **Repository:** `dwightsabeast/coffer` (renamed from `EmDash-MoneroPay`; GitHub redirects the old name). The dev box's `origin` is `git@github.com:dwightsabeast/coffer.git`. Wyatt's PC clone still to repoint (any time; the redirect covers it meanwhile).
+- **Dev box:**
+  - dev site and built copy stopped; ports 4321, 4322 and 8099 free; no tmux sessions; no `astro dev` running
+  - about 5.0 GB available
+  - `xmr-bridge` and `monerod-stagenet` active (the installed unit keeps the old `Documentation=` URL until its next install or update; harmless)
+- **Dev site:** unchanged since the 2026-10-18 handoff.
+
+Today: the repo rename (spec change 41 item 10, `ddc05e2`); spec change 41 logged and accepted with Wyatt's A–E (automated releases with required provenance and approval per release; wait for EmDash 1.3.1 until 2026-10-25; release 1 is 1.0.0; the listing text as written, Astro's floor at the tested 7.3.5; the repo name `coffer`); phase 09 updated to match (`a427c60`).
+
+Dates:
+- 2026-10-22: `@emdash-cms/plugin-cli` 0.13.4 passes the 7-day age.
+- 2026-10-25: EmDash 1.3.1 passes it; 7g can start.
+- 2026-10-30: the Cloudflare spike's token expires (teardown is Wyatt's, `spikes/cf-runner/SETUP.md` steps 11–13).
+
+Open for Wyatt:
+- The `INVALID_PLUGIN_UI_CONTEXT` icon bug (spec change 41 item 4) has no record in the repo: its details, for a `docs/setup-friction.md` row and 7g's check.
+- The 2026-10-18 handoff's before-07b checklist still stands (the security matrix in the repo, C01–C06, Feather's buyer amounts, the `pre-redteam-1` snapshot).
+
+Next session (on or after 2026-10-25, before 07b): 7g, the EmDash 1.3 check (spec change 41 items 3, 4, 9). No phase file exists for it yet; the plan comes from spec change 41.
+
+    Session 7g, EmDash 1.3 check. Read docs/progress.md and spec change 41 in docs/spec-changes.md (items 3, 4, 9 and Wyatt's decisions), then docs/emdash-upgrade-checklist.md, and plan the upgrade to EmDash 1.3.1 and plugin-cli 0.13.4, release.requires, and the listing text.

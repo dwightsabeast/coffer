@@ -1166,7 +1166,7 @@ Decisions for Wyatt (at spike time): A, popover or `commandfor`/`show-modal`, fr
 Effect on the admin budget: none.
 Effect on the trust contract: none for the plugin's manifest unless option B (a CORS allowance on `status`) is chosen; the pay page's `frame-ancestors` changes in framed mode only.
 
-## 41. Release readiness against EmDash's current plugin docs  (status: proposed, 2026-10-20; item 10 accepted and built the same day, decision E; decisions A–D open)
+## 41. Release readiness against EmDash's current plugin docs  (status: accepted, 2026-10-20, with Wyatt's decisions A–E below; item 10 built the same day; items 3, 4, 9 in 7g, the rest in phase 09)
 Found in: Wyatt's claude.ai chat, 2026-10-20 (note `spec-change-release-readiness.md`), reading EmDash's updated plugin docs against the repo at `24a067e`. Not found by code or tests.
 Spec says: Build plan step 9 and phase 09 step 4 (the registry: `emdash-plugin publish` or the delegated GitHub release flow; listing sections description, installation, FAQ, security); CLAUDE.md, dependency tier 3 (release builds in CI from a clean checkout with provenance); spec change 22 (release 1 tips only; a broadened contract is a major version); spec change 35 (release 1 is Node only).
 Evidence (the note):
@@ -1199,3 +1199,10 @@ Decisions for Wyatt: A, automated releases with required provenance and approval
 Effect on the admin budget: none. Item 9 states the existing setup needs before the Install click instead of after.
 Effect on the trust contract: none. `release.requires`, `description`, `sections`, `keywords`, the admin page's `icon` and `repo` are listing and release metadata; capabilities, hosts, routes, storage and admin pages are unchanged.
 References: https://docs.emdashcms.com/plugins/creating-plugins/publishing/, https://docs.emdashcms.com/plugins/creating-plugins/delegated-releases/, https://docs.emdashcms.com/plugins/creating-plugins/manifest/, https://docs.emdashcms.com/plugins/creating-plugins/capabilities/, https://docs.emdashcms.com/plugins/creating-plugins/api-routes/, https://docs.emdashcms.com/plugins/registry/
+
+Wyatt's decisions (2026-10-20):
+- **A:** automated releases, provenance required, a passkey approval for every release. The generated workflow and its third-party actions are reviewed and approved when generated in phase 09.
+- **B:** wait for EmDash 1.3.1 to come of age on 2026-10-25; no exclude. 7g runs on or after that date.
+- **C:** release 1 is 1.0.0.
+- **D:** approved as written: the short description, the "What you'll need" list, and item 3's ranges as proposed (`env:astro >=7.0.0 <8.0.0`, not the tested-only `>=7.3.5`).
+- **E:** the repository is `dwightsabeast/coffer` (built in `ddc05e2`).

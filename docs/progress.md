@@ -3268,4 +3268,6 @@ Open:
 - **Dates:** plugin-cli 0.13.4 passes the 7-day age on 2026-10-22; EmDash 1.3.1 on 2026-10-25.
 - **The `INVALID_PLUGIN_UI_CONTEXT` icon bug** (item 4) has no record here; a setup-friction row from Wyatt's details.
 
-Next step: Wyatt decides spec change 41's A–D. Then, before 07b, the "7g: EmDash 1.3 check" session (items 3, 4, 9) once B is settled; the phase 09 edits for items 1, 2, 5–8 after his approval. The 2026-10-18 handoff's before-07b checklist still stands.
+**Wyatt's decisions (later the same day):** A, automated releases with provenance required and approval for every release; B, wait for EmDash 1.3.1 to come of age on 2026-10-25 (no exclude); C, release 1 is 1.0.0; D, the listing text and item 3's ranges approved as written. Recorded in `docs/decisions.md` (decided rows) and spec change 41.
+
+Next step: on or after 2026-10-25, before 07b, the "7g: EmDash 1.3 check" session (items 3, 4, 9: the upgrade checklist against 1.3.1, plugin-cli 0.13.4, `release.requires`, the listing text). The phase 09 file's edits for items 1, 2, 5–8 are docs only, any time before phase 09. The 2026-10-18 handoff's before-07b checklist still stands.

@@ -1204,5 +1204,5 @@ Wyatt's decisions (2026-10-20):
 - **A:** automated releases, provenance required, a passkey approval for every release. The generated workflow and its third-party actions are reviewed and approved when generated in phase 09.
 - **B:** wait for EmDash 1.3.1 to come of age on 2026-10-25; no exclude. 7g runs on or after that date.
 - **C:** release 1 is 1.0.0.
-- **D:** approved as written: the short description, the "What you'll need" list, and item 3's ranges as proposed (`env:astro >=7.0.0 <8.0.0`, not the tested-only `>=7.3.5`).
+- **D:** approved as written: the short description, the "What you'll need" list, and item 3's ranges, with Astro's floor at the version tested: `env:emdash >=1.1.0 <2.0.0`, `env:astro >=7.3.5 <8.0.0` (Wyatt chose `>=7.3.5` over the proposed `>=7.0.0` the same day).
 - **E:** the repository is `dwightsabeast/coffer` (built in `ddc05e2`).

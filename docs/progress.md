@@ -3240,3 +3240,31 @@ Before 07b pass 1 (Wyatt; from the phase file's checklist):
 Next session (after the checklist): phase 07b setup, the builder session.
 
     Phase 07b, adversarial testing pass 1, setup. Read docs/phases/07b-adversarial-testing.md and docs/progress.md, then plan the setup work in "For the builder".
+
+## 2026-10-20 · Between phases: the repo rename (spec change 41 item 10) and spec change 41 logged
+
+Wyatt's note `~/xmr-pay-dev-data/notes/spec-change-release-readiness.md`, read against EmDash's updated plugin docs. He renamed the GitHub repository to `dwightsabeast/coffer` (decision E) before the session; GitHub's API resolves the old name to the same repository.
+
+Done:
+
+| Commit | What |
+| --- | --- |
+| `ddc05e2` | **Rename, tests first.** Three failing tests first: the manifest's `repo` and `security` URLs (`plugin/tests/manifest.test.ts`), the unit's `Documentation=` (`TestUnit`), and the new `scripts/repo-name.test.mjs` (no tracked file but the history names the old repository). Then the manifest, the Go module path (`github.com/dwightsabeast/coffer/bridge` and `…/oracle`, 50 files' imports; no `go.sum` change), the unit, `scripts/ci-status.py`, CLAUDE.md and the phase 00 links, and a decided row |
+| (next) | **Spec change 41 logged** (proposed): items 1–10, the check against the code, and four still-to-decide rows (A–D) |
+
+Dev box: `origin` is now `git@github.com:dwightsabeast/coffer.git` (kept on SSH, not the note's https URL, which has no credentials here); `git fetch` works through the deploy key.
+
+Tests (run 2026-10-20):
+- **Bridge:** gofmt and `go vet` clean, `go test ./...` all packages ok. The oracle module: gofmt and vet clean, tests ok (gpgv 2.4.7). Static build: statically linked; `go version -m` shows `github.com/dwightsabeast/coffer/bridge/cmd/xmr-bridge`; the old name appears 0 times in the binary.
+- **Plugin:** default 252 and switch-on 92 pass (one skip each); typecheck clean; `emdash-plugin validate` passes; bundle 58.3 KB across 3 files.
+- **Scripts:** `node --test scripts/*.test.mjs`, 18 pass.
+- **Not run:** the theme (untouched), the race-detector tests (CI runs them), and CI itself (nothing pushed yet).
+
+Open:
+- **Push:** `main` is 3 commits ahead of `origin/main` (`24a067e`): last night's handoff `977b6b6`, the rename and this docs commit. The note wants the rename through CI before anything else. Push needs Wyatt's OK; after it, `python3 -I scripts/ci-status.py $(git rev-parse HEAD)` checks the new API URL too.
+- **Wyatt's PC clone:** `git remote set-url origin <its scheme>…dwightsabeast/coffer.git` (the old URL keeps working through the redirect meanwhile).
+- **The dev box's installed bridge** keeps the old `Documentation=` URL until its next install or update (harmless).
+- **Dates:** plugin-cli 0.13.4 passes the 7-day age on 2026-10-22; EmDash 1.3.1 on 2026-10-25.
+- **The `INVALID_PLUGIN_UI_CONTEXT` icon bug** (item 4) has no record here; a setup-friction row from Wyatt's details.
+
+Next step: Wyatt approves the push and decides spec change 41's A–D. Then, before 07b, the "7g: EmDash 1.3 check" session (items 3, 4, 9) once B is settled; the phase 09 edits for items 1, 2, 5–8 after his approval. The 2026-10-18 handoff's before-07b checklist still stands.

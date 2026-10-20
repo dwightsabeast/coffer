@@ -15,8 +15,8 @@ import (
 	"strconv"
 	"syscall"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/config"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/selfupdate"
+	"github.com/dwightsabeast/coffer/bridge/internal/config"
+	"github.com/dwightsabeast/coffer/bridge/internal/selfupdate"
 )
 
 // version is set at build time with -ldflags "-X main.version=…".

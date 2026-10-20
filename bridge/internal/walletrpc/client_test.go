@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/secret"
+	"github.com/dwightsabeast/coffer/bridge/internal/secret"
 )
 
 func client(f *fakeRPC, srv *httptest.Server) *Client {

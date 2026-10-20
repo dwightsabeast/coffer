@@ -4,15 +4,15 @@ import (
 	"context"
 	"crypto/ed25519"
 	"errors"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/sitetext"
+	"github.com/dwightsabeast/coffer/bridge/internal/sitetext"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncclient"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncsign"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncclient"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncsign"
 )
 
 type site struct {

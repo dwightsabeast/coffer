@@ -12,15 +12,15 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/config"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/installer"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/monerodl"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/noderpc"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/pairing"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/secret"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/supervise"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/wallet"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/walletrpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/config"
+	"github.com/dwightsabeast/coffer/bridge/internal/installer"
+	"github.com/dwightsabeast/coffer/bridge/internal/monerodl"
+	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/pairing"
+	"github.com/dwightsabeast/coffer/bridge/internal/secret"
+	"github.com/dwightsabeast/coffer/bridge/internal/supervise"
+	"github.com/dwightsabeast/coffer/bridge/internal/wallet"
+	"github.com/dwightsabeast/coffer/bridge/internal/walletrpc"
 )
 
 // cmdInstall is what install.sh hands off to, and the spec's cautious path. It asks for the shop wallet's address

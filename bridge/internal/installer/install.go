@@ -11,7 +11,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/sitetext"
+	"github.com/dwightsabeast/coffer/bridge/internal/sitetext"
 	"io"
 	"net"
 	"net/url"
@@ -22,12 +22,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/config"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/moneroaddr"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/noderpc"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/secret"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/selfupdate"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/shopkeys"
+	"github.com/dwightsabeast/coffer/bridge/internal/config"
+	"github.com/dwightsabeast/coffer/bridge/internal/moneroaddr"
+	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/secret"
+	"github.com/dwightsabeast/coffer/bridge/internal/selfupdate"
+	"github.com/dwightsabeast/coffer/bridge/internal/shopkeys"
 )
 
 // System is everything the installer changes on the machine.

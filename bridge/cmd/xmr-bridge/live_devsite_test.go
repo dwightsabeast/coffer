@@ -18,14 +18,14 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/bridgeloop"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/config"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/noderpc"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/secret"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/supervise"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncclient"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncsign"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/wallet"
+	"github.com/dwightsabeast/coffer/bridge/internal/bridgeloop"
+	"github.com/dwightsabeast/coffer/bridge/internal/config"
+	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/secret"
+	"github.com/dwightsabeast/coffer/bridge/internal/supervise"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncclient"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncsign"
+	"github.com/dwightsabeast/coffer/bridge/internal/wallet"
 )
 
 // switchableProxy forwards to the dev site and can be taken down (connection refused) and brought back on the

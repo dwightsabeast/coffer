@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/hashsig"
+	"github.com/dwightsabeast/coffer/bridge/internal/hashsig"
 )
 
 // TestLiveDownload fetches the real hash list and CLI archive from Monero's hosts with the pinned key, installs

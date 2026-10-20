@@ -5,7 +5,7 @@ import (
 	"errors"
 	"testing"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/testaddr"
+	"github.com/dwightsabeast/coffer/bridge/internal/testaddr"
 )
 
 func TestStagenetWallet(t *testing.T) {

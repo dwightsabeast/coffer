@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/hashsig"
+	"github.com/dwightsabeast/coffer/bridge/internal/hashsig"
 )
 
 const testdata = "../internal/hashsig/testdata"

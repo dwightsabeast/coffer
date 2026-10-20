@@ -8,12 +8,12 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/sitetext"
+	"github.com/dwightsabeast/coffer/bridge/internal/sitetext"
 	"regexp"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncclient"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncsign"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncclient"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncsign"
 )
 
 // Sender posts one request to the site (*syncclient.Client).

@@ -3,7 +3,7 @@
 # 23 minutes for every run on the commit to finish, then prints each run, job, the race-detector step and any step that
 # didn't succeed. Usage: python3 -I scripts/ci-status.py <full commit sha>
 import json, sys, time, urllib.request
-api = "https://api.github.com/repos/dwightsabeast/EmDash-MoneroPay"
+api = "https://api.github.com/repos/dwightsabeast/coffer"
 sha = sys.argv[1]
 get = lambda u: json.load(urllib.request.urlopen(urllib.request.Request(api + u, headers={"Accept": "application/vnd.github+json"})))
 for _ in range(70):

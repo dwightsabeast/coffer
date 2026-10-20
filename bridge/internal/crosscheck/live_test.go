@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/noderpc"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/walletrpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/walletrpc"
 )
 
 // The phase 01 spike's stagenet payment (spikes/wallet/evidence/q7-normal-payment.txt).

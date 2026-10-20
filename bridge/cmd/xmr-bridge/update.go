@@ -11,11 +11,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/config"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/hashsig"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/moneroaddr"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/monerodl"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/selfupdate"
+	"github.com/dwightsabeast/coffer/bridge/internal/config"
+	"github.com/dwightsabeast/coffer/bridge/internal/hashsig"
+	"github.com/dwightsabeast/coffer/bridge/internal/moneroaddr"
+	"github.com/dwightsabeast/coffer/bridge/internal/monerodl"
+	"github.com/dwightsabeast/coffer/bridge/internal/selfupdate"
 )
 
 // exitForUpdate is the exit code that tells systemd to start the service again (RestartForceExitStatus=75), after

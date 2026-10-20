@@ -12,9 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/noderpc"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/secret"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/walletrpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/secret"
+	"github.com/dwightsabeast/coffer/bridge/internal/walletrpc"
 )
 
 // TestLiveDaemonSSL runs the real wallet-rpc against an https node with each set of --daemon-ssl flags (run B attempt

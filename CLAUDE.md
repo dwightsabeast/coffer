@@ -2,7 +2,7 @@
 
 This repo builds **Coffer** (plugin slug `coffer`; called xmr-pay until 2026-10-05, a name the repo folder and dev-box paths keep): a sandboxed EmDash plugin that takes Monero payments and tips, plus a small Go bridge and a one-command Linux installer for the wallet host. The plugin holds no wallet keys and never calls the wallet; the bridge pushes Ed25519-signed snapshots in.
 
-The owner is Wyatt. He makes every design decision and handles every account, key and release. You write code, tests and docs on this dev box. Repository: https://github.com/dwightsabeast/EmDash-MoneroPay (cloned at `~/xmr-pay`).
+The owner is Wyatt. He makes every design decision and handles every account, key and release. You write code, tests and docs on this dev box. Repository: https://github.com/dwightsabeast/coffer (cloned at `~/xmr-pay`).
 
 ## Where the truth lives
 

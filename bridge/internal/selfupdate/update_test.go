@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/monerodl"
+	"github.com/dwightsabeast/coffer/bridge/internal/monerodl"
 )
 
 var t0 = time.Date(2026, 10, 10, 12, 0, 0, 0, time.UTC)

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/config"
+	"github.com/dwightsabeast/coffer/bridge/internal/config"
 )
 
 // Spec change 28: wallet-rpc refuses --daemon-ssl enabled on its own, so an https node also gets the system's CA

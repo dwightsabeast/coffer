@@ -57,3 +57,9 @@ it("the source manifest names the plugin Coffer, slug coffer", () => {
 	expect(m.slug).toBe("coffer");
 	expect(m.name).toBe("Coffer");
 });
+
+it("the source manifest points at the renamed repository, dwightsabeast/coffer (spec change 41 item 10)", () => {
+	const m = JSON.parse(manifestSource.replace(/^\s*\/\/.*$/gm, ""));
+	expect(m.repo).toBe("https://github.com/dwightsabeast/coffer");
+	expect(m.security).toEqual({ url: "https://github.com/dwightsabeast/coffer/security/advisories/new" });
+});

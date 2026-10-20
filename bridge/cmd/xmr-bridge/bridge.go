@@ -11,16 +11,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/bridgeloop"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/config"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/crosscheck"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/hashsig"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/monerodl"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/noderpc"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/supervise"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncsign"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/wallet"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/walletrpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/bridgeloop"
+	"github.com/dwightsabeast/coffer/bridge/internal/config"
+	"github.com/dwightsabeast/coffer/bridge/internal/crosscheck"
+	"github.com/dwightsabeast/coffer/bridge/internal/hashsig"
+	"github.com/dwightsabeast/coffer/bridge/internal/monerodl"
+	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/supervise"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncsign"
+	"github.com/dwightsabeast/coffer/bridge/internal/wallet"
+	"github.com/dwightsabeast/coffer/bridge/internal/walletrpc"
 )
 
 // bridgeHandle is a started bridge: Notify asks for an immediate sync, Stop stops it and waits.

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/testaddr"
+	"github.com/dwightsabeast/coffer/bridge/internal/testaddr"
 )
 
 func valid() Config {

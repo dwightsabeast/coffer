@@ -5,9 +5,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/edwards"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/secret"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/testaddr"
+	"github.com/dwightsabeast/coffer/bridge/internal/edwards"
+	"github.com/dwightsabeast/coffer/bridge/internal/secret"
+	"github.com/dwightsabeast/coffer/bridge/internal/testaddr"
 )
 
 // Reduced scalars (below l), as Monero private keys are; made up for the test.

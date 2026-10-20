@@ -14,7 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/sitetext"
+	"github.com/dwightsabeast/coffer/bridge/internal/sitetext"
 	"os"
 	"path/filepath"
 	"strconv"

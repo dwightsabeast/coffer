@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/walletrpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/walletrpc"
 )
 
 // Run B attempt 1 stopped at "walletrpc: wallet-rpc error 0: ." (spec change 28): wallet-rpc answers code 0 with no

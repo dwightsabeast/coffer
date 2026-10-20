@@ -8,7 +8,7 @@ package installer
 func UnitText() string {
 	return `[Unit]
 Description=xmr-pay wallet host (xmr-bridge)
-Documentation=https://github.com/dwightsabeast/EmDash-MoneroPay
+Documentation=https://github.com/dwightsabeast/coffer
 After=network-online.target
 Wants=network-online.target
 StartLimitIntervalSec=600

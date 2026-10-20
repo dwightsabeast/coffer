@@ -15,7 +15,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/hashsig"
+	"github.com/dwightsabeast/coffer/bridge/internal/hashsig"
 )
 
 var now = time.Date(2026, 10, 4, 12, 0, 0, 0, time.UTC)

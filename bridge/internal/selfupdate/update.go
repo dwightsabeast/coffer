@@ -15,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/monerodl"
+	"github.com/dwightsabeast/coffer/bridge/internal/monerodl"
 )
 
 const (

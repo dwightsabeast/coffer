@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/secret"
+	"github.com/dwightsabeast/coffer/bridge/internal/secret"
 )
 
 // GenerateFromKeys creates a view-only wallet file from the primary address and the private view key (no spend

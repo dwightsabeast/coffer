@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/secret"
+	"github.com/dwightsabeast/coffer/bridge/internal/secret"
 )
 
 // TestLiveWalletRPC checks the digest login against a real monero-wallet-rpc started with --rpc-login and no wallet

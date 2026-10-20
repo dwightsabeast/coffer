@@ -6,9 +6,9 @@
 
 	"license": "MIT",
 	"author": { "name": "Wyatt Dilley" },
-	"security": { "url": "https://github.com/dwightsabeast/EmDash-MoneroPay/security/advisories/new" },
+	"security": { "url": "https://github.com/dwightsabeast/coffer/security/advisories/new" },
 	"description": "Accept Monero for products or tips. No keys in the plugin.",
-	"repo": "https://github.com/dwightsabeast/EmDash-MoneroPay",
+	"repo": "https://github.com/dwightsabeast/coffer",
 
 	"name": "Coffer",
 	// The registry listing's Installation section (Wyatt approved the text, phase 06 session 6c). Profile text, inlined at

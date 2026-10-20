@@ -19,8 +19,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/noderpc"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/walletrpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/walletrpc"
 )
 
 // State is the check's outcome for one sync.

@@ -5,7 +5,7 @@ import (
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/sitetext"
+	"github.com/dwightsabeast/coffer/bridge/internal/sitetext"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -15,12 +15,12 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/bridgeloop"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/config"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/crosscheck"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncclient"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncsign"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/testaddr"
+	"github.com/dwightsabeast/coffer/bridge/internal/bridgeloop"
+	"github.com/dwightsabeast/coffer/bridge/internal/config"
+	"github.com/dwightsabeast/coffer/bridge/internal/crosscheck"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncclient"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncsign"
+	"github.com/dwightsabeast/coffer/bridge/internal/testaddr"
 )
 
 const testCode = "AbCdEfGhIjKlMnOpQrSt_-"

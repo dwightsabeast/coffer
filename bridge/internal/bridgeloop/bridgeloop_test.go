@@ -15,11 +15,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/crosscheck"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/noderpc"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncclient"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncsign"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/walletrpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/crosscheck"
+	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncclient"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncsign"
+	"github.com/dwightsabeast/coffer/bridge/internal/walletrpc"
 )
 
 // fakeWallet stands in for wallet-rpc: transfers by index, addresses created in order from next.

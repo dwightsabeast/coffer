@@ -23,7 +23,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/hashsig"
+	"github.com/dwightsabeast/coffer/bridge/internal/hashsig"
 )
 
 const (

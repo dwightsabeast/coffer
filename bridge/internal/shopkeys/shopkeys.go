@@ -13,9 +13,9 @@ import (
 	"math/big"
 	"strings"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/edwards"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/moneroaddr"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/secret"
+	"github.com/dwightsabeast/coffer/bridge/internal/edwards"
+	"github.com/dwightsabeast/coffer/bridge/internal/moneroaddr"
+	"github.com/dwightsabeast/coffer/bridge/internal/secret"
 )
 
 // l is the order of the ed25519 base point; Monero private keys are scalars below it.

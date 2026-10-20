@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/config"
+	"github.com/dwightsabeast/coffer/bridge/internal/config"
 )
 
 // TestLiveWalletRPC supervises the real monero-wallet-rpc named by XMR_BRIDGE_LIVE_WALLET_RPC against the stagenet

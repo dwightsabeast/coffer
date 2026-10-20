@@ -1,10 +1,10 @@
-module github.com/dwightsabeast/EmDash-MoneroPay/bridge/oracle
+module github.com/dwightsabeast/coffer/bridge/oracle
 
 go 1.27
 
 require (
 	github.com/ProtonMail/go-crypto v1.5.2
-	github.com/dwightsabeast/EmDash-MoneroPay/bridge v0.0.0
+	github.com/dwightsabeast/coffer/bridge v0.0.0
 )
 
 require (
@@ -13,4 +13,4 @@ require (
 	golang.org/x/sys v0.35.0 // indirect
 )
 
-replace github.com/dwightsabeast/EmDash-MoneroPay/bridge => ../
+replace github.com/dwightsabeast/coffer/bridge => ../

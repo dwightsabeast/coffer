@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncsign"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncsign"
 )
 
 var now = time.Unix(1790000000, 0)

@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/config"
+	"github.com/dwightsabeast/coffer/bridge/internal/config"
 )
 
 func installLog(o Options) string { return filepath.Join(o.Paths.DataDir(), "log", "install.log") }

@@ -13,7 +13,7 @@ import (
 	"net/http"
 	"sync"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/secret"
+	"github.com/dwightsabeast/coffer/bridge/internal/secret"
 )
 
 // ErrUnauthorized means wallet-rpc refused the login.

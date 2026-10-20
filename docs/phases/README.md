@@ -4,7 +4,7 @@ Coffer ships in two releases (spec change 22, 2026-10-13): **release 1, tips onl
 
 | Phase | File | Ends with | Wyatt needed for |
 | --- | --- | --- | --- |
-| 00 | `00-repo-bootstrap.md` | Kit committed to `dwightsabeast/EmDash-MoneroPay`, tools checked, license chosen, pushed | Deploy key and clone (START-HERE), license choice, approving the push |
+| 00 | `00-repo-bootstrap.md` | Kit committed to `dwightsabeast/coffer`, tools checked, license chosen, pushed | Deploy key and clone (START-HERE), license choice, approving the push |
 | 01 | `01-spike.md` | `docs/spike-findings.md` answers the platform questions; go or no-go for the design | A public test hostname (built site behind Cloudflare Access); a few commands from your PC; one time-locked stagenet payment sent by hand |
 | 02 | `02-plugin-core.md` | Plugin with checkout, status, signed sync, pairing, state machine and cron, all tested, running in the dev site | Publisher placeholder or a real Atmosphere DID; price-API check |
 | 03 | `03-bridge-and-installer.md` | Go bridge and `install.sh`; a real stagenet payment settles end to end | Release-signing and GPG-verification choices; running the installer with `sudo`; stagenet payments by hand |

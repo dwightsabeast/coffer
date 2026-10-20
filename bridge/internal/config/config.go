@@ -14,7 +14,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/moneroaddr"
+	"github.com/dwightsabeast/coffer/bridge/internal/moneroaddr"
 )
 
 // Network is the Monero network the wallet host runs on.

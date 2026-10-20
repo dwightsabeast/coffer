@@ -11,14 +11,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/sitetext"
+	"github.com/dwightsabeast/coffer/bridge/internal/sitetext"
 	"io"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/syncsign"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncsign"
 )
 
 const (

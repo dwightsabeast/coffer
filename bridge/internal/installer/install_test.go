@@ -3,15 +3,15 @@ package installer
 import (
 	"context"
 	"errors"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/sitetext"
+	"github.com/dwightsabeast/coffer/bridge/internal/sitetext"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/config"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/noderpc"
-	"github.com/dwightsabeast/EmDash-MoneroPay/bridge/internal/selfupdate"
+	"github.com/dwightsabeast/coffer/bridge/internal/config"
+	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
+	"github.com/dwightsabeast/coffer/bridge/internal/selfupdate"
 )
 
 func TestInstall(t *testing.T) {
@@ -604,7 +604,7 @@ func TestUninstallChecksStateFormat(t *testing.T) {
 func TestUnit(t *testing.T) {
 	u := UnitText()
 	unitSection, serviceSection, _ := strings.Cut(u, "[Service]")
-	for _, want := range []string{"StartLimitIntervalSec=600", "StartLimitBurst=20"} {
+	for _, want := range []string{"StartLimitIntervalSec=600", "StartLimitBurst=20", "Documentation=https://github.com/dwightsabeast/coffer\n"} {
 		if !strings.Contains(unitSection, want) {
 			t.Errorf("[Unit] lacks %q", want)
 		}

@@ -3250,7 +3250,7 @@ Done:
 | Commit | What |
 | --- | --- |
 | `ddc05e2` | **Rename, tests first.** Three failing tests first: the manifest's `repo` and `security` URLs (`plugin/tests/manifest.test.ts`), the unit's `Documentation=` (`TestUnit`), and the new `scripts/repo-name.test.mjs` (no tracked file but the history names the old repository). Then the manifest, the Go module path (`github.com/dwightsabeast/coffer/bridge` and `…/oracle`, 50 files' imports; no `go.sum` change), the unit, `scripts/ci-status.py`, CLAUDE.md and the phase 00 links, and a decided row |
-| (next) | **Spec change 41 logged** (proposed): items 1–10, the check against the code, and four still-to-decide rows (A–D) |
+| `2db9fef` | **Spec change 41 logged** (proposed): items 1–10, the check against the code, and four still-to-decide rows (A–D) |
 
 Dev box: `origin` is now `git@github.com:dwightsabeast/coffer.git` (kept on SSH, not the note's https URL, which has no credentials here); `git fetch` works through the deploy key.
 
@@ -3258,13 +3258,14 @@ Tests (run 2026-10-20):
 - **Bridge:** gofmt and `go vet` clean, `go test ./...` all packages ok. The oracle module: gofmt and vet clean, tests ok (gpgv 2.4.7). Static build: statically linked; `go version -m` shows `github.com/dwightsabeast/coffer/bridge/cmd/xmr-bridge`; the old name appears 0 times in the binary.
 - **Plugin:** default 252 and switch-on 92 pass (one skip each); typecheck clean; `emdash-plugin validate` passes; bundle 58.3 KB across 3 files.
 - **Scripts:** `node --test scripts/*.test.mjs`, 18 pass.
-- **Not run:** the theme (untouched), the race-detector tests (CI runs them), and CI itself (nothing pushed yet).
+- **Not run locally:** the theme (untouched) and the race-detector tests.
+- **CI on `2db9fef`** (run 39515411441, after Wyatt's push OK): bridge (with the race-detector tests and the oracle checks), plugin and theme all success, read with `scripts/ci-status.py` at its new URL.
 
 Open:
-- **Push:** `main` is 3 commits ahead of `origin/main` (`24a067e`): last night's handoff `977b6b6`, the rename and this docs commit. The note wants the rename through CI before anything else. Push needs Wyatt's OK; after it, `python3 -I scripts/ci-status.py $(git rev-parse HEAD)` checks the new API URL too.
+- **Push: done.** Wyatt approved; `24a067e..2db9fef` pushed to `dwightsabeast/coffer` (last night's handoff `977b6b6`, the rename, the docs commit), and CI is green (above).
 - **Wyatt's PC clone:** `git remote set-url origin <its scheme>…dwightsabeast/coffer.git` (the old URL keeps working through the redirect meanwhile).
 - **The dev box's installed bridge** keeps the old `Documentation=` URL until its next install or update (harmless).
 - **Dates:** plugin-cli 0.13.4 passes the 7-day age on 2026-10-22; EmDash 1.3.1 on 2026-10-25.
 - **The `INVALID_PLUGIN_UI_CONTEXT` icon bug** (item 4) has no record here; a setup-friction row from Wyatt's details.
 
-Next step: Wyatt approves the push and decides spec change 41's A–D. Then, before 07b, the "7g: EmDash 1.3 check" session (items 3, 4, 9) once B is settled; the phase 09 edits for items 1, 2, 5–8 after his approval. The 2026-10-18 handoff's before-07b checklist still stands.
+Next step: Wyatt decides spec change 41's A–D. Then, before 07b, the "7g: EmDash 1.3 check" session (items 3, 4, 9) once B is settled; the phase 09 edits for items 1, 2, 5–8 after his approval. The 2026-10-18 handoff's before-07b checklist still stands.

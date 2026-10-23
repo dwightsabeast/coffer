@@ -16,15 +16,19 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
 - [ ] The mainnet second-node list for the cross-check (spec change 13).
 - [ ] The self-update admin-copy question.
 - [ ] An install host that serves the bridge files without redirects (spec change 21).
-- [ ] The Atmosphere account to publish under (below).
-- [ ] Your hand-made registry icon (Claude doesn't generate or draw one).
+- [x] The Atmosphere account to publish under (below; done 2026-10-23).
+- [x] Your hand-made registry icon (Claude doesn't generate or draw one): `plugin/images/coffer-icon.png`, delivered 2026-10-23.
 - [ ] Session 7g (EmDash 1.3 check) is done: `release.requires` and the listing text are in the manifest, and they name versions actually tested (spec change 41, items 3, 4, 9).
 - [ ] A browser with passkey support, for approving each release (spec change 41 A).
 - [ ] The repository is still public: the release service trusts only public GitHub provenance.
 
 **Accounts and keys (in this order)**
 
-1. **Atmosphere account:** any Bluesky account works. Note its DID; it goes in the manifest's `publisher` (already set: `did:plc:cmbxrwdt4hdl43g67bd6xegk`). The registry stores the plugin bundle and listing images on this account (spec change 41 item 2), so there's no separate host for the plugin. A login made before blob publishing fails with `MISSING_BLOB_SCOPE`: log out and back in.
+1. **Atmosphere account (done 2026-10-23):** `dwightsabeast.tngl.sh`, a Tangled account on Tangled's PDS, DID `did:plc:cmbxrwdt4hdl43g67bd6xegk`. The manifest's `publisher` is the DID, never the handle (a handle can move; the DID is stable), and it's already set. The listing reads `@dwightsabeast.tngl.sh/coffer`. The registry stores the plugin bundle and listing images on this account's PDS (spec change 41 item 2), so there's no separate host for the plugin. Tangled's PDS is accepted for now; the account can move to another PDS later and keep the DID.
+   - `emdash-plugin login dwightsabeast.tngl.sh` was run on the dev box from `plugin/` (plugin-cli 0.13.2) on 2026-10-23. The CLI session is saved on the dev box until the required logout in step 4.
+   - **Headless login:** the login link's OAuth callback goes to a loopback port on the dev box, so the login fails from a browser on another machine unless you open a tunnel first. Read the port from the printed link's `redirect_uri` (it changes each run), open `ssh -N -L <port>:127.0.0.1:<port> <your SSH shortcut to the dev box>`, then open the link.
+   - At releases.emdashcms.com/publisher, **Automated publishing** is enabled (2026-10-23). The grant is create-only.
+   - If release setup fails with `MISSING_BLOB_SCOPE` (a login made before blob publishing), log out and back in.
 2. **Release signing key, offline.** Claude prepares a short key ceremony checklist for the scheme chosen in phase 03. You generate the key on a machine that is offline (or a live USB), keep the private key on encrypted media with a backup, and give Claude only the public key. The private key never touches the dev box.
 3. **Install host:** a subdomain such as `get.wyattdilley.com` served by Cloudflare Pages or GitHub Pages, set up with a DNS record only, so the live site at wyattdilley.com is untouched.
 4. **npm org `cofferhq`** (created 2026-10-16) for the theme package `@cofferhq/astro`: set up GitHub Actions trusted publishing (OIDC) for it on npm.
@@ -66,15 +70,17 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
   - **`sections.security`** comes from `./docs/security.md`: a plain-language summary of the security matrix for release 1 (what an attacker could try, what Coffer does, the test that proves it, the result), linking the full matrix or published report on GitHub. Written after step 1's gate, from its results. At most 2,000 graphemes and 20,000 bytes, like installation.
 - **`keywords`** (up to five): for example `monero`, `xmr`, `payments`, `tips`, `privacy`.
 - **Publishing through automated releases** (decision A), never `emdash-plugin publish` from the dev box:
-  - Wyatt runs `emdash-plugin login`, then `emdash-plugin release setup`.
-  - Settings: provenance **required**; approval **for every release** (a passkey approval per version); package tags `coffer@<version>` as the trigger (the repo doesn't use Changesets).
+  - Wyatt's login is done (Accounts step 1). `emdash-plugin release setup` creates the package profile from the manifest as it stands, so it waits until 7g has bumped plugin-cli to 0.13.4 and added `release.requires`, and until the manifest has version 1.0.0 and the icon under `release.artifacts`. Then Wyatt runs `pnpm exec emdash-plugin release setup` from `plugin/`. The dashboard shows the same `pnpm exec` form; `npx --no-install`, as used for the login, runs the same pinned CLI.
+  - Settings: confirmation **For every release** (a passkey approval per version); provenance **Require provenance**; package tags `coffer@<version>` as the trigger (the repo doesn't use Changesets). Claude shows Wyatt the answers and the generated workflow before anything is committed.
+  - **Required: `emdash-plugin logout` on the dev box** once release setup is committed and working. Automated releases don't need the local session, and decision A keeps Atmosphere credentials off the dev box.
+  - First tagged run: Wyatt approves the repo connection under "Check for workflow requests", then the release with his passkey.
   - The generated `.github/workflows/emdash-release.yml` is reviewed before it's committed. Its third-party actions (pinned to full commits) are dependencies for Wyatt to approve; CI otherwise uses only GitHub's own actions (`docs/decisions.md`, CI hardening). Its plugin build uses the committed lockfile and CI's install-script allowlist. The approved actions get a decided row.
   - Every later release goes through the workflow too: required provenance refuses any other path.
   - GitHub Actions builds the bundle from a clean checkout, GitHub attests the exact bytes, and the release service checks the attestation before writing the release under Wyatt's account. No Atmosphere credential lives in the repo or on the dev box.
-- **Listing approval** (item 7): a release isn't on plugins.emdashcms.com until the registry's labeler checks approve it. Watch with `emdash-plugin info @<handle>/coffer --version <version> --watch`. Step 6 waits for it to show publicly, and nothing is announced (r/Monero, Discord, the Otta discussion) before then.
+- **Listing approval** (item 7): a release isn't on plugins.emdashcms.com until the registry's labeler checks approve it. Watch with `emdash-plugin info @dwightsabeast.tngl.sh/coffer --version <version> --watch`. Step 6 waits for it to show publicly, and nothing is announced (r/Monero, Discord, the Otta discussion) before then.
 
 - **Sidebar icon:** add `"icon": "coins"` to the admin page in `admin.pages` (spec change 22). The `icon` field takes a Phosphor icon name in kebab-case. Without one, EmDash shows its generic plug. Leave off the optional `group` (a sidebar folder) unless a payments folder emerges.
-- **Listing images** go under `release.artifacts` in `emdash-plugin.jsonc`: `icon`, an optional `banner`, and up to eight `screenshots`. PNG, JPEG or WebP, 1 MiB at most each. The icon is Wyatt's, made by hand.
+- **Listing images** go under `release.artifacts` in `emdash-plugin.jsonc`: `icon`, an optional `banner`, and up to eight `screenshots`. PNG, JPEG or WebP, 1 MiB at most each. The icon is Wyatt's hand-made pixel-art chest, `plugin/images/coffer-icon.png` (256×256 PNG, 855 bytes, transparent background), declared as `release.artifacts.icon`. It was chosen for now and may be replaced later.
 - `bundle` packs a root-level `icon.png` and anything in `screenshots/` into the tarball, where they count toward the 128 KB per-file and 256 KB total caps. Keep declared listing images in another folder, such as `images/`. Check the bundle's headroom before deciding whether to also pack a small `icon.png` (256×256 is the recommended size).
 - References: https://docs.emdashcms.com/plugins/creating-plugins/manifest/ and https://docs.emdashcms.com/plugins/creating-plugins/publishing/
 

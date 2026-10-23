@@ -3318,3 +3318,29 @@ Open:
 - Not pushed: `52f809f` and this entry wait for the start of 7g (Wyatt, 2026-10-23).
 
 Next step: session 7g on 2026-10-25 (Wyatt), before 07b. Push these two commits first, with Wyatt's OK, then the 2026-10-20 handoff's 7g prompt. 7g also does the manifest side of this note where it falls in 7g: plugin-cli 0.13.4 and `release.requires`. Version 1.0.0, `release.artifacts.icon` and release setup stay in phase 09.
+
+## 2026-10-23 · End-of-session handoff
+
+State:
+- **Git:** `main` at `9e9a1b7`, clean. GitHub has `5e6f084`; this session's `52f809f` and `9e9a1b7`, and this handoff's commit, are local and wait for the start of 7g (Wyatt).
+- **Dev box:**
+  - dev site and built copy stopped; ports 4321, 4322 and 8099 free; no tmux sessions; no `astro dev` running
+  - about 5.9 GB available
+  - `xmr-bridge` and `monerod-stagenet` active
+  - Wyatt's `emdash-plugin` login session is saved here until the required logout after release setup (phase 09). Claude doesn't read or use it.
+- **Dev site:** unchanged since the 2026-10-18 handoff.
+
+Today: Wyatt's publisher-and-icon note logged (`52f809f`, `9e9a1b7`). Publisher account `dwightsabeast.tngl.sh` (the DID stays in `publisher`). Icon at `plugin/images/coffer-icon.png`, not in the manifest yet. Phase 09 has the headless login, release setup's answers and the required logout. Plus a decided row and a setup-friction row. No code changed.
+
+Dates:
+- 2026-10-25: EmDash 1.3.1 passes the 7-day age; 7g runs that day (Wyatt).
+- 2026-10-30: the Cloudflare spike's token expires (teardown is Wyatt's, `spikes/cf-runner/SETUP.md` steps 11–13).
+
+Open for Wyatt:
+- The push of the three local commits, at the start of 7g.
+- The `INVALID_PLUGIN_UI_CONTEXT` icon bug (spec change 41 item 4): its details, for a `docs/setup-friction.md` row and 7g's check.
+- The 2026-10-18 handoff's before-07b checklist still stands.
+
+Next session (2026-10-25): 7g, the EmDash 1.3 check (spec change 41 items 3, 4, 9). Push first, with Wyatt's OK. No phase file exists for it; the plan comes from spec change 41.
+
+    Session 7g, EmDash 1.3 check. Read docs/progress.md and spec change 41 in docs/spec-changes.md (items 3, 4, 9 and Wyatt's decisions), then docs/emdash-upgrade-checklist.md, and plan the upgrade to EmDash 1.3.1 and plugin-cli 0.13.4, release.requires, and the listing text.

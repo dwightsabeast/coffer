@@ -3297,3 +3297,24 @@ Open for Wyatt:
 Next session (on or after 2026-10-25, before 07b): 7g, the EmDash 1.3 check (spec change 41 items 3, 4, 9). No phase file exists for it yet; the plan comes from spec change 41.
 
     Session 7g, EmDash 1.3 check. Read docs/progress.md and spec change 41 in docs/spec-changes.md (items 3, 4, 9 and Wyatt's decisions), then docs/emdash-upgrade-checklist.md, and plan the upgrade to EmDash 1.3.1 and plugin-cli 0.13.4, release.requires, and the listing text.
+
+## 2026-10-23 · Between phases: publisher account and icon logged
+
+Wyatt's note `~/xmr-pay-dev-data/notes/publisher-and-icon.md` contains information for release 1, not a design change. The publisher DID was already in the manifest, so there's no new spec change.
+
+Done:
+
+| Commit | What |
+| --- | --- |
+| `52f809f` | **Logged.** `plugin/images/coffer-icon.png`, Wyatt's pixel-art chest (256×256 PNG, 855 bytes, sha256 `d345be91…`, the same as the note's copy), not declared in the manifest yet. Phase 09: the Atmosphere account (`dwightsabeast.tngl.sh` on Tangled's PDS, `publisher` stays the DID, listing `@dwightsabeast.tngl.sh/coffer`), the headless login through an SSH tunnel, automated publishing enabled (create-only grant), release setup waiting for 7g and 1.0.0, its answers, the required logout, and the first tagged run. `docs/decisions.md`: a decided row, and a note on decision A. `docs/setup-friction.md`: the headless login row |
+
+Wyatt's decisions (same day): logging out of `emdash-plugin` on the dev box is **required** once release setup is committed and working; the icon goes into the repo now; phase 09 gives `pnpm exec emdash-plugin release setup` (the note's "this repo uses npm" was a slip: `plugin/` is pnpm, and `npx --no-install` runs the same pinned CLI). Committed SSH steps say "your SSH shortcut to the dev box", never an alias or an address.
+
+Tests (run 2026-10-23): `emdash-plugin bundle --validate-only` 58.3 KB across 3 files before and after (the icon isn't packed); `emdash-plugin validate` passes; `node --test scripts/*.test.mjs` 18 pass. Docs and an image only, so the plugin, theme and bridge suites weren't run.
+
+Open:
+- **An Atmosphere CLI session is on the dev box** (Wyatt's login, 2026-10-23) until the logout after release setup. Claude doesn't read or use it.
+- Release setup waits for 7g (plugin-cli 0.13.4, `release.requires`) and for phase 09's manifest work (1.0.0, `release.artifacts.icon`).
+- Not pushed: `52f809f` and this entry wait for the start of 7g (Wyatt, 2026-10-23).
+
+Next step: session 7g on 2026-10-25 (Wyatt), before 07b. Push these two commits first, with Wyatt's OK, then the 2026-10-20 handoff's 7g prompt. 7g also does the manifest side of this note where it falls in 7g: plugin-cli 0.13.4 and `release.requires`. Version 1.0.0, `release.artifacts.icon` and release setup stay in phase 09.

@@ -1028,7 +1028,7 @@ Built (phase 07 session 7e, 2026-10-18):
   - API contracts, `GET status`: the four new fields.
   - `bridge/sync`: an address must carry a subaddress network byte.
 
-## 37. Same-machine wallet host: an "easy install" option  (status: proposed, 2026-10-16)
+## 37. Same-machine wallet host: an "easy install" option  (status: proposed, 2026-10-16; A decided 2026-10-25: release 1.x, not release 1; B and C open)
 Found in: Wyatt's planning chat, 2026-10-16, while asking whether FCMP++ lets Coffer drop the bridge (it doesn't; spec change 38) and whether admins could have a slightly less private option. Not found by code or tests; it reopens a decision at Wyatt's request.
 Spec says: Key design decisions, "Wallet host on its own Linux machine" (a watcher in the plugin and running on the site's server were both rejected; trade-off "Every admin needs one always-on Linux machine"). Security model: "Required: a separate machine. The installer checks for a running EmDash site on the same machine and stops if it finds one." Spec change 23: the installer refuses a localhost `--site` or a same-machine install before asking for keys. The installer's `--allow-same-machine` exists for dev (session 3i). The view key and the bridge's signing key sit in files only the service account can read; wallet-rpc is bound to localhost with a generated login. CLAUDE.md, fixed platform decisions: "it must be a separate machine from the site".
 Evidence (Wyatt's note):
@@ -1051,6 +1051,10 @@ When (recommended in the note): release 1.1, right after release 1; small enough
 Decisions for Wyatt: A, release 1 or 1.1 (recommended 1.1); B, the prompt's default, No (recommended) or Yes; C, whether the installer and docs name the hosting provider explicitly (recommended yes).
 Effect on the admin budget: lowers it for most admins (no second machine). The prompt is one more question only on a same-machine install.
 Effect on the trust contract: none for the plugin's manifest; one optional sync field and one Health line. The installer change ships in the signed bridge release.
+
+Wyatt's decision (2026-10-25, in session 7g):
+- **A:** release 1.x, not release 1. Release 1 keeps the separate-machine rule and the installer's refusal. The listing's description (`plugin/docs/description.md`, spec change 41 item 9) says: "An option to run the wallet host on the same server, for an easier setup, is planned for an upcoming release."
+- **B and C:** still open.
 
 ## 38. FCMP++ / Carrot readiness spike  (status: proposed, 2026-10-16)
 Found in: Wyatt's planning chat, 2026-10-16 ("I want to ensure day 1 support when Monero FCMP++ comes"), revised the same day. Not found by code or tests; it plans ahead for a Monero network upgrade.
@@ -1207,7 +1211,7 @@ Wyatt's decisions (2026-10-20):
 - **D:** approved as written: the short description, the "What you'll need" list, and item 3's ranges, with Astro's floor at the version tested: `env:emdash >=1.1.0 <2.0.0`, `env:astro >=7.3.5 <8.0.0` (Wyatt chose `>=7.3.5` over the proposed `>=7.0.0` the same day).
 - **E:** the repository is `dwightsabeast/coffer` (built in `ddc05e2`).
 
-## 42. Since EmDash 1.2.0, a sandboxed plugin's site address follows `siteUrl` and the Site URL setting  (status: proposed, 2026-10-25)
+## 42. Since EmDash 1.2.0, a sandboxed plugin's site address follows `siteUrl` and the Site URL setting  (status: proposed, 2026-10-25; the wording change goes to phase 09, Wyatt the same day)
 Found in: session 7g (EmDash 1.3 check, spec change 41 item 4), reading the 1.2.0 to 1.3.1 changelogs and the 1.3.1 source.
 Spec says: spec change 23 (accepted 2026-10-13): "A sandboxed plugin's `ctx.site.url` is the `emdash:site_url` option and nothing else", written once at setup; `siteUrl` and `EMDASH_SITE_URL` never change it. The upgrade checklist's row "`ctx.site.url` comes only from the `emdash:site_url` option" and the comment on `walletHostSite` (`plugin/src/admin.ts`) say the same.
 Evidence:
@@ -1228,3 +1232,4 @@ Proposal:
 Effect on the admin budget: better. An admin whose site is stuck on localhost gets a fix in the admin, not only "open this page at your public address".
 Effect on the trust contract: none. The `Origin` header is still read only on the private admin route (matrix row F06).
 Decisions for Wyatt: whether to change the wording (item 3) now, before 07b, or leave it for phase 09; and the exact text.
+Wyatt's decision (2026-10-25): item 3 in **phase 09**, not before 07b. In 7g, only items 2 and 4 (the code comment and the checklist row). The exact text is still to approve when phase 09 builds it.

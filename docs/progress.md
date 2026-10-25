@@ -3344,3 +3344,63 @@ Open for Wyatt:
 Next session (2026-10-25): 7g, the EmDash 1.3 check (spec change 41 items 3, 4, 9). Push first, with Wyatt's OK. No phase file exists for it; the plan comes from spec change 41.
 
     Session 7g, EmDash 1.3 check. Read docs/progress.md and spec change 41 in docs/spec-changes.md (items 3, 4, 9 and Wyatt's decisions), then docs/emdash-upgrade-checklist.md, and plan the upgrade to EmDash 1.3.1 and plugin-cli 0.13.4, release.requires, and the listing text.
+
+## 2026-10-25 · Session 7g: EmDash 1.3 check (spec change 41 items 3, 4, 9)
+
+Coffer moves from EmDash 1.1.0 to 1.3.1, with `release.requires` and the listing's description. Wyatt raised the floor to 1.3.1 at the start (amending decision D), decided spec change 37 A (release 1.x), and put spec change 42's wording in phase 09.
+
+Done:
+
+| Commit | What |
+| --- | --- |
+| `ed05338`, `8ece26a` | **Docs, before the installs.** Spec change 42 proposed: since EmDash 1.2.0 (#3744) a plugin's `ctx.site.url` follows `siteUrl` and the Site URL setting before the setup address. Decided rows: the 1.3.1 floor; spec change 37 A (the same-machine option in release 1.x; B and C open) |
+| `80309b8` | **Plugin dev dependencies:** `emdash` 1.3.1, plugin-cli 0.13.4, plugin-test 0.2.10. Strict 7-day age, no exclude (installed after 19:20 UTC). The EmDash family only, plus one emnapi variant. Bundle unchanged |
+| `4db9a53` | **Manifest:** `release.requires` (`env:emdash >=1.3.1 <2.0.0`, `env:astro >=7.3.5 <8.0.0`), the peer `>=1.3.1 <2.0.0`, the new short `description`, and `sections.description` from `plugin/docs/description.md` (Wyatt's approved text). Two new tests in `manifest.test.ts` (written first, failing until this commit). Trust contract unchanged |
+| `b404907` | **Theme:** `emdash` 1.3.1; peers `astro >=7.3.5 <8`, `emdash >=1.3.1 <2`; a comment in `status.ts` |
+| (this commit) | **Docs:** `walletHostSite`'s comment in `plugin/src/admin.ts` gives the 1.3.1 order (spec change 42 item 2). `docs/emdash-upgrade-checklist.md`: rows for the site address, storage and the toolbar rewritten, a new row for stored cursors, and a "Checked against" section with each row's result on 1.3.1 (item 4). Spec change 41: D's amendment, items 3, 4, 9 built. Spec change 42: items 2 and 4 built. `docs/setup-friction.md`: four rows (the age rule counts from the UTC publish time; the dev site's npm install changed 86 versions; the changelog findings; the icon bug) |
+
+**Dev site:** now on `emdash` 1.3.1 and `@emdash-cms/sandbox-workerd` 0.9.5 (`npm install … --before=2026-10-18T20:30:00Z`). It stays there for 07b.
+- **The install:** 86 versions changed through the site's `^` ranges, all published before the 7-day cutoff (each checked). `npm audit signatures`: 3,439 verified. `npm audit`: 17 findings before, 14 after (the critical `dompurify` gone, none new). `workerd` unchanged.
+- **Backups** in `~/xmr-pay-dev-data/baseline/`: `data.db.before-7g-20261025T2033Z`, `package.json.before-7g` and `package-lock.json.before-7g`. Also the reset's `data.db.before-setup-test-20261025T203749001Z` (restored after `dev-e2e`) and `data.db.before-restore-20261025T203828149Z`.
+
+Tests (all run 2026-10-25, on 1.3.1):
+- **Plugin:** typecheck clean; validate passes; bundle 58.3 KB across 3 files, before and after. `pnpm test` 252 passed + 1 skipped and 92 + 1 after the bump (the same as on 1.1.0), then 254 + 1 and 92 + 1 with the manifest tests. The workerd tests' 45 "uncaught exception" lines are the same on 1.1.0 (checked in a temporary worktree, removed after). This commit changes only a comment in `admin.ts`: typecheck and the bundle check rerun, the suites not.
+- **Theme:** `COFFER_REQUIRE_ZBAR=1 pnpm test` 65 passed + 1 skipped; typecheck clean.
+- **Scripts:** `node --test scripts/*.test.mjs` 18 of 18.
+- **Live, `astro dev`:**
+  - `dev-e2e.mjs` 32 of 32 after a reset; the dev data restored after (`~/xmr-pay-dev-data/7g-e2e.txt`)
+  - signed in, the pay page has one `id="emdash-toolbar"` (the placeholder) and no client toolbar bootstrap; CSP set
+  - the admin page: setup address `http://localhost:4321`, so the red banner; with an `Origin` of `https://pay.example.invalid`, that origin is used (spec change 42, as on 1.1.0)
+- **Live tip:** #288 (`7g-tip2`, 0.002 XMR) from Wyatt's Feather wallet: seen at 21:18:13 UTC, 1 confirmation at 21:22:17, settled at 21:23:17 with the installed bridge. Tx `3705be8d…f837`, height 2,236,597, pool index 288. The first try, #287, expired unpaid at 21:09 while Wyatt was away.
+- **Built copy (4322, workerd):** the pay page for #288 answered 200 with "Paid" and no third-party references. `curl -I`: CSP, `cache-control: private, no-store`, `referrer-policy: no-referrer`, `permissions-policy`, `nosniff`, `x-robots-tag: noindex, nofollow`.
+- **Wyatt in the browser:** the "Plugin pages" icon still fails with `INVALID_PLUGIN_UI_CONTEXT` on 1.3.1; the Monero payments page looks right.
+- **Not run:** the bridge suites (no bridge change), the Cloudflare spike (row read only, as Wyatt chose), CI (nothing pushed yet).
+
+Open:
+- **Not pushed:** `ed05338` to this commit wait for Wyatt's OK. CI last ran green on `37b046b`.
+- Spec change 42 item 3 (the admin page's wording and the Settings › General fix): phase 09, exact text to approve then.
+- Spec change 37 B and C: open.
+- The icon bug's upstream issue: Wyatt's to post.
+- Optional cleanup, any phase: Coffer's 98-id batches in storage reads are no longer needed on the 1.3.1 floor.
+- `npm audit` on the dev site still lists 14 findings through EmDash's own dependencies (`zod`, `undici`, `vite`, `sharp` and others); dev site only, nothing shipped.
+- Feather's buyer wallet paid 0.002 XMR today: 07b's checklist wants at least eight separate unlocked amounts.
+
+Next step: push, with Wyatt's OK, and check CI on the new head. Then the 2026-10-18 handoff's before-07b checklist (the security matrix in the repo, C01–C06, Feather's buyer amounts, the `pre-redteam-1` snapshot), then 07b's setup session.
+
+## 2026-10-25 · End-of-session handoff
+
+State:
+- **Git:** `main` at this commit. GitHub has `37b046b`. `ed05338` through this commit are local and wait for Wyatt's OK.
+- **Dev box:**
+  - dev site and built copy stopped; ports 4321, 4322 and 8099 free; no tmux sessions besides Claude's; no `astro dev` running
+  - about 4.9 GB available
+  - `xmr-bridge` and `monerod-stagenet` active
+  - Wyatt's `emdash-plugin` login session is still saved here until the logout after release setup (phase 09). Claude doesn't read or use it.
+- **Dev site:** EmDash 1.3.1, sandbox-workerd 0.9.5. Dev data restored after `dev-e2e`, plus #287 (expired) and #288 (settled). The plugin build in `plugin/dist` is from `4db9a53`'s source.
+
+Dates:
+- 2026-10-30: the Cloudflare spike's token expires (teardown is Wyatt's, `spikes/cf-runner/SETUP.md` steps 11–13).
+
+Next session: 07b setup, after the before-07b checklist.
+
+    Phase 07b, adversarial testing pass 1, setup. Read docs/phases/07b-adversarial-testing.md and docs/progress.md, then plan the setup work in "For the builder".

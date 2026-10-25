@@ -393,11 +393,12 @@ function isLoopbackHost(host: string): boolean {
 }
 
 /**
- * EmDash 1.1.0 gives a sandboxed plugin only the address saved at site setup (`emdash:site_url`); a site first set up
- * under `astro dev` keeps http://localhost:4321 for good, and neither siteUrl nor EMDASH_SITE_URL changes it. A saved
- * public https address is always used (a different browser origin only adds a warning). Otherwise the admin's own
- * browser origin is used if it's a public https one: it comes from the private admin route only (signed-in admins
- * with plugins:manage), never from a public route (matrix row F06). Anything else: no address, no command.
+ * EmDash (1.2.0 and later) gives a sandboxed plugin the site's address in this order: `siteUrl` (or `EMDASH_SITE_URL`,
+ * `SITE_URL`), then the Site URL in Settings › General, then the address saved at site setup (`emdash:site_url`). A
+ * site first set up under `astro dev` with neither of the first two keeps http://localhost:4321 (spec change 42). A
+ * public https address from EmDash is always used (a different browser origin only adds a warning). Otherwise the
+ * admin's own browser origin is used if it's a public https one: it comes from the private admin route only (signed-in
+ * admins with plugins:manage), never from a public route (matrix row F06). Anything else: no address, no command.
  */
 export function walletHostSite(savedUrl: string, browserOrigin: string | undefined): WalletHostSite {
 	const saved = savedUrl.replace(/\/$/, "");

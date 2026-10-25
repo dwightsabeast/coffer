@@ -1170,7 +1170,7 @@ Decisions for Wyatt (at spike time): A, popover or `commandfor`/`show-modal`, fr
 Effect on the admin budget: none.
 Effect on the trust contract: none for the plugin's manifest unless option B (a CORS allowance on `status`) is chosen; the pay page's `frame-ancestors` changes in framed mode only.
 
-## 41. Release readiness against EmDash's current plugin docs  (status: accepted, 2026-10-20, with Wyatt's decisions A–E below; item 10 built the same day; items 3, 4, 9 in 7g, the rest in phase 09)
+## 41. Release readiness against EmDash's current plugin docs  (status: accepted, 2026-10-20, with Wyatt's decisions A–E below; item 10 built the same day; D amended and items 3, 4, 9 built 2026-10-25 in 7g; the rest in phase 09)
 Found in: Wyatt's claude.ai chat, 2026-10-20 (note `spec-change-release-readiness.md`), reading EmDash's updated plugin docs against the repo at `24a067e`. Not found by code or tests.
 Spec says: Build plan step 9 and phase 09 step 4 (the registry: `emdash-plugin publish` or the delegated GitHub release flow; listing sections description, installation, FAQ, security); CLAUDE.md, dependency tier 3 (release builds in CI from a clean checkout with provenance); spec change 22 (release 1 tips only; a broadened contract is a major version); spec change 35 (release 1 is Node only).
 Evidence (the note):
@@ -1211,7 +1211,14 @@ Wyatt's decisions (2026-10-20):
 - **D:** approved as written: the short description, the "What you'll need" list, and item 3's ranges, with Astro's floor at the version tested: `env:emdash >=1.1.0 <2.0.0`, `env:astro >=7.3.5 <8.0.0` (Wyatt chose `>=7.3.5` over the proposed `>=7.0.0` the same day).
 - **E:** the repository is `dwightsabeast/coffer` (built in `ddc05e2`).
 
-## 42. Since EmDash 1.2.0, a sandboxed plugin's site address follows `siteUrl` and the Site URL setting  (status: proposed, 2026-10-25; the wording change goes to phase 09, Wyatt the same day)
+Wyatt's amendment to D (2026-10-25, at the start of 7g): EmDash's floor is **1.3.1**, since nothing will keep testing 1.1: `env:emdash >=1.3.1 <2.0.0`, the plugin's `emdash` peer `>=1.3.1 <2.0.0`, the theme's `>=1.3.1 <2` (its astro peer `>=7.3.5 <8`), and "EmDash 1.3.1 or later" in the "What you'll need" list. Astro's floor stays 7.3.5. The dev site stays on 1.3.1.
+
+Built in 7g (2026-10-25):
+- **Item 4:** `plugin/` on `emdash` 1.3.1, plugin-cli 0.13.4 and plugin-test 0.2.10 (`80309b8`); `theme/` on `emdash` 1.3.1 (`b404907`); the dev site on `emdash` 1.3.1 and `@emdash-cms/sandbox-workerd` 0.9.5. No exclude: installed after 1.3.1 came of age (19:20 UTC). Every row of `docs/emdash-upgrade-checklist.md` checked; results there, under "Checked against". Two rows changed upstream (the site address, spec change 42; `getMany`'s id limit, lifted); one row added (stored cursors). The Plugins page's icon bug is still there on 1.3.1, so the drafted upstream issue stays. One live stagenet tip settled (#288).
+- **Item 3:** `release.requires` and the peer ranges as amended above (`4db9a53`, `b404907`).
+- **Item 9:** the short description as worded, and `sections.description` from `plugin/docs/description.md`, Wyatt's approved text with his added last line on the planned same-machine option (`4db9a53`). Guarded by `plugin/tests/manifest.test.ts`.
+
+## 42. Since EmDash 1.2.0, a sandboxed plugin's site address follows `siteUrl` and the Site URL setting  (status: proposed, 2026-10-25; the wording change goes to phase 09, Wyatt the same day; items 2 and 4 built in 7g)
 Found in: session 7g (EmDash 1.3 check, spec change 41 item 4), reading the 1.2.0 to 1.3.1 changelogs and the 1.3.1 source.
 Spec says: spec change 23 (accepted 2026-10-13): "A sandboxed plugin's `ctx.site.url` is the `emdash:site_url` option and nothing else", written once at setup; `siteUrl` and `EMDASH_SITE_URL` never change it. The upgrade checklist's row "`ctx.site.url` comes only from the `emdash:site_url` option" and the comment on `walletHostSite` (`plugin/src/admin.ts`) say the same.
 Evidence:
@@ -1233,3 +1240,4 @@ Effect on the admin budget: better. An admin whose site is stuck on localhost ge
 Effect on the trust contract: none. The `Origin` header is still read only on the private admin route (matrix row F06).
 Decisions for Wyatt: whether to change the wording (item 3) now, before 07b, or leave it for phase 09; and the exact text.
 Wyatt's decision (2026-10-25): item 3 in **phase 09**, not before 07b. In 7g, only items 2 and 4 (the code comment and the checklist row). The exact text is still to approve when phase 09 builds it.
+Built in 7g (2026-10-25): items 2 and 4. Live on 1.3.1, the dev site (no `siteUrl`, no Site URL, setup address `http://localhost:4321`) still hands Coffer localhost, and the admin page shows the red banner, or the browser's https origin when there is one, as on 1.1.0.

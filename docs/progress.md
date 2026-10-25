@@ -3480,3 +3480,41 @@ More rows not yet Covered:
 Tests: `go test -json ./...` after the new tags: 238 top-level passed and 9 skipped, the same as before. Subtests 168 → 172 (four more wrappers). gofmt and vet clean. Plugin and theme unchanged since the run above.
 
 Next step: CI on the pushed head, then the before-07b checklist (Feather's buyer amounts, the `pre-redteam-1` snapshot), then 07b's setup session. T28's dependency ask goes to Wyatt when its CI steps are built.
+
+## 2026-10-25 · End-of-session handoff (the tagging session)
+
+State:
+- **Git:** `main` at this commit. GitHub has `4da98fc`. CI run 40240444825 on `4da98fc` passed: bridge (with the race-detector tests), plugin and theme. GitHub already had `eb63872` before this push, so the earlier entry's "Not pushed: `ed05338` through these commits" was out of date: the push carried only this session's five commits.
+- **Dev box:**
+  - dev site and built copy stopped; ports 4321, 4322 and 8099 free; no tmux sessions besides Claude's; no `astro dev` running
+  - about 4.9 GB available
+  - `xmr-bridge` and `monerod-stagenet` active
+  - Wyatt's `emdash-plugin` login session is still saved here until the logout after release setup (phase 09). Claude doesn't read or use it.
+- **Dev site:** unchanged this session (EmDash 1.3.1, sandbox-workerd 0.9.5; #287 expired, #288 settled).
+
+Today:
+- `docs/security-matrix.md` is in the repo as the live copy.
+- 184 vitest names and 55 Go tests carry matrix tags (54 `t.Run` wrappers and one table case).
+- The matrix rows were corrected against the code.
+- Spec change 43 was decided: C02, C03, C04 and C06 are now T26–T29, and C05 is deferred to release 1.x.
+- The tagging rule is in CLAUDE.md and `docs/decisions.md`.
+- The matrix now stands at 33 Covered, 17 Partial, 2 Planned and 1 Gap.
+- No feature or test logic changed.
+
+Dates:
+- 2026-10-30: the Cloudflare spike's token expires (teardown is Wyatt's, `spikes/cf-runner/SETUP.md` steps 11–13).
+
+Open for Wyatt:
+- The rest of the before-07b checklist: Feather's buyer amounts (at least eight separate unlocked amounts; 0.002 XMR went on #288) and the `pre-redteam-1` snapshot.
+- T28's dependency ask (`govulncheck`, `golang.org/x/vuln`) and `pnpm audit`'s scope and level, when its CI steps are built.
+- Still open from 7g: spec change 37 B and C, and the icon bug's upstream issue.
+
+For 07b, from the matrix:
+- The rows not yet Covered are listed in the two tables above, each with the smallest test that would close it.
+- 07b brings the data-at-rest scanner (P01, P03, T02, T15), the journal scan (T29), T27's certificate test, T20's mixed-network test (written first, failing) and the fuzzing (F01).
+- R06–R09's 3h evidence is still to attach to the matrix.
+- Each new test that covers a row carries its tag (CLAUDE.md, "How we work" item 3).
+
+Next session: 07b setup, after the before-07b checklist.
+
+    Phase 07b, adversarial testing pass 1, setup. Read docs/phases/07b-adversarial-testing.md, docs/progress.md and docs/security-matrix.md, then plan the setup work in "For the builder".

@@ -7,14 +7,22 @@
 	"license": "MIT",
 	"author": { "name": "Wyatt Dilley" },
 	"security": { "url": "https://github.com/dwightsabeast/coffer/security/advisories/new" },
-	"description": "Accept Monero for products or tips. No keys in the plugin.",
+	"description": "Accept Monero tips. Needs a separate Linux wallet host and a small edit to your site's code. Node-hosted sites only for now.",
 	"repo": "https://github.com/dwightsabeast/coffer",
 
 	"name": "Coffer",
-	// The registry listing's Installation section (Wyatt approved the text, phase 06 session 6c). Profile text, inlined at
-	// publish (2,000 graphemes at most). Release 1 covers tips; release 2 adds gated content (isPaid) to it.
+	// The registry listing's sections, profile text inlined at publish (2,000 graphemes at most each). Description: "What
+	// you'll need" and "Why a separate machine" (spec change 41 item 9; Wyatt approved the text, session 7g). Installation:
+	// Wyatt approved the text in phase 06 session 6c; release 1 covers tips, release 2 adds gated content (isPaid) to it.
 	"sections": {
+		"description": { "file": "./docs/description.md" },
 		"installation": { "file": "./docs/installation.md" }
+	},
+
+	// The hosts EmDash installs this release on (spec change 41 item 3; the 1.3.1 floor is Wyatt's, 2026-10-25). Matches
+	// the emdash peer range in package.json; astro matches the theme's peer.
+	"release": {
+		"requires": { "env:emdash": ">=1.3.1 <2.0.0", "env:astro": ">=7.3.5 <8.0.0" }
 	},
 
 	// Trust contract (spec, "Plugin manifest", revision 69; CLAUDE.md, "Plugin trust contract (frozen)").

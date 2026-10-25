@@ -4,7 +4,9 @@ import { afterEach, expect, it } from "vitest";
 
 import { createPluginTestHost, type PluginTestHost } from "@emdash-cms/plugin-test";
 
+import descriptionSection from "../docs/description.md?raw";
 import manifestSource from "../emdash-plugin.jsonc?raw";
+import packageSource from "../package.json?raw";
 
 let host: PluginTestHost | undefined;
 afterEach(async () => {
@@ -62,4 +64,24 @@ it("the source manifest points at the renamed repository, dwightsabeast/coffer (
 	const m = JSON.parse(manifestSource.replace(/^\s*\/\/.*$/gm, ""));
 	expect(m.repo).toBe("https://github.com/dwightsabeast/coffer");
 	expect(m.security).toEqual({ url: "https://github.com/dwightsabeast/coffer/security/advisories/new" });
+});
+
+// Spec change 41 items 3 and 9, with Wyatt's decision D as amended on 2026-10-25 (EmDash's floor is the tested 1.3.1).
+const graphemes = (text: string) => [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(text)].length;
+
+it("the source manifest declares the supported EmDash and Astro versions (spec change 41 item 3)", () => {
+	const m = JSON.parse(manifestSource.replace(/^\s*\/\/.*$/gm, ""));
+	expect(m.release?.requires).toEqual({ "env:emdash": ">=1.3.1 <2.0.0", "env:astro": ">=7.3.5 <8.0.0" });
+	expect(JSON.parse(packageSource).peerDependencies).toEqual({ emdash: ">=1.3.1 <2.0.0" });
+});
+
+it("the listing says what setup needs before the Install click (spec change 41 item 9)", () => {
+	const m = JSON.parse(manifestSource.replace(/^\s*\/\/.*$/gm, ""));
+	expect(m.description).toBe("Accept Monero tips. Needs a separate Linux wallet host and a small edit to your site's code. Node-hosted sites only for now.");
+	expect(graphemes(m.description)).toBeLessThanOrEqual(140);
+	expect(m.sections?.description).toEqual({ file: "./docs/description.md" });
+	expect(descriptionSection.startsWith("## What you'll need\n")).toBe(true);
+	expect(descriptionSection).toContain("EmDash 1.3.1 or later");
+	expect(graphemes(descriptionSection)).toBeLessThanOrEqual(2000);
+	expect(new TextEncoder().encode(descriptionSection).length).toBeLessThanOrEqual(20_000);
 });

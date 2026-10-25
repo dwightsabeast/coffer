@@ -1206,3 +1206,25 @@ Wyatt's decisions (2026-10-20):
 - **C:** release 1 is 1.0.0.
 - **D:** approved as written: the short description, the "What you'll need" list, and item 3's ranges, with Astro's floor at the version tested: `env:emdash >=1.1.0 <2.0.0`, `env:astro >=7.3.5 <8.0.0` (Wyatt chose `>=7.3.5` over the proposed `>=7.0.0` the same day).
 - **E:** the repository is `dwightsabeast/coffer` (built in `ddc05e2`).
+
+## 42. Since EmDash 1.2.0, a sandboxed plugin's site address follows `siteUrl` and the Site URL setting  (status: proposed, 2026-10-25)
+Found in: session 7g (EmDash 1.3 check, spec change 41 item 4), reading the 1.2.0 to 1.3.1 changelogs and the 1.3.1 source.
+Spec says: spec change 23 (accepted 2026-10-13): "A sandboxed plugin's `ctx.site.url` is the `emdash:site_url` option and nothing else", written once at setup; `siteUrl` and `EMDASH_SITE_URL` never change it. The upgrade checklist's row "`ctx.site.url` comes only from the `emdash:site_url` option" and the comment on `walletHostSite` (`plugin/src/admin.ts`) say the same.
+Evidence:
+- EmDash 1.2.0's changelog, #3744 (`1e275ae`): "Fixes plugins seeing an outdated site address in `ctx.site.url` and `ctx.url()`. They now use the same origin as links in emails: the configured `siteUrl`, `EMDASH_SITE_URL`, or `SITE_URL`, then the **Site URL** from **Settings > General**, then the address the site was set up on." A changed Site URL reaches plugins after a server restart (on Workers, as new isolates start).
+- The 1.3.1 source agrees: `readSiteInfo` (`emdash-runtime`) passes `resolveSiteOrigin(config, site:url, emdash:site_url)` to the sandbox runners. `resolveSiteOrigin` (`site-url` module) takes `config.siteUrl || EMDASH_SITE_URL/SITE_URL`, then the `site:url` setting's origin when it is https (or http on a loopback host), then the stored setup address as is.
+- 1.2.0 also adds a **Change domain** dialog to Settings › General, which checks the new domain before it changes the Site URL, and makes the field read-only.
+- The dev site has `emdash:site_url` = `http://localhost:4321`, no `site:url`, and no `siteUrl` in `astro.config.mjs`. On 1.3.1 Coffer should still see localhost there and use the browser's origin, as on 1.1.0 (live check in 7g, step 8).
+What it changes for Coffer (the floor is now EmDash 1.3.1, Wyatt 2026-10-25, so 1.1.0's behavior no longer needs supporting):
+- The cause spec change 23 was written for (a site set up under `npm run dev` is stuck on localhost for good) now has an admin-side fix: set `siteUrl` / `EMDASH_SITE_URL`, or the Site URL through Change domain, and restart.
+- The browser-origin fallback is still needed: a site with none of those set still hands plugins its setup address, which is loopback when the site was first set up under `npm run dev`.
+- Spec change 23's rules all still hold as written. Rule 1 ("a saved public https address is always used") now covers a configured or Site URL address too, so the alert after a domain move appears less often, because the address follows the move.
+- The page's wording "EmDash's saved address" is now loose: it may be a configured address, not one saved at setup.
+Proposal:
+1. Keep `walletHostSite`'s logic and spec change 23's five conditions unchanged.
+2. Correct the comment on `walletHostSite` to the 1.3.1 order.
+3. Change the page's wording from "EmDash's saved address" to "EmDash's address for this site". In the red line for a loopback or missing address, add the fix: "Set your site's public address in Settings › General (Change domain), or `siteUrl` in astro.config.mjs, then restart the site." Tests in `admin-site.test.ts` change to match. Wyatt approves the exact text before it's built.
+4. Rewrite the checklist's row 5 to the 1.3.1 order, guarded by `admin-site.test.ts` and a live check of the dev site's admin page.
+Effect on the admin budget: better. An admin whose site is stuck on localhost gets a fix in the admin, not only "open this page at your public address".
+Effect on the trust contract: none. The `Origin` header is still read only on the private admin route (matrix row F06).
+Decisions for Wyatt: whether to change the wording (item 3) now, before 07b, or leave it for phase 09; and the exact text.

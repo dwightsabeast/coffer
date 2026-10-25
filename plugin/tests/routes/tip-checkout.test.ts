@@ -44,7 +44,7 @@ const stored = async () => (await (host as PluginRuntimeTestHost).inspect.storag
 const entryId = async (slug: string) => ((await (host as PluginRuntimeTestHost).inspect.content.list("posts")) as B[]).find((e) => e.slug === slug)?.id as string;
 
 describe("tip checkout", () => {
-	it("an open tip: no amount in the link, the floor as the minimum, the lowest confirmation tier, marked as a visitor's tip", async () => {
+	it("[T07] an open tip: no amount in the link, the floor as the minimum, the lowest confirmation tier, marked as a visitor's tip", async () => {
 		const h = await setup({ speed: "strict" });
 		const r = await tip();
 		expect(r).toMatchObject({ address: ADDR(1), amountAtomic: null, amountXmr: null, status: "new", uri: `monero:${ADDR(1)}?tx_description=Tip` });
@@ -54,7 +54,7 @@ describe("tip checkout", () => {
 		expect(h.http.requests()).toEqual([]); // no price needed
 	});
 
-	it("a fiat amount: converted at the locked rate (ceiling), the fiat kept, the floor still the threshold", async () => {
+	it("[T06] a fiat amount: converted at the locked rate (ceiling), the fiat kept, the floor still the threshold", async () => {
 		const h = await setup();
 		await h.http.respond(KRAKEN("USD"), kraken("USD", "150.00"));
 		const r = await tip({ amount: { fiatMinor: "500", currency: "USD" } });
@@ -71,7 +71,7 @@ describe("tip checkout", () => {
 		expect(h.http.requests().map((q) => q.url)).toEqual([KRAKEN("EUR")]);
 	});
 
-	it("no price from either service: the fiat tip becomes an open tip instead of failing (Wyatt)", async () => {
+	it("[T06] no price from either service: the fiat tip becomes an open tip instead of failing (Wyatt)", async () => {
 		const h = await setup();
 		for (const url of [KRAKEN("USD"), GECKO("usd")]) await h.http.respond(url, new Response("down", { status: 502 }));
 		const r = await tip({ amount: { fiatMinor: "500", currency: "USD" } });
@@ -79,7 +79,7 @@ describe("tip checkout", () => {
 		expect((await stored())[0]).toMatchObject({ expectedAtomic: null, fiat: null, rate: null, minAtomic: "100000000" });
 	});
 
-	it("a tiny fiat amount still asks for at least the floor", async () => {
+	it("[F02] a tiny fiat amount still asks for at least the floor", async () => {
 		const h = await setup();
 		await h.http.respond(KRAKEN("USD"), kraken("USD", "150.00"));
 		await tip({ amount: { fiatMinor: "1", currency: "USD" } }); // 1 cent = 0.0000667 XMR, under the floor
@@ -106,7 +106,7 @@ describe("tip checkout", () => {
 		expect(await stored()).toHaveLength(1);
 	});
 
-	it("a note: control and format characters out, whitespace collapsed, at most 140 characters, kept as buyer data", async () => {
+	it("[T08] a note: control and format characters out, whitespace collapsed, at most 140 characters, kept as buyer data", async () => {
 		await setup();
 		await tip({ note: "  Thanks\n\tfor\u0000 the‮ post​! <b>hi</b> [x](https://e.test)  " });
 		expect((await stored())[0].buyer).toEqual({ note: "Thanks for the post! <b>hi</b> [x](https://e.test)" });
@@ -117,7 +117,7 @@ describe("tip checkout", () => {
 		expect((await stored()).filter((i) => i.buyer === undefined)).toHaveLength(1); // nothing left: no note
 	});
 
-	it("INVALID_REQUEST for a malformed amount, entry or note; nothing claimed", async () => {
+	it("[F02] INVALID_REQUEST for a malformed amount, entry or note; nothing claimed", async () => {
 		await setup();
 		const bad: Array<Record<string, unknown>> = [
 			{ amount: { fiatMinor: "500" } },
@@ -140,14 +140,14 @@ describe("tip checkout", () => {
 		expect(await stored()).toEqual([]);
 	});
 
-	it("unknown fields are ignored, never trusted: no price, email or refund address from the client", async () => {
+	it("[T06] unknown fields are ignored, never trusted: no price, email or refund address from the client", async () => {
 		await setup();
 		await tip({ price: 0.0001, amountAtomic: "1", email: "a@example.invalid", refundAddress: ADDR(9) });
 		expect((await stored())[0]).toMatchObject({ expectedAtomic: null });
 		expect((await stored())[0].buyer).toBeUndefined();
 	});
 
-	it("taken while the wallet host is silent or its node syncs, at the last sync's height; never synced means no address", async () => {
+	it("[R12] taken while the wallet host is silent or its node syncs, at the last sync's height; never synced means no address", async () => {
 		await setup({ lastSyncAgo: 12 * 60_000 });
 		expect(await tip()).toMatchObject({ status: "new" });
 		expect((await stored())[0].createdHeight).toBe(H0);
@@ -159,7 +159,7 @@ describe("tip checkout", () => {
 		expect(await tip()).toEqual({ error: { code: "NO_ADDRESS_AVAILABLE" } });
 	});
 
-	it("the same spam cap as products", async () => {
+	it("[T05] the same spam cap as products", async () => {
 		const h = await setup();
 		const now = Date.now();
 		for (let i = 0; i < MAX_OPEN_TOTAL; i++) {

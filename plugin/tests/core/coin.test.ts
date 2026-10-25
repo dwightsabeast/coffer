@@ -9,7 +9,7 @@ const make = (network: "mainnet" | "stagenet" | "testnet", subaddress = fakeSuba
 	newInvoice({ id: "inv_1", token: "t", kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard", subaddress, addrIndex: 1, now: 0, chainHeight: 100, network });
 
 describe("the invoice's coin", () => {
-	it("newInvoice stores asset, chain and the network it was given", () => {
+	it("[T20] newInvoice stores asset, chain and the network it was given", () => {
 		expect(make("stagenet")).toMatchObject({ asset: "xmr", chain: "monero", network: "stagenet" });
 		expect(make("mainnet", fakeAddress(TAGS.mainnet[1], 1))).toMatchObject({ asset: "xmr", chain: "monero", network: "mainnet" });
 	});

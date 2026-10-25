@@ -6,7 +6,7 @@ import { subaddressNetwork } from "../../src/core/address";
 import { TAGS, encodeBase58, fakeAddress } from "../addresses";
 
 describe("subaddressNetwork", () => {
-	it("each network's subaddress byte gives that network", () => {
+	it("[T20] each network's subaddress byte gives that network", () => {
 		for (const [network, [, sub]] of Object.entries(TAGS)) {
 			const a = fakeAddress(sub, 1);
 			expect(a).toHaveLength(95);
@@ -16,14 +16,14 @@ describe("subaddressNetwork", () => {
 		expect([fakeAddress(42, 5)[0], fakeAddress(36, 5)[0], fakeAddress(63, 5)[0]]).toEqual(["8", "7", "B"]);
 	});
 
-	it("standard addresses and unknown bytes are null: pool rows are subaddresses", () => {
+	it("[T20] standard addresses and unknown bytes are null: pool rows are subaddresses", () => {
 		for (const [, [standard]] of Object.entries(TAGS)) expect(subaddressNetwork(fakeAddress(standard, 1))).toBeNull();
 		expect(subaddressNetwork(fakeAddress(38, 1))).toBeNull();
 		// The old test fixtures' shape: right length and alphabet, network byte 38.
 		expect(subaddressNetwork(`7${"1".padStart(94, "T")}`)).toBeNull();
 	});
 
-	it("malformed text is null: wrong length, a character outside the alphabet, a block that overflows", () => {
+	it("[T20] malformed text is null: wrong length, a character outside the alphabet, a block that overflows", () => {
 		const a = fakeAddress(36, 1);
 		expect(subaddressNetwork(a.slice(0, 94))).toBeNull();
 		expect(subaddressNetwork(`${a}1`)).toBeNull();
@@ -34,7 +34,7 @@ describe("subaddressNetwork", () => {
 		expect(subaddressNetwork("")).toBeNull();
 	});
 
-	it("an integrated address (106 characters) is null", () => {
+	it("[T20] an integrated address (106 characters) is null", () => {
 		const bytes = Uint8Array.from({ length: 77 }, (_, i) => (i === 0 ? 19 : (i * 13) & 0xff));
 		const integrated = encodeBase58(bytes);
 		expect(integrated).toHaveLength(106);

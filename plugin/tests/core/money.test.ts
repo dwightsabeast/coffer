@@ -18,7 +18,7 @@ describe("expectedAtomic = ceil(fiatMinor * 10^12 / rateMinor)", () => {
 		// $9,999,999,999.99 at $0.01 per XMR.
 		expect(expectedAtomic(999_999_999_999n, 1n)).toBe(999_999_999_999n * ATOMIC_PER_XMR);
 	});
-	it("rejects zero and negative amounts and rates", () => {
+	it("[T06][F02] rejects zero and negative amounts and rates", () => {
 		expect(() => expectedAtomic(0n, 15000n)).toThrow(RangeError);
 		expect(() => expectedAtomic(-1n, 15000n)).toThrow(RangeError);
 		expect(() => expectedAtomic(1200n, 0n)).toThrow(RangeError);
@@ -27,7 +27,7 @@ describe("expectedAtomic = ceil(fiatMinor * 10^12 / rateMinor)", () => {
 });
 
 describe("tolerance: paid at or above 99.5% of expected", () => {
-	it("is exactly 99.5%, rounded up", () => {
+	it("[R04] is exactly 99.5%, rounded up", () => {
 		expect(paidThreshold(1000n)).toBe(995n);
 		expect(paidThreshold(80_000_000_000n)).toBe(79_600_000_000n);
 		// 99.5% of 1001 = 995.995 -> 996.

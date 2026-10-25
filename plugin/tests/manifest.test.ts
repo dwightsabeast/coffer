@@ -14,7 +14,7 @@ afterEach(async () => {
 	host = undefined;
 });
 
-it("the built manifest matches the spec's trust contract exactly", async () => {
+it("[T01][P02] the built manifest matches the spec's trust contract exactly", async () => {
 	host = await createPluginTestHost();
 	const m = host.manifest as unknown as Record<string, any>;
 	expect(m.id).toBe("coffer");
@@ -69,7 +69,7 @@ it("the source manifest points at the renamed repository, dwightsabeast/coffer (
 // Spec change 41 items 3 and 9, with Wyatt's decision D as amended on 2026-10-25 (EmDash's floor is the tested 1.3.1).
 const graphemes = (text: string) => [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(text)].length;
 
-it("the source manifest declares the supported EmDash and Astro versions (spec change 41 item 3)", () => {
+it("[T01] the source manifest declares the supported EmDash and Astro versions (spec change 41 item 3)", () => {
 	const m = JSON.parse(manifestSource.replace(/^\s*\/\/.*$/gm, ""));
 	expect(m.release?.requires).toEqual({ "env:emdash": ">=1.3.1 <2.0.0", "env:astro": ">=7.3.5 <8.0.0" });
 	expect(JSON.parse(packageSource).peerDependencies).toEqual({ emdash: ">=1.3.1 <2.0.0" });

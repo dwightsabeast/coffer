@@ -295,7 +295,7 @@ describe("actions", () => {
 		expect(await stored("inv_0001")).toMatchObject({ status: "expired", adminFinal: true });
 	});
 
-	it(`raise confirmations: to ${MAX_REQUIRED} on an open invoice, never lower, and the invoice stays open`, async () => {
+	it(`[T07] raise confirmations: to ${MAX_REQUIRED} on an open invoice, never lower, and the invoice stays open`, async () => {
 		await setup([invoice(1)]);
 		expect((await act("raise:inv_0001")).toast).toEqual({ type: "success", message: `This invoice now needs ${MAX_REQUIRED} confirmations.` });
 		const inv = await stored("inv_0001");
@@ -305,7 +305,7 @@ describe("actions", () => {
 		expect((await stored("inv_0001")).required).toBe(MAX_REQUIRED);
 	});
 
-	it("stale state: an invoice that changed since the page loaded is refused, and nothing changes", async () => {
+	it("[F04] stale state: an invoice that changed since the page loaded is refused, and nothing changes", async () => {
 		const h = await setup([invoice(1), invoice(2, { status: "confirming", transfers: [transfer({ confirmations: 1 })] })]);
 		await load();
 		// It settled on its own in the meantime.
@@ -319,7 +319,7 @@ describe("actions", () => {
 		expect((await stored("inv_0002")).required).toBe(2);
 	});
 
-	it("unknown invoices and malformed values: an error toast, nothing changes", async () => {
+	it("[F04] unknown invoices and malformed values: an error toast, nothing changes", async () => {
 		await setup([invoice(1)]);
 		for (const value of ["settle:inv_9999", "explode:inv_0001", "details:inv_0001", "settle", "settle:inv_0001|", 42, null, { id: "inv_0001" }]) {
 			expect((await act(value)).toast).toMatchObject({ type: "error" });

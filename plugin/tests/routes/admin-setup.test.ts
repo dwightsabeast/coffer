@@ -115,7 +115,7 @@ describe("setup checklist", () => {
 		expect(((await res.json()) as B).data).toMatchObject({ kind: "tip", address: ADDR(1), uri: link, fiat: null, minAtomic: "100000000", amountAtomic: null, asset: "xmr", chain: "monero", network: "stagenet", decimals: 12 });
 	});
 
-	it("Get a test address is refused while the wallet host is silent or no address is free, claiming nothing", async () => {
+	it("[R12] Get a test address is refused while the wallet host is silent or no address is free, claiming nothing", async () => {
 		const h = await setup({ lastSyncAgo: 12 * 60_000 });
 		const r = await h.admin.act("/payments", "get_test_address");
 		expect(r.toast).toEqual({ type: "error", message: "The wallet host must be syncing first. On the wallet host, run: xmr-bridge status" });
@@ -156,7 +156,7 @@ describe("setup checklist", () => {
 		expect(checklist(b)).toMatchObject({ label: "Setup (complete)", default_open: false });
 	});
 
-	it("the test tip needs 1 confirmation whatever the speed; still never 0, and only counted transfers (spec change 26)", async () => {
+	it("[T07][T11] the test tip needs 1 confirmation whatever the speed; still never 0, and only counted transfers (spec change 26)", async () => {
 		for (const speed of ["fast", "standard", "strict"]) {
 			const h = await setup();
 			await h.fixtures.plugin.setting("speed", speed);
@@ -303,7 +303,7 @@ describe("setup: the page doesn't update by itself (spec change 27)", () => {
 });
 
 describe("pairing notes", () => {
-	it("the code's minutes left, at issue and on a reload; an expired code no longer counts as active", async () => {
+	it("[T13] the code's minutes left, at issue and on a reload; an expired code no longer counts as active", async () => {
 		const h = await setup({ paired: false, lastSyncAgo: null });
 		const r = await h.admin.act("/payments", "connect_wallet_host");
 		expect(text(r.blocks as B[])).toContain("15 min left");
@@ -316,7 +316,7 @@ describe("pairing notes", () => {
 		expect(text(b)).toContain("Creates a one-time code (15 minutes)");
 	});
 
-	it("a completed pairing says when; one that replaced a key says so", async () => {
+	it("[T13] a completed pairing says when; one that replaced a key says so", async () => {
 		const h = await setup({ paired: false, lastSyncAgo: null });
 		await pair(h, "test1");
 		expect(await h.inspect.kv.get("state:lastPairing")).toMatchObject({ replaced: false });

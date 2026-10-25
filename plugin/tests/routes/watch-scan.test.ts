@@ -33,7 +33,7 @@ async function sync(h: PluginRuntimeTestHost) {
 }
 
 describe("watch list scan", () => {
-	it("1,200 recent tips are all watched, and a touched 5-day-old tip too", { timeout: 120_000 }, async () => {
+	it("[R11] 1,200 recent tips are all watched, and a touched 5-day-old tip too", { timeout: 120_000 }, async () => {
 		const h = await createPluginRuntimeTestHost();
 		host = h;
 		await h.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);
@@ -52,7 +52,7 @@ describe("watch list scan", () => {
 		expect(await h.inspect.kv.get("state:watchTruncatedAt")).toBeNull();
 	});
 
-	it("Health warns for a day after the scan's safety cap was reached", async () => {
+	it("[R11] Health warns for a day after the scan's safety cap was reached", async () => {
 		const h = await createPluginRuntimeTestHost();
 		host = h;
 		await h.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);

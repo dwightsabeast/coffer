@@ -106,7 +106,7 @@ describe("health panel", () => {
 		expect(await widgetText()).toContain("Not set up: connect a wallet host on the Monero payments page.");
 	});
 
-	it("a silent wallet host: a red line that names the fix and says what happens to payments meanwhile", async () => {
+	it("[R13] a silent wallet host: a red line that names the fix and says what happens to payments meanwhile", async () => {
 		await setup({ lastSyncAgo: 12 * 60_000 });
 		const b = await load();
 		expect(banners(b)).toContainEqual({ variant: "error", title: "Wallet host silent for 12 min", description: `${__COFFER_GOODS__ ? "Checkout is paused until it syncs again." : "Tips are still taken and are confirmed once it syncs again."} On the wallet host, run: xmr-bridge status` });
@@ -134,7 +134,7 @@ describe("health panel", () => {
 			expect((await h.admin.act("/payments", "get_test_address")).toast).toMatchObject({ type: "error" });
 		});
 
-		it("paired, then nothing for more than 5 minutes: a red line that names the fix", async () => {
+		it("[R13] paired, then nothing for more than 5 minutes: a red line that names the fix", async () => {
 			await setup({ lastSyncAgo: null, heardAgo: 6 * 60_000 });
 			const b = await load();
 			expect(banners(b)).toContainEqual({ variant: "error", title: "Paired, but the wallet host hasn't synced", description: "Nothing has come from it for 6 min. On the wallet host, run: sudo xmr-bridge status --config /etc/xmr-bridge/config" });
@@ -164,7 +164,7 @@ describe("health panel", () => {
 		});
 	});
 
-	it("the wallet's height against its node: behind is red with the bridge's detail, unavailable amber, absent shows the height alone", async () => {
+	it("[R13] the wallet's height against its node: behind is red with the bridge's detail, unavailable amber, absent shows the height alone", async () => {
 		await setup({ checks: { wallet: { state: "behind", detail: "the wallet is at block 2999000, its node at 3000000" } } });
 		let b = await load();
 		expect(field(b, "Wallet height")).toBe("3000000: the wallet is at block 2999000, its node at 3000000");
@@ -183,7 +183,7 @@ describe("health panel", () => {
 		expect(banners(b)).toEqual([]);
 	});
 
-	it("a node still catching up with the network (spec change 20): red, with the bridge's progress, ahead of the height", async () => {
+	it("[R13] a node still catching up with the network (spec change 20): red, with the bridge's progress, ahead of the height", async () => {
 		await setup({ checks: { wallet: { state: "syncing", detail: "the wallet host's node is still catching up with the network (block 94954 of about 2227755); payments show up once it has" } } });
 		const b = await load();
 		expect(field(b, "Wallet height")).toBe("3000000: the wallet host's node is still catching up with the network (block 94954 of about 2227755); payments show up once it has");
@@ -191,7 +191,7 @@ describe("health panel", () => {
 		expect(await widgetText()).toContain("The wallet host's node is still syncing");
 	});
 
-	it("the remote-node cross-check: mismatch red, unavailable amber, ok green, each with the bridge's detail", async () => {
+	it("[T14][R13] the remote-node cross-check: mismatch red, unavailable amber, ok green, each with the bridge's detail", async () => {
 		const mismatch = "the configured node's block at height 5 differs from node.example's: payments in it are held at 0 confirmations. Use your own node, or one you trust";
 		await setup({ checks: { node: { state: "mismatch", detail: mismatch } } });
 		let b = await load();
@@ -209,7 +209,7 @@ describe("health panel", () => {
 		expect(field(await load(), "Remote-node cross-check")).toBe("OK");
 	});
 
-	it("no payment addresses ready: red", async () => {
+	it("[R13] no payment addresses ready: red", async () => {
 		await setup({ free: 0 });
 		expect(banners(await load())).toContainEqual({ variant: "error", title: "No payment addresses ready", description: `${__COFFER_GOODS__ ? "Checkout can't take payments" : "Tips can't be taken"} until the wallet host adds more, which it does at its next sync. If this stays, run xmr-bridge status on the wallet host.` });
 	});
@@ -230,7 +230,7 @@ describe("health panel", () => {
 		expect(await widgetText()).toContain("2 review items");
 	});
 
-	it(`a run of unpaid expired checkouts: amber at ${UNPAID_RUN_ALERT}, quiet below, broken by a paid one`, async () => {
+	it(`[T15] a run of unpaid expired checkouts: amber at ${UNPAID_RUN_ALERT}, quiet below, broken by a paid one`, async () => {
 		const h = await setup();
 		const now = Date.now();
 		// Newest first: UNPAID_RUN_ALERT - 1 unpaid, then one with a payment, then more unpaid.
@@ -272,7 +272,7 @@ describe("health panel", () => {
 		expect(await h.inspect.kv.get("state:paidTop")).toBe(7);
 	});
 
-	it("spam limits: an information line (never red) when checkouts arrive without the visitor's IP", async () => {
+	it("[P03] spam limits: an information line (never red) when checkouts arrive without the visitor's IP", async () => {
 		await setup({ clientIp: false });
 		const b = await load();
 		expect(JSON.stringify(b)).toContain("Per-visitor spam limits are off: this site doesn't pass visitors' IP addresses to plugins. The site-wide limit of 40 open invoices still applies.");
@@ -287,7 +287,7 @@ describe("health panel", () => {
 		expect(banners(await load())).toContainEqual({ variant: "default", title: "Wallet host update available", description: "On the wallet host, run: xmr-bridge update" });
 	});
 
-	it("the widget names the worst problem first, then the review count", async () => {
+	it("[R13] the widget names the worst problem first, then the review count", async () => {
 		const h = await setup({ lastSyncAgo: 12 * 60_000, free: 0 });
 		await h.fixtures.plugin.storage("invoices", "inv_r", invoice("inv_r", 3, { status: "review", reviewReason: "late" }));
 		const w = await widgetText();

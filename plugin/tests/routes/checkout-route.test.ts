@@ -57,7 +57,7 @@ async function status(token: string) {
 }
 
 describe("checkout", () => {
-	it("creates an invoice from the product's price and the Kraken rate, on a pool address", async ({ task }) => {
+	it("[T02] creates an invoice from the product's price and the Kraken rate, on a pool address", async ({ task }) => {
 		const h = await setup();
 		await h.http.respond(KRAKEN("USD"), new Response(krakenBody("USD", "150.00000000")));
 		const r = await checkout({ kind: "product", product: "handbook", email: "a@example.invalid" });
@@ -71,7 +71,7 @@ describe("checkout", () => {
 		expect(h.http.requests().map((q) => q.url)).toEqual([KRAKEN("USD")]);
 	});
 
-	it("finds products by slug or id, and ignores a client-sent price", async () => {
+	it("[T06] finds products by slug or id, and ignores a client-sent price", async () => {
 		const h = await setup();
 		await h.http.respond(KRAKEN("USD"), new Response(krakenBody("USD", "150")));
 		const bySlug = await checkout({ kind: "product", product: "ebook", amount: "0.000001", price: 0.01 });
@@ -82,12 +82,12 @@ describe("checkout", () => {
 		expect(h.http.requests()).toHaveLength(1);
 	});
 
-	it("PRODUCT_NOT_FOUND for unknown, draft, zero-priced, or over-precise products", async () => {
+	it("[F02] PRODUCT_NOT_FOUND for unknown, draft, zero-priced, or over-precise products", async () => {
 		await setup();
 		for (const product of ["nope", "draft-item", "free", "odd"]) expect(await checkout({ kind: "product", product })).toEqual({ error: { code: "PRODUCT_NOT_FOUND" } });
 	});
 
-	it("falls back to CoinGecko, and RATE_UNAVAILABLE when both fail (nothing claimed)", async () => {
+	it("[T06] falls back to CoinGecko, and RATE_UNAVAILABLE when both fail (nothing claimed)", async () => {
 		const h = await setup();
 		await h.http.respond(KRAKEN("USD"), new Response("oops", { status: 502 }));
 		await h.http.respond(GECKO("usd"), new Response('{"monero":{"usd":150.0}}'));
@@ -96,7 +96,7 @@ describe("checkout", () => {
 		expect((await h.inspect.storage.list<Invoice>("invoices"))[0].data.rate?.source).toBe("api.coingecko.com");
 	});
 
-	it("RATE_UNAVAILABLE when neither source answers sensibly", async () => {
+	it("[T06] RATE_UNAVAILABLE when neither source answers sensibly", async () => {
 		const h = await setup();
 		await h.http.respond(KRAKEN("USD"), new Response(JSON.stringify({ error: ["EGeneral:Temporary lockout"], result: {} })));
 		await h.http.respond(GECKO("usd"), new Response('{"monero":{"usd":0}}'));
@@ -114,13 +114,13 @@ describe("checkout", () => {
 		expect(h.http.requests().map((q) => q.url)).toEqual([KRAKEN("EUR")]);
 	});
 
-	it("NO_ADDRESS_AVAILABLE when the pool is empty", async () => {
+	it("[T05] NO_ADDRESS_AVAILABLE when the pool is empty", async () => {
 		const h = await setup({ pool: 0 });
 		await h.http.respond(KRAKEN("USD"), new Response(krakenBody("USD", "150")));
 		expect(await checkout({ kind: "product", product: "handbook" })).toEqual({ error: { code: "NO_ADDRESS_AVAILABLE" } });
 	});
 
-	it("WALLET_HOST_SILENT when the bridge never synced or last synced over 5 minutes ago: no price request, nothing claimed (spec change 16)", async () => {
+	it("[R12] WALLET_HOST_SILENT when the bridge never synced or last synced over 5 minutes ago: no price request, nothing claimed (spec change 16)", async () => {
 		for (const lastSyncAgo of [null, 6 * 60_000]) {
 			const h = await setup({ lastSyncAgo });
 			expect(await checkout({ kind: "product", product: "handbook" })).toEqual({ error: { code: "WALLET_HOST_SILENT" } });
@@ -132,7 +132,7 @@ describe("checkout", () => {
 		}
 	});
 
-	it("WALLET_HOST_SYNCING while the wallet host's node is still catching up: no price request, nothing claimed (spec change 20)", async () => {
+	it("[R12] WALLET_HOST_SYNCING while the wallet host's node is still catching up: no price request, nothing claimed (spec change 20)", async () => {
 		// The wallet's height can't pass its node's, so an invoice made now would get a deadline far below the real chain.
 		const h = await setup({ checks: { wallet: { state: "syncing", detail: "the wallet host's node is still catching up with the network (block 94954 of about 2227755); payments show up once it has" } } });
 		expect(await checkout({ kind: "product", product: "handbook" })).toEqual({ error: { code: "WALLET_HOST_SYNCING" } });
@@ -158,7 +158,7 @@ describe("checkout", () => {
 		expect((await h.inspect.storage.list<Invoice>("invoices"))[0].data).toMatchObject({ createdHeight: H0, expiresHeight: H0 + 18 });
 	});
 
-	it("INVALID_REQUEST for anything but a well-formed product checkout (tips: tip-checkout.test.ts)", async () => {
+	it("[F02] INVALID_REQUEST for anything but a well-formed product checkout (tips: tip-checkout.test.ts)", async () => {
 		await setup();
 		for (const body of [null, [], {}, { kind: "order", product: "handbook" }, { kind: "product" }, { kind: "product", product: "a/b" },
 			{ kind: "product", product: "handbook", email: "not-an-email" }, { kind: "product", product: "handbook", refundAddress: "4abc" }]) {
@@ -168,7 +168,7 @@ describe("checkout", () => {
 
 	// 80 storage fixtures written one by one (the test host has no batch write): 0.7 s on the dev box, over vitest's 5 s
 	// default on a shared CI runner (run 37866556943). The longer timeout is for this test only.
-	it("site-wide cap: TOO_MANY_OPEN at the cap; invoices past their deadline stop counting", { timeout: 30_000 }, async () => {
+	it("[T05] site-wide cap: TOO_MANY_OPEN at the cap; invoices past their deadline stop counting", { timeout: 30_000 }, async () => {
 		const h = await setup();
 		const now = Date.now();
 		for (let i = 0; i < MAX_OPEN_TOTAL; i++) {
@@ -185,7 +185,7 @@ describe("checkout", () => {
 		expect((await checkout({ kind: "product", product: "handbook" })).status).toBe("new");
 	});
 
-	it("records whether the last checkout came with the visitor's IP (the admin page's spam-limit line)", async () => {
+	it("[P03] records whether the last checkout came with the visitor's IP (the admin page's spam-limit line)", async () => {
 		const h = await setup();
 		await h.http.respond(KRAKEN("USD"), new Response(krakenBody("USD", "150")));
 		expect(await h.inspect.kv.get("state:clientIp")).toBeNull();
@@ -195,7 +195,7 @@ describe("checkout", () => {
 		expect(await h.inspect.kv.get("state:clientIp")).toBe(true);
 	});
 
-	it("per-client cap only when the IP is known", async ({ task }) => {
+	it("[T05][P03] per-client cap only when the IP is known", async ({ task }) => {
 		const h = await setup({ pool: 8 });
 		await h.http.respond(KRAKEN("USD"), new Response(krakenBody("USD", "150")));
 		const results: unknown[] = [];
@@ -231,7 +231,7 @@ describe("checkoutHeight", () => {
 });
 
 describe("status", () => {
-	it("returns the invoice's state by token, private and uncached; INVOICE_NOT_FOUND otherwise", async () => {
+	it("[T09][F03] returns the invoice's state by token, private and uncached; INVOICE_NOT_FOUND otherwise", async () => {
 		const h = await setup();
 		await h.http.respond(KRAKEN("USD"), new Response(krakenBody("USD", "150")));
 		const c = await checkout({ kind: "product", product: "handbook" });
@@ -263,7 +263,7 @@ describe("status", () => {
 		expect((await status(old.token)).data.uri).toBe(`monero:${ADDR(8)}?tx_amount=0.080000000000`);
 	});
 
-	it("shows pendingExpiry after the window without a sync, and doesn't write", async () => {
+	it("[R02] shows pendingExpiry after the window without a sync, and doesn't write", async () => {
 		const h = await setup();
 		const now = Date.now();
 		const inv = { ...newInvoice({ network: "stagenet", id: "inv_late", token: "L".repeat(22), kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(9), addrIndex: 9, now: now - 3_600_000, chainHeight: H0 }) };
@@ -272,7 +272,7 @@ describe("status", () => {
 		expect(await h.inspect.storage.get("invoices", inv.id)).toEqual(inv);
 	});
 
-	it("checkout, a signed sync with the payment, then status reads settled", async () => {
+	it("[R01] checkout, a signed sync with the payment, then status reads settled", async () => {
 		const h = await setup();
 		await h.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);
 		await h.http.respond(KRAKEN("USD"), new Response(krakenBody("USD", "150")));

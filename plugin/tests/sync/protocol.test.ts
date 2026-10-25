@@ -12,15 +12,15 @@ const body = (over: Record<string, unknown> = {}) => JSON.stringify({ v: 1, seq:
 const code = (r: ReturnType<typeof parseSyncBody>) => (r.ok ? "ok" : r.code);
 
 describe("headers and freshness", () => {
-	it("accepts both headers within 300 seconds either way", () => {
+	it("[T04] accepts both headers within 300 seconds either way", () => {
 		expect(checkHeaders({ "x-xmr-ts": String(NOW / 1000 - 300), "x-xmr-sig": SIG }, NOW).ok).toBe(true);
 		expect(checkHeaders({ "x-xmr-ts": String(NOW / 1000 + 300), "x-xmr-sig": SIG }, NOW).ok).toBe(true);
 	});
-	it("rejects stale and future timestamps", () => {
+	it("[T04] rejects stale and future timestamps", () => {
 		expect(checkHeaders({ "x-xmr-ts": String(NOW / 1000 - 301), "x-xmr-sig": SIG }, NOW)).toEqual({ ok: false, code: "STALE_TIMESTAMP" });
 		expect(checkHeaders({ "x-xmr-ts": String(NOW / 1000 + 301), "x-xmr-sig": SIG }, NOW)).toEqual({ ok: false, code: "STALE_TIMESTAMP" });
 	});
-	it("rejects missing or malformed headers", () => {
+	it("[T03][F01] rejects missing or malformed headers", () => {
 		for (const h of [{}, { "x-xmr-ts": String(NOW / 1000) }, { "x-xmr-sig": SIG }, { "x-xmr-ts": "17e8", "x-xmr-sig": SIG },
 			{ "x-xmr-ts": String(NOW / 1000), "x-xmr-sig": "A".repeat(43) + "=" }, { "x-xmr-ts": String(NOW / 1000), "x-xmr-sig": SIG.replace("==", "") }]) {
 			expect(checkHeaders(h as Record<string, string>, NOW)).toEqual({ ok: false, code: "MISSING_SIGNATURE" });
@@ -29,7 +29,7 @@ describe("headers and freshness", () => {
 });
 
 describe("strict decoding", () => {
-	it("refuses a leading BOM and invalid UTF-8, keeps everything else byte for byte", () => {
+	it("[F01] refuses a leading BOM and invalid UTF-8, keeps everything else byte for byte", () => {
 		expect(decodeStrict(new Uint8Array([0xef, 0xbb, 0xbf, 0x7b, 0x7d]))).toBeNull();
 		expect(decodeStrict(new Uint8Array([0x7b, 0xff, 0x7d]))).toBeNull();
 		expect(decodeStrict(new TextEncoder().encode("{\"a\":\"café\"}\r\n"))).toBe("{\"a\":\"café\"}\r\n");
@@ -51,12 +51,12 @@ describe("body validation", () => {
 		expect(code(parseSyncBody(body({ v: 0 }), 2))).toBe("UNSUPPORTED_VERSION");
 		expect(code(parseSyncBody(body({ v: 2 })))).toBe("UNSUPPORTED_VERSION");
 	});
-	it("rejects malformed bodies", () => {
+	it("[F01] rejects malformed bodies", () => {
 		for (const bad of ["not json", "[]", body({ v: "1" }), body({ seq: 0 }), body({ seq: 1.5 }), body({ height: -1 }), body({ addresses: {} }), body({ snapshots: null })]) {
 			expect(code(parseSyncBody(bad))).toBe("INVALID_BODY");
 		}
 	});
-	it("enforces the caps", () => {
+	it("[F01] enforces the caps", () => {
 		const addr = (i: number) => ({ index: i + 1, address: fakeSubaddress(i + 1) });
 		expect(code(parseSyncBody(body({ addresses: Array.from({ length: MAX_ADDRESSES }, (_, i) => addr(i)) })))).toBe("ok");
 		expect(code(parseSyncBody(body({ addresses: Array.from({ length: MAX_ADDRESSES + 1 }, (_, i) => addr(i)) })))).toBe("INVALID_BODY");
@@ -65,7 +65,7 @@ describe("body validation", () => {
 		expect(code(parseSyncBody(body({ snapshots: [{ index: 1, transfers: many(MAX_TRANSFERS) }] })))).toBe("ok");
 		expect(code(parseSyncBody(body({ snapshots: [{ index: 1, transfers: many(MAX_TRANSFERS + 1) }] })))).toBe("INVALID_BODY");
 	});
-	it("a malformed transfer rejects the whole body", () => {
+	it("[F01] a malformed transfer rejects the whole body", () => {
 		for (const t of [transfer({ amount: 1000 }), transfer({ amount: "1e3" }), transfer({ unlockTime: 0 }), transfer({ txid: "AB".repeat(32) }),
 			transfer({ height: -1 }), transfer({ confirmations: 1.5 }), transfer({ doubleSpendSeen: "no" }), transfer({ amount: "1".repeat(21) })]) {
 			expect(code(parseSyncBody(body({ snapshots: [{ index: 1, transfers: [t] }] })))).toBe("INVALID_BODY");
@@ -73,20 +73,20 @@ describe("body validation", () => {
 		expect(code(parseSyncBody(body({ snapshots: [{ index: 1, transfers: [transfer(), transfer()] }] })))).toBe("INVALID_BODY"); // duplicate txid
 		expect(code(parseSyncBody(body({ snapshots: [{ index: 1, transfers: [] }, { index: 1, transfers: [] }] })))).toBe("INVALID_BODY"); // duplicate index
 	});
-	it("amounts and unlock times up to 20 digits stay strings (no 2^53 limit)", () => {
+	it("[T11][F01] amounts and unlock times up to 20 digits stay strings (no 2^53 limit)", () => {
 		const r = parseSyncBody(body({ snapshots: [{ index: 1, transfers: [transfer({ amount: "18446744073709551615", unlockTime: "18446744073709551615" })] }] }));
 		expect(r.ok && r.value.snapshots[0].transfers[0]).toMatchObject({ amount: "18446744073709551615", unlockTime: "18446744073709551615" });
 	});
-	it("skips malformed pool addresses instead of rejecting the body", () => {
+	it("[F01] skips malformed pool addresses instead of rejecting the body", () => {
 		const r = parseSyncBody(body({ addresses: [{ index: 0, address: fakeSubaddress(0) }, { index: 2, address: "short" }, { index: 3, address: "0".repeat(95) }, { index: 4, address: fakeSubaddress(4) }] }));
 		expect(r.ok && r.value.addresses).toEqual([{ index: 4, address: fakeSubaddress(4) }]);
 	});
-	it("skips a pool address whose network can't be read (spec change 36): an unknown byte, or a standard address", () => {
+	it("[T20] skips a pool address whose network can't be read (spec change 36): an unknown byte, or a standard address", () => {
 		const kept = [{ index: 5, address: fakeSubaddress(5) }, { index: 6, address: fakeAddress(TAGS.mainnet[1], 6) }];
 		const r = parseSyncBody(body({ addresses: [{ index: 2, address: fakeAddress(38, 2) }, { index: 3, address: fakeAddress(TAGS.stagenet[0], 3) }, ...kept] }));
 		expect(r.ok && r.value.addresses).toEqual(kept);
 	});
-	it("reads the bridge's checks: known states kept, long details cut, anything malformed dropped without rejecting the body", () => {
+	it("[F01] reads the bridge's checks: known states kept, long details cut, anything malformed dropped without rejecting the body", () => {
 		const checks = (c: unknown) => {
 			const r = parseSyncBody(body({ checks: c }));
 			expect(r.ok).toBe(true);
@@ -102,7 +102,7 @@ describe("body validation", () => {
 		expect(checks({ wallet: { state: "ok", detail: "x".repeat(400) } })).toEqual({ wallet: { state: "ok", detail: "x".repeat(300) } });
 		for (const bad of ["nope", null, [], { node: "ok" }, { wallet: null }]) expect(checks(bad)).toBeUndefined();
 	});
-	it("validates the pair field", () => {
+	it("[F01] validates the pair field", () => {
 		expect(code(parseSyncBody(body({ pair: { code: "A".repeat(22), publicKey: "A".repeat(43) + "=" } })))).toBe("ok");
 		expect(code(parseSyncBody(body({ pair: { code: "short", publicKey: "A".repeat(43) + "=" } })))).toBe("INVALID_BODY");
 		expect(code(parseSyncBody(body({ pair: { code: "A".repeat(22), publicKey: "not base64" } })))).toBe("INVALID_BODY");

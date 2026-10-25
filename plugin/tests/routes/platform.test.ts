@@ -33,7 +33,7 @@ const invoke = (name: string, input: unknown, meta: typeof CF | typeof NODE, ext
 const stored = async (h: PluginRuntimeTestHost) => ({ kv: await h.inspect.kv.list(), pool: await h.inspect.storage.list("pool"), invoices: await h.inspect.storage.list("invoices"), key: await h.inspect.setting("bridgePublicKey") });
 
 describe("Cloudflare Workers: not supported in release 1 (spec change 35)", () => {
-	it("bridge/sync answers UNSUPPORTED_PLATFORM before reading or writing anything, even a well-signed pairing", async () => {
+	it("[T19] bridge/sync answers UNSUPPORTED_PLATFORM before reading or writing anything, even a well-signed pairing", async () => {
 		const h = await setup();
 		const before = await stored(h);
 		const now = Date.now();
@@ -43,14 +43,14 @@ describe("Cloudflare Workers: not supported in release 1 (spec change 35)", () =
 		expect(await stored(h)).toEqual(before);
 	});
 
-	it("checkout answers UNSUPPORTED_PLATFORM; nothing claimed", async () => {
+	it("[T19] checkout answers UNSUPPORTED_PLATFORM; nothing claimed", async () => {
 		const h = await setup();
 		const before = await stored(h);
 		expect(await invoke("checkout", { kind: "tip" }, CF)).toEqual({ error: { code: "UNSUPPORTED_PLATFORM" } });
 		expect(await stored(h)).toEqual(before);
 	});
 
-	it("the admin page is one message saying so, and nothing else", async () => {
+	it("[T19] the admin page is one message saying so, and nothing else", async () => {
 		const h = await setup();
 		const r = await invoke("admin", { type: "page_load", page: "/payments" }, CF);
 		const blocks = r.blocks as B[];
@@ -68,7 +68,7 @@ describe("Cloudflare Workers: not supported in release 1 (spec change 35)", () =
 		expect((await h.inspect.kv.get("state:pairing")) as B).toMatchObject({ used: false });
 	});
 
-	it("on Node (no geo) everything works as before", async () => {
+	it("[T19] on Node (no geo) everything works as before", async () => {
 		await setup();
 		expect(await invoke("checkout", { kind: "tip" }, NODE)).toMatchObject({ status: "new" });
 		const page = await invoke("admin", { type: "page_load", page: "/payments" }, NODE);
@@ -80,13 +80,13 @@ describe("Cloudflare Workers: not supported in release 1 (spec change 35)", () =
 	// leaving requestMeta.geo null off Cloudflare. If an upgrade ever filled it on Node, every Node site would be refused.
 	// These go through EmDash's own request handling (actions.routes.request derives requestMeta the real way), not
 	// transport.invokeRoute.
-	it("through EmDash's own request handling on Node, geo stays null, so Coffer isn't refused", async () => {
+	it("[T19] through EmDash's own request handling on Node, geo stays null, so Coffer isn't refused", async () => {
 		await setup();
 		const res = await (host as PluginRuntimeTestHost).actions.routes.request("checkout", { method: "POST", rawBody: JSON.stringify({ kind: "tip" }), headers: { "content-type": "application/json" } });
 		expect(((await res.json()) as B).data).toMatchObject({ status: "new" });
 	});
 
-	it("nor with the CF-* headers a Node site behind Cloudflare's proxy or a tunnel receives", async () => {
+	it("[T19] nor with the CF-* headers a Node site behind Cloudflare's proxy or a tunnel receives", async () => {
 		await setup();
 		const headers = { "content-type": "application/json", "cf-ipcountry": "US", "cf-connecting-ip": "203.0.113.9", "cf-ray": "8a1b2c3d4e5f6789-DEN", "cf-visitor": '{"scheme":"https"}' };
 		const res = await (host as PluginRuntimeTestHost).actions.routes.request("checkout", { method: "POST", rawBody: JSON.stringify({ kind: "tip" }), headers });

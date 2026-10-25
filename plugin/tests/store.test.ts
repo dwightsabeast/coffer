@@ -21,7 +21,7 @@ function fakeCollection(total: number) {
 }
 
 describe("collect", () => {
-	it("reads every page to the end, well past the old 1,000", async () => {
+	it("[R11] reads every page to the end, well past the old 1,000", async () => {
 		const { col, calls } = fakeCollection(2_345);
 		const r = await collect(col as never, { status: "x" });
 		expect(r.items).toHaveLength(2_345);
@@ -30,7 +30,7 @@ describe("collect", () => {
 		expect(calls.every((c) => c.limit === 100)).toBe(true);
 	});
 
-	it("stops at the safety cap and says so", async () => {
+	it("[R11] stops at the safety cap and says so", async () => {
 		const { col } = fakeCollection(1_000);
 		const r = await collect(col as never, {}, 3);
 		expect(r.items).toHaveLength(300);
@@ -40,7 +40,7 @@ describe("collect", () => {
 		expect(exact.items).toHaveLength(300);
 	});
 
-	it("the cap covers the most the spam cap allows: 40 every 30 minutes, kept 8 days", () => {
+	it("[R11] the cap covers the most the spam cap allows: 40 every 30 minutes, kept 8 days", () => {
 		expect(MAX_SCAN_PAGES * 100).toBeGreaterThanOrEqual(40 * 2 * 24 * 8);
 	});
 });

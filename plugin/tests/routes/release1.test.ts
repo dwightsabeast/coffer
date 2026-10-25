@@ -37,7 +37,7 @@ async function checkout(body: unknown) {
 }
 
 describe("release-1 switch", () => {
-	it("the committed value is off for release 1, and this run was built with the value the test expects", () => {
+	it("[T21] the committed value is off for release 1, and this run was built with the value the test expects", () => {
 		expect(GOODS_ENABLED).toBe(false);
 		expect(typeof __COFFER_GOODS__).toBe("boolean");
 	});
@@ -58,7 +58,7 @@ describe("release-1 switch", () => {
 		expect(JSON.parse(r.text).data).toMatchObject({ status: "new", amountAtomic: "80000000000" });
 	});
 
-	it("the admin page has All invoices only with the switch on", async () => {
+	it("[T21] the admin page has All invoices only with the switch on", async () => {
 		const h = await setup();
 		const blocks = (await h.admin.loadPage("/payments")).blocks as B[];
 		expect(blocks.some((b) => b.type === "header" && b.text === "All invoices")).toBe(__COFFER_GOODS__);

@@ -53,7 +53,7 @@ describe("admin page", () => {
 		]);
 	});
 
-	it("saves valid settings and refuses anything else", async () => {
+	it("[F04] saves valid settings and refuses anything else", async () => {
 		host = await newHost();
 		const ok = await host.admin.submit("/payments", "save_settings", { currency: "EUR", speed: "strict" });
 		expect(ok.toast).toMatchObject({ type: "success" });
@@ -69,7 +69,7 @@ describe("admin page", () => {
 		expect(await host.inspect.setting("currency")).toBe("EUR");
 	});
 
-	it("Connect wallet host shows a one-time code and the install command, storing only its hash", async ({ task }) => {
+	it("[T02][T13] Connect wallet host shows a one-time code and the install command, storing only its hash", async ({ task }) => {
 		host = await newHost();
 		const before = Date.now();
 		const r = await host.admin.act("/payments", "connect_wallet_host");
@@ -140,7 +140,7 @@ describe("admin page", () => {
 		expect(texts((await host.admin.loadWidget("xmr-status")).blocks as B[])).toContain("Healthy");
 	});
 
-	it("an unknown action gets an error toast, not a crash", async () => {
+	it("[F04] an unknown action gets an error toast, not a crash", async () => {
 		host = await newHost();
 		const r = await host.admin.act("/payments", "delete_everything");
 		expect(r.toast).toMatchObject({ type: "error" });
@@ -155,7 +155,7 @@ describe("pairing codes and the site URL", () => {
 		return ((await res.json()) as B).data;
 	}
 
-	it("a new code cancels the old one at once", async () => {
+	it("[T13] a new code cancels the old one at once", async () => {
 		host = await newHost();
 		const first = codeFrom((await host.admin.act("/payments", "connect_wallet_host")).blocks as B[]);
 		const second = codeFrom((await host.admin.act("/payments", "connect_wallet_host")).blocks as B[]);
@@ -164,7 +164,7 @@ describe("pairing codes and the site URL", () => {
 		expect(await pairWith(host, second)).toMatchObject({ ok: true });
 	});
 
-	it("the install command uses the saved https site URL, not the request's host, and says which address it is", async () => {
+	it("[T25] the install command uses the saved https site URL, not the request's host, and says which address it is", async () => {
 		host = await createPluginRuntimeTestHost({ site: { url: "https://shop.example" } });
 		const blocks = (await host.admin.act("/payments", "connect_wallet_host")).blocks as B[];
 		const cmd = (find(blocks, (x) => x.type === "code" && String(x.code).includes("/install.sh")) as B).code as string;
@@ -172,7 +172,7 @@ describe("pairing codes and the site URL", () => {
 		expect(texts(blocks)).toContain("The wallet host will connect to https://shop.example (EmDash's saved address for this site).");
 	});
 
-	it("with no site URL, no command is shown and no code is created", async () => {
+	it("[T25] with no site URL, no command is shown and no code is created", async () => {
 		host = await createPluginRuntimeTestHost({ site: { url: "" } });
 		const r = await host.admin.act("/payments", "connect_wallet_host");
 		expect(r.toast).toMatchObject({ type: "error" });

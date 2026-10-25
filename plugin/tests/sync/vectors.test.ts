@@ -8,7 +8,7 @@ import { MemoryStore, fromB64 } from "./helpers";
 
 describe("shared signature vectors", () => {
 	for (const v of vectors.cases) {
-		it(`${v.name}: ${v.expected}`, async () => {
+		it(`[T03] ${v.name}: ${v.expected}`, async () => {
 			const body = fromB64(v.body);
 			const key = decodeBase64(v.publicKey, 32);
 			const sig = decodeBase64(v.signature, 64);

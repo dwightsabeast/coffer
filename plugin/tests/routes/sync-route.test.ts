@@ -43,13 +43,13 @@ async function claimedInvoice(h: PluginRuntimeTestHost, index: number, over: Par
 }
 
 describe("bridge/sync route", () => {
-	it("NOT_PAIRED until a key is stored", async () => {
+	it("[T03] NOT_PAIRED until a key is stored", async () => {
 		host = await createPluginRuntimeTestHost();
 		const r = await sync({});
 		expect(r.json).toMatchObject({ success: true, data: { error: { code: "NOT_PAIRED" } } });
 	});
 
-	it("tops up the pool in storage and reports it", async ({ task }) => {
+	it("[T05] tops up the pool in storage and reports it", async ({ task }) => {
 		const h = await paired();
 		const r = await sync({ addresses: [1, 2, 3].map((i) => ({ index: i, address: ADDR(i) })) });
 		Object.assign(task.meta, { r });
@@ -68,14 +68,14 @@ describe("bridge/sync route", () => {
 		expect(r.json).toMatchObject({ data: { ok: true, poolFree: 2, poolTop: 100 } }); // "9" > "100" as text
 	});
 
-	it("never resets a claimed pool row when the bridge re-sends its address", async () => {
+	it("[T05][P02] never resets a claimed pool row when the bridge re-sends its address", async () => {
 		const h = await paired();
 		await claimedInvoice(h, 4);
 		await sync({ addresses: [{ index: 4, address: ADDR(4) }] });
 		expect(await h.inspect.storage.get("pool", "4")).toMatchObject({ status: "claimed", invoiceId: "inv_4" });
 	});
 
-	it("settles an invoice from signed snapshots, records an alert on reversal, and survives a restart", async () => {
+	it("[T12][R01][R05] settles an invoice from signed snapshots, records an alert on reversal, and survives a restart", async () => {
 		const h = await paired();
 		const inv = await claimedInvoice(h, 7);
 		const transfer = (confirmations: number, height: number) => ({ txid: TXID(1), amount: inv.expectedAtomic, confirmations, height, timestamp: Math.floor(Date.now() / 1000), doubleSpendSeen: false, unlockTime: "0" });
@@ -104,14 +104,14 @@ describe("bridge/sync route", () => {
 		expect(await host.inspect.kv.get("state:pairing")).toMatchObject({ used: true });
 	});
 
-	it("forged requests change nothing", async () => {
+	it("[T03] forged requests change nothing", async () => {
 		const h = await paired();
 		const r = await sync({ addresses: [{ index: 1, address: ADDR(1) }] }, "test2");
 		expect(r.json).toMatchObject({ success: true, data: { error: { code: "BAD_SIGNATURE" } } });
 		expect(await h.inspect.storage.list("pool")).toEqual([]);
 	});
 
-	it("the host refuses a body over the declared 256 KiB before the plugin runs", async ({ task }) => {
+	it("[F01] the host refuses a body over the declared 256 KiB before the plugin runs", async ({ task }) => {
 		await paired();
 		const now = Date.now();
 		const bytes = new Uint8Array(256 * 1024 + 1).fill(0x20);
@@ -124,7 +124,7 @@ describe("bridge/sync route", () => {
 });
 
 describe("housekeeping and the backup cron", () => {
-	it("each sync purges buyer data from invoices final for 30 days, and only those", async () => {
+	it("[P04] each sync purges buyer data from invoices final for 30 days, and only those", async () => {
 		const h = await paired();
 		const old = Date.now() - PURGE_MS - 3_600_000;
 		await claimedInvoice(h, 8, { status: "expired", expiresAt: old, finalAt: old, buyer: { email: "a@example.invalid" } });
@@ -134,7 +134,7 @@ describe("housekeeping and the backup cron", () => {
 		expect(((await h.inspect.storage.get("invoices", "inv_9")) as Invoice).buyer).toEqual({ email: "b@example.invalid" });
 	});
 
-	it("activation and the first admin page load schedule the backup cron; it purges too", async ({ task }) => {
+	it("[P04] activation and the first admin page load schedule the backup cron; it purges too", async ({ task }) => {
 		host = await createPluginRuntimeTestHost();
 		expect(await host.inspect.scheduledTasks()).toEqual([]);
 		await host.admin.loadPage("/payments");

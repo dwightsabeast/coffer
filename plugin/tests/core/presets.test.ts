@@ -14,14 +14,14 @@ describe("confirmation presets by order value", () => {
 		[999_999_999n, 5, 10, 10],
 	];
 	for (const [minor, fast, standard, strict] of cases) {
-		it(`${minor} minor units -> fast ${fast}, standard ${standard}, strict ${strict}`, () => {
+		it(`[T07] ${minor} minor units -> fast ${fast}, standard ${standard}, strict ${strict}`, () => {
 			expect(requiredConfirmations("product", minor, "fast")).toBe(fast);
 			expect(requiredConfirmations("product", minor, "standard")).toBe(standard);
 			expect(requiredConfirmations("product", minor, "strict")).toBe(strict);
 			expect(requiredConfirmations("order", minor, "standard")).toBe(standard);
 		});
 	}
-	it("tips use the lowest tier whatever the amount", () => {
+	it("[T07] tips use the lowest tier whatever the amount", () => {
 		expect(requiredConfirmations("tip", 500_000n, "fast")).toBe(1);
 		expect(requiredConfirmations("tip", null, "standard")).toBe(2);
 		expect(requiredConfirmations("tip", 500_000n, "strict")).toBe(10);
@@ -38,15 +38,15 @@ describe("required is locked at checkout; an admin can raise it, never lower it"
 			id: "inv_1", token: "t", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "test" },
 			speed, subaddress: "7abc", addrIndex: 1, now: 0, chainHeight: 100, network: "stagenet",
 		});
-	it("stores the target from the speed at checkout", () => {
+	it("[T07] stores the target from the speed at checkout", () => {
 		expect(make("standard").required).toBe(2);
 		expect(make("strict").required).toBe(10);
 	});
-	it("raises an open invoice", () => {
+	it("[T07] raises an open invoice", () => {
 		const r = raiseRequired(make("standard"), 10);
 		expect(r).toMatchObject({ ok: true, invoice: { required: 10 } });
 	});
-	it("refuses lowering, equal, above 10, and closed invoices", () => {
+	it("[T07] refuses lowering, equal, above 10, and closed invoices", () => {
 		expect(raiseRequired(make("standard"), 1)).toEqual({ ok: false, code: "CANNOT_LOWER" });
 		expect(raiseRequired(make("standard"), 2)).toEqual({ ok: false, code: "CANNOT_LOWER" });
 		expect(raiseRequired(make("standard"), 11)).toEqual({ ok: false, code: "ABOVE_MAXIMUM" });

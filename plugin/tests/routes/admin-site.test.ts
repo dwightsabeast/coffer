@@ -28,24 +28,24 @@ async function admin(h: PluginRuntimeTestHost, input: unknown, headers: Record<s
 const connect = (h: PluginRuntimeTestHost, headers: Record<string, string> = {}) => admin(h, { type: "block_action", action_id: "connect_wallet_host" }, headers);
 
 describe("walletHostSite: which address the install command uses", () => {
-	it("a saved https address is used as is, without a trailing slash", () => {
+	it("[T25] a saved https address is used as is, without a trailing slash", () => {
 		expect(walletHostSite("https://shop.example/", undefined)).toEqual({ url: "https://shop.example", source: "saved", saved: "https://shop.example" });
 		expect(walletHostSite("https://shop.example", "https://shop.example")).toEqual({ url: "https://shop.example", source: "saved", saved: "https://shop.example" });
 	});
 
-	it("a saved https address that differs from the browser's is kept, with a warning naming both", () => {
+	it("[T25] a saved https address that differs from the browser's is kept, with a warning naming both", () => {
 		expect(walletHostSite("https://old.example", "https://new.example")).toEqual({ url: "https://old.example", source: "saved", saved: "https://old.example", browser: "https://new.example" });
 		// A plain-http browser origin isn't a candidate, so there's nothing to warn about.
 		expect(walletHostSite("https://shop.example", "http://192.168.1.5:4322")).toEqual({ url: "https://shop.example", source: "saved", saved: "https://shop.example" });
 	});
 
-	it("a loopback, plain-http or missing saved address falls back to an https browser origin", () => {
+	it("[T25] a loopback, plain-http or missing saved address falls back to an https browser origin", () => {
 		for (const saved of ["http://localhost:4321", "http://127.0.0.1:4321/", "http://[::1]:4321", "https://localhost", "http://shop.example", "http://192.168.8.249:4322", ""]) {
 			expect(walletHostSite(saved, "https://dev.example.com"), saved).toEqual({ url: "https://dev.example.com", source: "browser", saved: saved.replace(/\/$/, "") });
 		}
 	});
 
-	it("no usable address: no https browser origin, or one on loopback, or one that isn't a bare origin", () => {
+	it("[T25] no usable address: no https browser origin, or one on loopback, or one that isn't a bare origin", () => {
 		for (const origin of [undefined, "", "null", "http://dev.example.com", "http://localhost:4321", "https://localhost:4321", "https://127.0.0.1", "https://sub.localhost", "https://dev.example.com/path", "https://user@dev.example.com", "not a url"]) {
 			expect(walletHostSite("http://localhost:4321", origin), String(origin)).toEqual({ url: null, saved: "http://localhost:4321" });
 		}
@@ -54,7 +54,7 @@ describe("walletHostSite: which address the install command uses", () => {
 });
 
 describe("the admin page with EmDash's saved address on localhost", () => {
-	it("Origin reaches the admin route: the command uses the browser's https address and says why", async () => {
+	it("[T25] Origin reaches the admin route: the command uses the browser's https address and says why", async () => {
 		host = await createPluginRuntimeTestHost({ site: { url: "http://localhost:4321" } });
 		const r = await connect(host, { origin: "https://dev.example.com" });
 		expect(r.toast).toMatchObject({ type: "success" });
@@ -62,7 +62,7 @@ describe("the admin page with EmDash's saved address on localhost", () => {
 		expect(texts(r.blocks)).toContain("The wallet host will connect to https://dev.example.com (from your browser, because EmDash's saved address for this site is http://localhost:4321).");
 	});
 
-	it("without an https Origin: a red line, no command and no code", async () => {
+	it("[T25] without an https Origin: a red line, no command and no code", async () => {
 		host = await createPluginRuntimeTestHost({ site: { url: "http://localhost:4321" } });
 		for (const headers of [{}, { origin: "http://localhost:4321" }, { host: "dev.example.com", "x-forwarded-host": "dev.example.com" }] as Record<string, string>[]) {
 			const r = await connect(host, headers);
@@ -73,7 +73,7 @@ describe("the admin page with EmDash's saved address on localhost", () => {
 		expect(await host.inspect.kv.get("state:pairing")).toBeNull();
 	});
 
-	it("a saved https address wins over a different browser origin, with a warning naming both", async () => {
+	it("[T25] a saved https address wins over a different browser origin, with a warning naming both", async () => {
 		host = await createPluginRuntimeTestHost({ site: { url: "https://shop.example" } });
 		const r = await connect(host, { origin: "https://www.shop.example" });
 		expect(command(r.blocks)).toContain("--site https://shop.example --pair ");
@@ -83,7 +83,7 @@ describe("the admin page with EmDash's saved address on localhost", () => {
 		expect(texts(r.blocks)).toContain("The wallet host will connect to https://shop.example (EmDash's saved address for this site).");
 	});
 
-	it("the page load (not only the button) uses the same rule", async () => {
+	it("[T25] the page load (not only the button) uses the same rule", async () => {
 		host = await createPluginRuntimeTestHost({ site: { url: "http://localhost:4321" } });
 		const withOrigin = await admin(host, { type: "page_load", page: "/payments" }, { origin: "https://dev.example.com" });
 		expect(texts(withOrigin.blocks)).toContain("The wallet host will connect to https://dev.example.com (from your browser");
@@ -95,7 +95,7 @@ describe("the admin page with EmDash's saved address on localhost", () => {
 describe("F06: spoofed Origin, Host and X-Forwarded-Host change nothing on the public routes", () => {
 	const SPOOF = { origin: "https://evil.example", host: "evil.example", "x-forwarded-host": "evil.example" };
 
-	it("status, checkout and bridge/sync replies never carry the spoofed host, and match the unspoofed ones", async () => {
+	it("[F06] status, checkout and bridge/sync replies never carry the spoofed host, and match the unspoofed ones", async () => {
 		host = await createPluginRuntimeTestHost({ site: { url: "http://localhost:4321" } });
 		const h = host;
 		const status = async (headers: Record<string, string>) => (await h.actions.routes.request("status", { method: "GET", url: "https://site.test/_emdash/api/plugins/coffer/status?token=inv_unknown", headers })).text();

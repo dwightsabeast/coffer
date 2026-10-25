@@ -11,7 +11,7 @@ const statuses = (sim: Sim) => sim.events.filter((e) => e.type === "status").map
 const alerts = (sim: Sim) => sim.events.filter((e) => e.type === "alert");
 
 describe("POC scenarios", () => {
-	it("pay in full: confirming at 0 confirmations, settled at the required depth, never before", () => {
+	it("[T07][R01] pay in full: confirming at 0 confirmations, settled at the required depth, never before", () => {
 		const sim = new Sim(); // $12.00 at $150 = 0.08 XMR, Standard under 100 -> 2 confirmations
 		expect(sim.inv.required).toBe(2);
 		sim.pay(sim.expected);
@@ -29,7 +29,7 @@ describe("POC scenarios", () => {
 		expect(sim.inv.overpaidAtomic).toBeUndefined();
 	});
 
-	it("pay in two parts: seen, then confirming; settles when the newer transfer is deep enough", () => {
+	it("[R04] pay in two parts: seen, then confirming; settles when the newer transfer is deep enough", () => {
 		const sim = new Sim({ fiatMinor: 15000n }); // $150 -> 1 XMR, Standard 100 to 1,000 -> 5
 		expect(sim.inv.required).toBe(5);
 		sim.pay((sim.expected * 6n) / 10n);
@@ -48,7 +48,7 @@ describe("POC scenarios", () => {
 		expect(totals(sim.inv).depth).toBe(5);
 	});
 
-	it("underpay and leave: review (underpaid) after the post-deadline sync", () => {
+	it("[R04] underpay and leave: review (underpaid) after the post-deadline sync", () => {
 		const sim = new Sim();
 		sim.pay((sim.expected * 6n) / 10n);
 		sim.mine();
@@ -59,7 +59,7 @@ describe("POC scenarios", () => {
 		expect(sim.inv).toMatchObject({ status: "review", reviewReason: "underpaid" });
 	});
 
-	it("pay after expiry: expired, then review (late), never settled on its own", () => {
+	it("[R03] pay after expiry: expired, then review (late), never settled on its own", () => {
 		const sim = new Sim();
 		sim.mine(20);
 		sim.sync();
@@ -72,7 +72,7 @@ describe("POC scenarios", () => {
 		expect(sim.inv.status).toBe("review"); // admin decides
 	});
 
-	it("reorg after settling: stays settled, re-confirming, no alert; re-confirms when mined again", () => {
+	it("[T12] reorg after settling: stays settled, re-confirming, no alert; re-confirms when mined again", () => {
 		const sim = new Sim();
 		sim.pay(sim.expected);
 		sim.mine(2);
@@ -91,7 +91,7 @@ describe("POC scenarios", () => {
 		expect(alerts(sim)).toEqual([]);
 	});
 
-	it("not mined again within 5 blocks after a reorg: review (reorg) with an alert", () => {
+	it("[T12] not mined again within 5 blocks after a reorg: review (reorg) with an alert", () => {
 		const sim = new Sim();
 		sim.pay(sim.expected);
 		sim.mine(2);
@@ -107,7 +107,7 @@ describe("POC scenarios", () => {
 		expect(alerts(sim)).toEqual([{ type: "alert", kind: "reorg" }]);
 	});
 
-	it("payment reversed: review (reversed) with an alert at once", () => {
+	it("[T12][R10] payment reversed: review (reversed) with an alert at once", () => {
 		const sim = new Sim();
 		sim.pay(sim.expected);
 		sim.mine(2);
@@ -118,7 +118,7 @@ describe("POC scenarios", () => {
 		expect(alerts(sim)).toEqual([{ type: "alert", kind: "reversed" }]);
 	});
 
-	it("bridge outage across expiry: pendingExpiry instead of expiring, then settles on time", () => {
+	it("[R06] bridge outage across expiry: pendingExpiry instead of expiring, then settles on time", () => {
 		const sim = new Sim();
 		sim.wait(2 * 60_000);
 		sim.pay(sim.expected); // 2 minutes in; the wallet sees it, nobody tells the site
@@ -133,7 +133,7 @@ describe("POC scenarios", () => {
 		expect(sim.inv.pendingExpiry).toBeUndefined();
 	});
 
-	it("speed changed mid-invoice: the target stays locked", () => {
+	it("[T07] speed changed mid-invoice: the target stays locked", () => {
 		const sim = new Sim({ speed: "standard" });
 		// The owner switches to Strict now; the open invoice keeps its stored target.
 		sim.pay(sim.expected);
@@ -142,7 +142,7 @@ describe("POC scenarios", () => {
 		expect(sim.inv).toMatchObject({ status: "settled", required: 2 });
 	});
 
-	it("tip-shaped invoice settles at the dust floor and the lowest tier", () => {
+	it("[T07] tip-shaped invoice settles at the dust floor and the lowest tier", () => {
 		const sim = new Sim({ kind: "tip", fiatMinor: null, speed: "standard" });
 		expect(sim.inv).toMatchObject({ expectedAtomic: null, minAtomic: "100000000", required: 2 });
 		sim.pay(99_999_999n);
@@ -163,7 +163,7 @@ describe("POC scenarios", () => {
 		expect(sim.inv).toMatchObject({ status: "settled", overpaidAtomic: "5" });
 	});
 
-	it("exactly 99.5% settles; one atomic unit less is underpaid", () => {
+	it("[R04] exactly 99.5% settles; one atomic unit less is underpaid", () => {
 		const paid = new Sim();
 		paid.pay((paid.expected * 995n) / 1000n);
 		paid.mine(2);
@@ -178,7 +178,7 @@ describe("POC scenarios", () => {
 });
 
 describe("attacks the core must refuse", () => {
-	it("time-locked funds are not counted (unlock_time, never `locked`)", () => {
+	it("[T11] time-locked funds are not counted (unlock_time, never `locked`)", () => {
 		const sim = new Sim();
 		sim.pay(sim.expected, { unlockTime: "3000100" });
 		sim.mine(12);
@@ -186,13 +186,13 @@ describe("attacks the core must refuse", () => {
 		expect(sim.inv.status).toBe("new");
 		expect(totals(sim.inv).notCounted).toBe(1);
 	});
-	it("double-spend-flagged funds are not counted", () => {
+	it("[T11] double-spend-flagged funds are not counted", () => {
 		const sim = new Sim();
 		sim.pay(sim.expected, { doubleSpendSeen: true });
 		sim.sync();
 		expect(sim.inv.status).toBe("new");
 	});
-	it("a not-counted transfer doesn't make an expired invoice late", () => {
+	it("[T11][R03] a not-counted transfer doesn't make an expired invoice late", () => {
 		const sim = new Sim();
 		sim.mine(20);
 		sim.sync();
@@ -203,7 +203,7 @@ describe("attacks the core must refuse", () => {
 });
 
 describe("expire on evidence and on-time evidence (spec changes 2 and 5)", () => {
-	it("no expiry from the clock alone: the backup cron only marks pendingExpiry", () => {
+	it("[R02] no expiry from the clock alone: the backup cron only marks pendingExpiry", () => {
 		const sim = new Sim();
 		sim.sync(); // a sync before the deadline
 		sim.mine(20);
@@ -213,7 +213,7 @@ describe("expire on evidence and on-time evidence (spec changes 2 and 5)", () =>
 		expect(sim.inv.status).toBe("expired");
 	});
 
-	it("any one piece of evidence is enough: mined by expiresHeight counts, however first reported", () => {
+	it("[R03] any one piece of evidence is enough: mined by expiresHeight counts, however first reported", () => {
 		// The wallet host is offline when the buyer pays in time; it comes back after the deadline while the payment is
 		// still unmined, so seenAt and poolTs are both late. Mined at a height inside the window: on time.
 		const sim = new Sim();
@@ -234,7 +234,7 @@ describe("expire on evidence and on-time evidence (spec changes 2 and 5)", () =>
 		expect(sim.inv.status).toBe("settled");
 	});
 
-	it("an unmined transfer becomes late only once it can't be mined by expiresHeight", () => {
+	it("[R03] an unmined transfer becomes late only once it can't be mined by expiresHeight", () => {
 		const sim = new Sim();
 		sim.mine(17); // chain at expiresHeight - 1
 		sim.wait(60 * 60_000);
@@ -246,7 +246,7 @@ describe("expire on evidence and on-time evidence (spec changes 2 and 5)", () =>
 		expect(sim.inv).toMatchObject({ status: "review", reviewReason: "late" });
 	});
 
-	it("inclusive boundaries: seen exactly at expiresAt is on time; mined exactly at expiresHeight is on time", () => {
+	it("[R03] inclusive boundaries: seen exactly at expiresAt is on time; mined exactly at expiresHeight is on time", () => {
 		const atDeadline = new Sim();
 		atDeadline.wait(30 * 60_000); // now === expiresAt
 		atDeadline.pay(atDeadline.expected);
@@ -267,7 +267,7 @@ describe("expire on evidence and on-time evidence (spec changes 2 and 5)", () =>
 		expect(lastBlock.inv.status).toBe("settled");
 	});
 
-	it("an expired invoice reopens when a payment made in time turns up", () => {
+	it("[R03] an expired invoice reopens when a payment made in time turns up", () => {
 		const sim = new Sim();
 		sim.walletOnline = false;
 		sim.wait(5 * 60_000);
@@ -280,7 +280,7 @@ describe("expire on evidence and on-time evidence (spec changes 2 and 5)", () =>
 		expect(sim.events.some((e) => e.type === "reopened")).toBe(true);
 	});
 
-	it("an on-time partial payment reported after expiry goes to review (underpaid), not silently expired", () => {
+	it("[R04] an on-time partial payment reported after expiry goes to review (underpaid), not silently expired", () => {
 		const sim = new Sim();
 		sim.walletOnline = false;
 		sim.pay(sim.expected / 2n);
@@ -291,7 +291,7 @@ describe("expire on evidence and on-time evidence (spec changes 2 and 5)", () =>
 		expect(sim.inv).toMatchObject({ status: "review", reviewReason: "underpaid" });
 	});
 
-	it("a tip below the dust floor at expiry just expires, quietly (spec change 33)", () => {
+	it("[R02] a tip below the dust floor at expiry just expires, quietly (spec change 33)", () => {
 		const sim = new Sim({ kind: "tip", fiatMinor: null });
 		sim.pay(50n);
 		sim.mine(20);
@@ -313,7 +313,7 @@ describe("expire on evidence and on-time evidence (spec changes 2 and 5)", () =>
 describe("tips (spec change 33)", () => {
 	const DAY = 24 * 3_600_000;
 
-	it("the floor exactly settles; one atomic unit less stays seen, then expires", () => {
+	it("[R04] the floor exactly settles; one atomic unit less stays seen, then expires", () => {
 		const exact = new Sim({ kind: "tip", fiatMinor: null });
 		exact.pay(100_000_000n);
 		exact.mine(2);
@@ -329,7 +329,7 @@ describe("tips (spec change 33)", () => {
 		expect(short.inv.status).toBe("expired");
 	});
 
-	it("a set amount (here $12.00) paid short but above the floor settles at the floor, never underpaid", () => {
+	it("[R04] a set amount (here $12.00) paid short but above the floor settles at the floor, never underpaid", () => {
 		const sim = new Sim({ kind: "tip", fiatMinor: 1200n });
 		expect(sim.inv.expectedAtomic).toBe("80000000000");
 		sim.pay(1_000_000_000n); // 0.001 XMR of the 0.08 asked
@@ -339,7 +339,7 @@ describe("tips (spec change 33)", () => {
 		expect(sim.inv.overpaidAtomic).toBeUndefined();
 	});
 
-	it("a tip paid after its window settles, never going to review as late", () => {
+	it("[R03] a tip paid after its window settles, never going to review as late", () => {
 		const sim = new Sim({ kind: "tip", fiatMinor: null });
 		sim.mine(20);
 		sim.sync();
@@ -355,7 +355,7 @@ describe("tips (spec change 33)", () => {
 		expect(statuses(sim)).not.toContain("review");
 	});
 
-	it("paid after its window while still open (no sync since): settles, no late review", () => {
+	it("[R03] paid after its window while still open (no sync since): settles, no late review", () => {
 		const sim = new Sim({ kind: "tip", fiatMinor: null });
 		sim.mine(20); // past expiresHeight, no sync yet
 		sim.wait(DAY);
@@ -365,7 +365,7 @@ describe("tips (spec change 33)", () => {
 		expect(sim.inv.status).toBe("settled");
 	});
 
-	it("a product paid late still goes to review (the tips rule is for tips only)", () => {
+	it("[R03] a product paid late still goes to review (the tips rule is for tips only)", () => {
 		const sim = new Sim();
 		sim.mine(20);
 		sim.sync();
@@ -401,7 +401,7 @@ describe("tips (spec change 33)", () => {
 		expect(isWatched(sim.inv, sim.now)).toBe(false);
 	});
 
-	it("untouched through a wallet host outage: still watched, because nothing reported it empty", () => {
+	it("[R06] untouched through a wallet host outage: still watched, because nothing reported it empty", () => {
 		const sim = new Sim({ kind: "tip", fiatMinor: null });
 		sim.mine(20);
 		sim.sync();
@@ -410,7 +410,7 @@ describe("tips (spec change 33)", () => {
 		expect(isWatched(sim.inv, sim.inv.expiresAt + 7 * DAY)).toBe(false); // the 7-day cap still holds
 	});
 
-	it("a settled tip is watched like a product: until 10 deep, at most 24 hours after settling", () => {
+	it("[T12] a settled tip is watched like a product: until 10 deep, at most 24 hours after settling", () => {
 		const sim = new Sim({ kind: "tip", fiatMinor: null });
 		sim.pay(500_000_000n);
 		sim.mine(10);
@@ -421,7 +421,7 @@ describe("tips (spec change 33)", () => {
 });
 
 describe("watch list", () => {
-	it("watches open invoices, expired and review ones for 24 hours, settled ones until 10 deep", () => {
+	it("[T12] watches open invoices, expired and review ones for 24 hours, settled ones until 10 deep", () => {
 		const sim = new Sim();
 		expect(isWatched(sim.inv, sim.now)).toBe(true); // new
 		sim.pay(sim.expected);
@@ -444,7 +444,7 @@ describe("watch list", () => {
 		expect(isWatched(late.inv, late.inv.expiresAt + 24 * 3_600_000)).toBe(false);
 	});
 
-	it("keeps a re-confirming settled invoice watched, but never past 24 hours after settling", () => {
+	it("[T12] keeps a re-confirming settled invoice watched, but never past 24 hours after settling", () => {
 		const sim = new Sim();
 		sim.pay(sim.expected);
 		sim.mine(12);

@@ -92,7 +92,7 @@ describe("Tips view", () => {
 		]);
 	});
 
-	it("the newest tips, with status, amount and entry; each note as literal text, whatever it contains", async () => {
+	it("[T08] the newest tips, with status, amount and entry; each note as literal text, whatever it contains", async () => {
 		const notes = ["see https://evil.test/x?y=1 and www.example.com", "**bold** _it_ [link](https://e.test) `code`", "<script>alert(1)</script><b>hi</b> &amp;", '{"type":"button","action_id":"x"} | <@U123> <!channel>'];
 		await setup(notes.map((note, i) => settled(i + 1, "100000000", { entry: HELLO, buyer: { note } })));
 		const s = tipsSection(await load());
@@ -123,7 +123,7 @@ describe("Tips view", () => {
 		expect(s).toContainEqual({ type: "fields", fields: [{ label: "Received", value: "0.1 XMR" }, { label: "Tips", value: "1,000 settled" }] });
 	});
 
-	it("notes are gone after the 30-day purge, and the tip still counts", async () => {
+	it("[P04] notes are gone after the 30-day purge, and the tip still counts", async () => {
 		const old = settled(1, "100000000", { entry: HELLO, buyer: { note: "thanks!" }, finalAt: Date.now() - 31 * DAY, expiresAt: Date.now() - 31 * DAY });
 		const h = await setup([old]);
 		expect(text(tipsSection(await load()))).toContain("Note: thanks!");

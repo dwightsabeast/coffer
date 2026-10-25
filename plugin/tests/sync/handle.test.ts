@@ -31,11 +31,11 @@ function pairedStore(key: KeyName = "test1") {
 }
 
 describe("pairing", () => {
-	it("NOT_PAIRED without a key or an active code", async () => {
+	it("[T03] NOT_PAIRED without a key or an active code", async () => {
 		expect(errorCode(await send(new MemoryStore(), syncBody()))).toBe("NOT_PAIRED");
 	});
 
-	it("pairs with an active code and a body signed by the key it carries, then burns the code", async () => {
+	it("[T13] pairs with an active code and a body signed by the key it carries, then burns the code", async () => {
 		const store = new MemoryStore();
 		const { code, state } = await newPairingCode(T0);
 		store.pairing = state;
@@ -48,7 +48,7 @@ describe("pairing", () => {
 		expect(errorCode(await send(store, syncBody({ seq: T0 + 1 }), { now: T0 + 1000 }))).toBe("ok");
 	});
 
-	it("rejects a wrong code while one is active, and stores nothing", async () => {
+	it("[T13] rejects a wrong code while one is active, and stores nothing", async () => {
 		const store = new MemoryStore();
 		store.pairing = (await newPairingCode(T0)).state;
 		const out = await send(store, syncBody({ pair: { code: "A".repeat(22), publicKey: PUBLIC_KEYS.test1 } }));
@@ -57,7 +57,7 @@ describe("pairing", () => {
 		expect(store.pairing?.used).toBe(false);
 	});
 
-	it("rejects a body signed by a key other than the one it carries, without burning the code", async () => {
+	it("[T03][T13] rejects a body signed by a key other than the one it carries, without burning the code", async () => {
 		const store = new MemoryStore();
 		const { code, state } = await newPairingCode(T0);
 		store.pairing = state;
@@ -67,7 +67,7 @@ describe("pairing", () => {
 		expect(store.pairing?.used).toBe(false);
 	});
 
-	it("an expired code is not active: nothing is parsed before the signature, so the request is not paired", async () => {
+	it("[T13] an expired code is not active: nothing is parsed before the signature, so the request is not paired", async () => {
 		const store = new MemoryStore();
 		const { code, state } = await newPairingCode(T0);
 		store.pairing = state;
@@ -75,7 +75,7 @@ describe("pairing", () => {
 		expect(errorCode(await send(store, syncBody({ seq: later, pair: { code, publicKey: PUBLIC_KEYS.test1 } }), { now: later }))).toBe("NOT_PAIRED");
 	});
 
-	it("a used code can't pair a second bridge (its body isn't parsed before the signature check)", async () => {
+	it("[T13] a used code can't pair a second bridge (its body isn't parsed before the signature check)", async () => {
 		const store = new MemoryStore();
 		const { code, state } = await newPairingCode(T0);
 		store.pairing = state;
@@ -85,7 +85,7 @@ describe("pairing", () => {
 		expect(store.publicKey).toBe(PUBLIC_KEYS.test1);
 	});
 
-	it("a pair field signed by the paired bridge: PAIRING_NOT_ACTIVE without any code, PAIRING_REJECTED with a used one", async () => {
+	it("[T13] a pair field signed by the paired bridge: PAIRING_NOT_ACTIVE without any code, PAIRING_REJECTED with a used one", async () => {
 		const never = pairedStore();
 		expect(errorCode(await send(never, syncBody({ pair: { code: "A".repeat(22), publicKey: PUBLIC_KEYS.test1 } })))).toBe("PAIRING_NOT_ACTIVE");
 		const used = pairedStore();
@@ -93,7 +93,7 @@ describe("pairing", () => {
 		expect(errorCode(await send(used, syncBody({ pair: { code: "A".repeat(22), publicKey: PUBLIC_KEYS.test1 } })))).toBe("PAIRING_REJECTED");
 	});
 
-	it("a pairing body over 4 KiB takes the ordinary path and can't pair", async () => {
+	it("[T13][F01] a pairing body over 4 KiB takes the ordinary path and can't pair", async () => {
 		const store = new MemoryStore();
 		const { code, state } = await newPairingCode(T0);
 		store.pairing = state;
@@ -103,7 +103,7 @@ describe("pairing", () => {
 		expect(store.pairing?.used).toBe(false);
 	});
 
-	it("the pairing response suggests a restore height: the oldest watched invoice's createdHeight minus a margin (spec change 17)", async () => {
+	it("[R09] the pairing response suggests a restore height: the oldest watched invoice's createdHeight minus a margin (spec change 17)", async () => {
 		expect(RESTORE_MARGIN_BLOCKS).toBe(720);
 		const inv = (id: string, index: number, chainHeight: number, now = T0): Invoice =>
 			({ ...newInvoice({ network: "stagenet", id, token: "tok", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(index), addrIndex: index, now, chainHeight }) });
@@ -127,7 +127,7 @@ describe("pairing", () => {
 		expect((await paired([inv("inv_low", 1, 100)])).response).toMatchObject({ restoreHeight: 0 });
 	});
 
-	it("a new pairing replaces the old key", async () => {
+	it("[T03][T13][R08] a new pairing replaces the old key", async () => {
 		const store = pairedStore("test1");
 		const { code, state } = await newPairingCode(T0);
 		store.pairing = state;
@@ -139,7 +139,7 @@ describe("pairing", () => {
 });
 
 describe("ordinary syncs", () => {
-	it("forged, tampered, stale and badly encoded requests change nothing", async () => {
+	it("[T03][T04][F01] forged, tampered, stale and badly encoded requests change nothing", async () => {
 		const store = pairedStore();
 		expect(errorCode(await send(store, syncBody(), { key: "test2" }))).toBe("BAD_SIGNATURE");
 		const bytes = bytesOf(syncBody({ height: H0 + 1 }));
@@ -189,7 +189,7 @@ describe("ordinary syncs", () => {
 		expect(store.bridge?.height).toBe(H0 + 9);
 	});
 
-	it("snapshots are judged at the stored height when the reported one is lower: no false reorg after a fresh wallet's first sync", async () => {
+	it("[T12] snapshots are judged at the stored height when the reported one is lower: no false reorg after a fresh wallet's first sync", async () => {
 		const store = pairedStore();
 		await send(store, syncBody({ addresses: [{ index: 1, address: ADDR(1) }] }));
 		const inv = newInvoice({ network: "stagenet", id: "inv_r", token: "tok", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: "", addrIndex: 0, now: T0, chainHeight: H0 });
@@ -206,7 +206,7 @@ describe("ordinary syncs", () => {
 		expect(store.invoices.get("inv_r")).toMatchObject({ status: "settled", reconfirmingSince: H0 + 2 });
 	});
 
-	it("tops up the pool with new indexes only, and reports the free count and target", async () => {
+	it("[T05] tops up the pool with new indexes only, and reports the free count and target", async () => {
 		const store = pairedStore();
 		const out = await send(store, syncBody({ addresses: [1, 2, 3].map((i) => ({ index: i, address: ADDR(i) })) }));
 		expect(out.response).toMatchObject({ ok: true, poolFree: 3, poolTarget: 50 });
@@ -251,7 +251,7 @@ describe("ordinary syncs", () => {
 		expect(deep.response).toMatchObject({ watch: [] }); // 10 deep: no longer watched
 	});
 
-	it("a replayed snapshot (seq not newer) is ignored, even re-signed with a fresh timestamp; retries are idempotent", async () => {
+	it("[T04] a replayed snapshot (seq not newer) is ignored, even re-signed with a fresh timestamp; retries are idempotent", async () => {
 		const store = pairedStore();
 		await send(store, syncBody({ addresses: [{ index: 1, address: ADDR(1) }] }));
 		const inv = newInvoice({ network: "stagenet", id: "inv_b", token: "tok", kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: "", addrIndex: 0, now: T0, chainHeight: H0 });
@@ -269,7 +269,7 @@ describe("ordinary syncs", () => {
 		expect(store.invoices.get("inv_b")).toEqual(before);
 	});
 
-	it("from pairing to a settled invoice", async () => {
+	it("[R01] from pairing to a settled invoice", async () => {
 		const store = new MemoryStore();
 		const { code, state } = await newPairingCode(T0);
 		store.pairing = state;

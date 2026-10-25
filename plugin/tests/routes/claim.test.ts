@@ -40,7 +40,7 @@ function fakeCtx(freeRows: number, takenAddresses: string[]) {
 
 const build = (row: { addrIndex: number; address: string; network: string }) => ({ id: `inv_${row.addrIndex}`, subaddress: row.address, addrIndex: row.addrIndex, network: row.network }) as unknown as Invoice;
 
-it("an address already on an invoice is refused; the row stays claimed and checkout uses another free one", async () => {
+it("[T05][P02] an address already on an invoice is refused; the row stays claimed and checkout uses another free one", async () => {
 	const f = fakeCtx(3, [ADDR(1)]);
 	const inv = await claimAndStore(f.ctx as never, build);
 	expect(inv).not.toBeNull();
@@ -50,13 +50,13 @@ it("an address already on an invoice is refused; the row stays claimed and check
 	expect([...f.invoices.values()].filter((i) => i.subaddress === ADDR(1))).toHaveLength(1);
 });
 
-it("NO_ADDRESS_AVAILABLE (null) when every free address is already used", async () => {
+it("[T05] NO_ADDRESS_AVAILABLE (null) when every free address is already used", async () => {
 	const f = fakeCtx(2, [ADDR(1), ADDR(2)]);
 	expect(await claimAndStore(f.ctx as never, build)).toBeNull();
 	expect([...f.pool.values()].every((r) => r.status === "claimed")).toBe(true);
 });
 
-it("a row whose network can't be read (only one stored before spec change 36's sync check) is claimed with no invoice and skipped", async () => {
+it("[T20] a row whose network can't be read (only one stored before spec change 36's sync check) is claimed with no invoice and skipped", async () => {
 	const f = fakeCtx(2, []);
 	(f.pool.get("1") as { address: string }).address = fakeAddress(38, 1); // network byte 38: no network
 	const inv = await claimAndStore(f.ctx as never, build);

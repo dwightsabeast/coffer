@@ -105,7 +105,7 @@ describe("Needs a decision", () => {
 		expect(actions(t)[0]).toEqual({ type: "button", action_id: "invoice_action", label: "Expire", style: "primary", value: "expire:inv_0001" });
 	});
 
-	it("underpaid: how much arrived, the refund address as plain text, Expire recommended, wording that points at All invoices", async () => {
+	it("[T08] underpaid: how much arrived, the refund address as plain text, Expire recommended, wording that points at All invoices", async () => {
 		await setup([invoice(2, { reviewReason: "underpaid", buyer: { refundAddress: ADDR(77) }, transfers: [transfer({ amountAtomic: "1339285715", confirmations: 7 })] })]);
 		const t = toggle(await load(), "inv_0002") as B;
 		expect(text(t)).toContain("0.001339285715 of 0.001785714286 XMR arrived (75%) by the deadline, 7 confirmations when last checked (Oct 6).");
@@ -159,7 +159,7 @@ describe("Needs a decision", () => {
 		expect(await h.inspect.storage.get("invoices", "inv_0001")).toMatchObject({ status: "settled", adminFinal: true });
 	});
 
-	it("a review item that changed since the page loaded is refused", async () => {
+	it("[F04] a review item that changed since the page loaded is refused", async () => {
 		const h = await setup([invoice(1, { reviewReason: "late", transfers: [transfer()] })]);
 		await load();
 		await h.fixtures.plugin.storage("invoices", "inv_0001", invoice(1, { status: "expired", adminFinal: true, transfers: [transfer()] }));

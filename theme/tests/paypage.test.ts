@@ -54,7 +54,7 @@ describe("PayPage", () => {
 		expect(html).toContain('data-final="false"');
 	});
 
-	it("the privacy headers and meta, with a CSP whose hashes match the inline script and style as sent", async () => {
+	it("[T09] the privacy headers and meta, with a CSP whose hashes match the inline script and style as sent", async () => {
 		const { res, html } = await render(TOKEN, locals(ok(status())));
 		expect(res.headers.get("cache-control")).toBe("private, no-store");
 		expect(res.headers.get("referrer-policy")).toBe("no-referrer");
@@ -74,14 +74,14 @@ describe("PayPage", () => {
 		expect(html).toContain('<meta name="referrer" content="no-referrer">');
 	});
 
-	it("nothing from anywhere else: no URL but the SVG namespace, no src, no stylesheet link", async () => {
+	it("[T09] nothing from anywhere else: no URL but the SVG namespace, no src, no stylesheet link", async () => {
 		const { html } = await render(TOKEN, locals(ok(status())));
 		const scrubbed = html.replaceAll('xmlns="http://www.w3.org/2000/svg"', "");
 		expect(scrubbed).not.toMatch(/https?:\/\//);
 		expect(scrubbed).not.toMatch(/\ssrc=|<link|<iframe|<img|@import|url\(/i);
 	});
 
-	it("the token appears once: in the status URL the script polls (same origin, relative)", async () => {
+	it("[T09] the token appears once: in the status URL the script polls (same origin, relative)", async () => {
 		const { html } = await render(TOKEN, locals(ok(status())));
 		expect(html.split(TOKEN)).toHaveLength(2);
 		expect(html).toContain(`data-status-url="/_emdash/api/plugins/coffer/status?token=${TOKEN}"`);
@@ -117,7 +117,7 @@ describe("PayPage", () => {
 		expect(html).toContain(qrSvg(`monero:${ADDRESS}?tx_amount=0.000100000000&tx_description=Coffer%20test%20tip`));
 	});
 
-	it("unknown token: 404, the not-valid line, no polling; a malformed token never reaches the plugin", async () => {
+	it("[F03] unknown token: 404, the not-valid line, no polling; a malformed token never reaches the plugin", async () => {
 		const unknown = await render(TOKEN, locals(NOT_FOUND));
 		expect(unknown.res.status).toBe(404);
 		expect(visibleStates(unknown.html)).toEqual(["notfound"]);
@@ -154,7 +154,7 @@ describe("PayPage", () => {
 		expect(res).toContain('<link rel="stylesheet" href="/site.css">');
 	});
 
-	it("fails closed without preparePayPage or its headers: no payment details, no token, no plugin call", async () => {
+	it("[T09] fails closed without preparePayPage or its headers: no payment details, no token, no plugin call", async () => {
 		const calls: Call[] = [];
 		const loc = locals(ok(status()), calls) as App.Locals;
 		const request = new Request(`https://shop.example/pay/coffer/${TOKEN}`);
@@ -171,7 +171,7 @@ describe("PayPage", () => {
 		expect(calls).toEqual([]);
 	});
 
-	it("the headers set by the page are what PayPage checks for", async () => {
+	it("[T09] the headers set by the page are what PayPage checks for", async () => {
 		const headers = new Headers();
 		await setPayPageHeaders({ response: { headers } });
 		const { res } = await render(TOKEN, locals(ok(status())));
@@ -202,7 +202,7 @@ describe("PayPage", () => {
 		expect(res.headers.get("content-security-policy")).toContain("default-src 'none'");
 	});
 
-	it("a way back in every state (spec change 39): the page the tip came from, checked again, else the site's home", async () => {
+	it("[T22] a way back in every state (spec change 39): the page the tip came from, checked again, else the site's home", async () => {
 		/** The top link: its href and text, or null. */
 		const back = (html: string) => {
 			const m = /<p class="coffer-back"><a href="([^"]*)"[^>]*>([^<]*)<\/a><\/p>/.exec(markup(html));

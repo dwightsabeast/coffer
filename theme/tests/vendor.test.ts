@@ -18,11 +18,11 @@ async function sha256(text: string): Promise<string> {
 }
 
 describe("vendored qrcodegen", () => {
-	it("matches the hash recorded in SOURCE.md", async () => {
+	it("[T24] matches the hash recorded in SOURCE.md", async () => {
 		expect(await sha256(vendored)).toBe(VENDORED_SHA256);
 	});
 
-	it("is upstream's file once the three recorded edits are undone", async () => {
+	it("[T24] is upstream's file once the three recorded edits are undone", async () => {
 		let upstream = vendored;
 		for (const [edited, original] of EDITS) {
 			expect(upstream.split(edited)).toHaveLength(2); // each edit exactly once

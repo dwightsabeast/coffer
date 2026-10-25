@@ -43,7 +43,7 @@ describe("checkTipAddress", () => {
 		expect(["9", "A"]).toContain(address(53)[0]);
 	});
 
-	it("another network's address is refused, naming the network expected", () => {
+	it("[T20] another network's address is refused, naming the network expected", () => {
 		expect(checkTipAddress(address(24), "mainnet")).toEqual({ ok: false, reason: "The tip address isn't a valid mainnet Monero address (it's for stagenet). Check the address given to tipEndpoint." });
 		expect(checkTipAddress(address(18), "stagenet")).toMatchObject({ ok: false, reason: expect.stringContaining("(it's for mainnet)") });
 	});
@@ -54,7 +54,7 @@ describe("checkTipAddress", () => {
 		for (const a of bad) expect(checkTipAddress(a as string, "mainnet"), String(a)).toMatchObject({ ok: false, reason: expect.stringContaining("isn't a valid mainnet Monero address") });
 	});
 
-	it("an unknown network setting is refused too", () => {
+	it("[T20] an unknown network setting is refused too", () => {
 		expect(checkTipAddress(address(18), "main" as never)).toMatchObject({ ok: false, reason: expect.stringContaining('network must be "mainnet", "stagenet" or "testnet"') });
 	});
 });

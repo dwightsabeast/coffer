@@ -14,7 +14,7 @@ describe("isPaid", () => {
 		for (const s of ["new", "seen", "confirming", "expired", "review"] as const) expect(await isPaid(astro(locals(ok(status({ status: s })))), TOKEN), s).toBe(false);
 	});
 
-	it("false for an unknown or malformed token, no runtime, or a failing plugin; a malformed token isn't sent", async () => {
+	it("[F03] false for an unknown or malformed token, no runtime, or a failing plugin; a malformed token isn't sent", async () => {
 		expect(await isPaid(astro(locals(NOT_FOUND)), TOKEN)).toBe(false);
 		expect(await isPaid(astro({}), TOKEN)).toBe(false);
 		expect(await isPaid(astro(locals(null, [], { throws: true })), TOKEN)).toBe(false);

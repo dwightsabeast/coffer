@@ -74,7 +74,7 @@ describe("tip endpoint: to checkout", () => {
 		expect(res.headers.get("location")).toBe("/shop/pay/AbCdEfGhIjKlMnOpQrStUv");
 	});
 
-	it("the way back (spec change 39): the page's path and query go on to the pay page; anything unsafe is left off", async () => {
+	it("[T22] the way back (spec change 39): the page's path and query go on to the pay page; anything unsafe is left off", async () => {
 		const location = async (returnTo: string) => (await post(endpoint, { amount: "5", returnTo }, locals(ok(), []))).res.headers.get("location");
 		expect(await location("/posts/hello?ref=x#top")).toBe("/pay/coffer/AbCdEfGhIjKlMnOpQrStUv?return=%2Fposts%2Fhello%3Fref%3Dx");
 		expect(await location("/")).toBe("/pay/coffer/AbCdEfGhIjKlMnOpQrStUv?return=%2F");
@@ -85,7 +85,7 @@ describe("tip endpoint: to checkout", () => {
 		expect(res.headers.get("location")).toBe("/pay/coffer/AbCdEfGhIjKlMnOpQrStUv");
 	});
 
-	it("custom amounts: fiat to minor units, XMR to atomic units, never floats; any amount sends none", async () => {
+	it("[F07] custom amounts: fiat to minor units, XMR to atomic units, never floats; any amount sends none", async () => {
 		const cases: Array<[Record<string, string>, unknown]> = [
 			[{ amount: "custom", custom: "12.5", unit: "fiat", currency: "USD" }, { fiatMinor: "1250", currency: "USD" }],
 			[{ amount: "custom", custom: "7", unit: "fiat", currency: "USD" }, { fiatMinor: "700", currency: "USD" }],
@@ -100,7 +100,7 @@ describe("tip endpoint: to checkout", () => {
 		}
 	});
 
-	it("a malformed form: an error page, and checkout is never called", async () => {
+	it("[F07] a malformed form: an error page, and checkout is never called", async () => {
 		const malformed: Array<Record<string, string>> = [{ amount: "custom", custom: "1e3", unit: "fiat" }, { amount: "custom", custom: "-1", unit: "xmr" }, { amount: "custom", custom: "0.0000000000001", unit: "xmr" }, { amount: "custom", custom: "1.234", unit: "fiat" }, { amount: "custom", custom: "", unit: "xmr" }, { amount: "5", currency: "GBP" }, { amount: "five" }, { amount: "custom", custom: "1", unit: "btc" }];
 		for (const fields of malformed) {
 			const calls: Call[] = [];
@@ -111,7 +111,7 @@ describe("tip endpoint: to checkout", () => {
 		}
 	});
 
-	it("passes the visitor's own request headers on, except cookies, credentials and Origin", async () => {
+	it("[T18] passes the visitor's own request headers on, except cookies, credentials and Origin", async () => {
 		const calls: Call[] = [];
 		await post(endpoint, { amount: "any" }, locals(ok(), calls), { "x-forwarded-for": "198.51.100.7", "cf-connecting-ip": "198.51.100.7", "user-agent": "Tor Browser", cookie: "session=secret", authorization: "Bearer x", origin: ORIGIN });
 		const h = calls[0].headers;
@@ -124,7 +124,7 @@ describe("tip endpoint: to checkout", () => {
 		expect(h.origin).toBeUndefined();
 	});
 
-	it("a post from another site is refused before checkout (as EmDash refuses a cross-site Origin on the route itself)", async () => {
+	it("[T17] a post from another site is refused before checkout (as EmDash refuses a cross-site Origin on the route itself)", async () => {
 		const crossSite: Array<Record<string, string>> = [{ origin: "https://evil.test" }, { origin: "null" }, { "sec-fetch-site": "cross-site", origin: ORIGIN }, { origin: "http://shop.example" }];
 		for (const headers of crossSite) {
 			const calls: Call[] = [];
@@ -143,7 +143,7 @@ describe("tip endpoint: to checkout", () => {
 		}
 	});
 
-	it("a refusal: its message, a link back to the page the tip came from (same site only), the privacy headers", async () => {
+	it("[T09][T22] a refusal: its message, a link back to the page the tip came from (same site only), the privacy headers", async () => {
 		const { res, html } = await post(endpoint, { amount: "any", returnTo: "/posts/hello" }, locals(fail("ENTRY_NOT_FOUND")));
 		expect(res.status).toBe(400);
 		expect(html).toContain(checkoutErrorMessage("ENTRY_NOT_FOUND"));
@@ -193,7 +193,7 @@ describe("tip endpoint: the spec change 18 A fallback address", () => {
 		expect(html).not.toContain(STAGENET_SUB);
 	});
 
-	it("an address for another network: logged once at start, and an error for the admin instead of a QR", async () => {
+	it("[T20] an address for another network: logged once at start, and an error for the admin instead of a QR", async () => {
 		const endpoint = tipEndpoint({ address: MAINNET, network: "stagenet" });
 		expect(errors).toHaveLength(1);
 		expect(String(errors[0][0])).toContain("The tip address isn't a valid stagenet Monero address (it's for mainnet)");

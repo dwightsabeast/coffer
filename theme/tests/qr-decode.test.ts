@@ -36,12 +36,12 @@ function pgm(modules: boolean[][]): Uint8Array {
 }
 
 describe("QR round trip through zbarimg", () => {
-	it.runIf(required && !have)("zbarimg is installed (COFFER_REQUIRE_ZBAR=1)", () => {
+	it.runIf(required && !have)("[T24] zbarimg is installed (COFFER_REQUIRE_ZBAR=1)", () => {
 		expect.fail("COFFER_REQUIRE_ZBAR=1 but zbarimg isn't on the PATH: install zbar-tools");
 	});
 
 	for (const [name, uri] of Object.entries(URIS)) {
-		it.runIf(have)(`${name} decodes to the exact URI`, () => {
+		it.runIf(have)(`[T24] ${name} decodes to the exact URI`, () => {
 			const file = join(dir, `${name}.pgm`);
 			writeFileSync(file, pgm(qrModules(uri)));
 			const r = spawnSync("zbarimg", ["--raw", "-q", "-Sdisable", "-Sqrcode.enable", file], { encoding: "utf8" });

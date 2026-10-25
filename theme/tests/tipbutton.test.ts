@@ -43,7 +43,7 @@ describe("TipButton", () => {
 		expect(html).toMatch(/>Tip this post<\/button>/);
 	});
 
-	it("bad props are tidied, not passed on: odd amounts dropped, an unknown currency becomes USD, the note limit capped at 140", async () => {
+	it("[F07] bad props are tidied, not passed on: odd amounts dropped, an unknown currency becomes USD, the note limit capped at 140", async () => {
 		const html = await render({ amounts: [0, -3, 2.5, 7, 7, 1000000], currency: "GBP", noteMax: 500 });
 		expect(html).toMatch(/value="7"/);
 		expect(html.match(/name="amount" value="7"/g)).toHaveLength(1);
@@ -52,7 +52,7 @@ describe("TipButton", () => {
 		expect(html).toMatch(/maxlength="140"/);
 	});
 
-	it("leaves the rest of the site alone (spec change 36, R5): no script, and only its own scoped coffer-tip styles", async () => {
+	it("[T23] leaves the rest of the site alone (spec change 36, R5): no script, and only its own scoped coffer-tip styles", async () => {
 		expect(await render()).not.toContain("<script");
 		expect(source).not.toContain("<script");
 		const styles = [...source.matchAll(/<style([^>]*)>([\s\S]*?)<\/style>/g)];

@@ -35,7 +35,7 @@ describe("qrModules", () => {
 });
 
 describe("qrSvg", () => {
-	it("one path of dark modules over a light background, with the quiet zone, and nothing external", () => {
+	it("[T09] one path of dark modules over a light background, with the quiet zone, and nothing external", () => {
 		const svg = qrSvg(URIS.product);
 		const n = qrModules(URIS.product).length + 2 * QUIET_ZONE;
 		expect(svg.startsWith(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${n} ${n}"`)).toBe(true);

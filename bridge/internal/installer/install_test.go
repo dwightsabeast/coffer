@@ -102,31 +102,33 @@ func TestInstall(t *testing.T) {
 }
 
 func TestInstallRefusesEarly(t *testing.T) {
-	for name, tweak := range map[string]func(*Options, *fakeSystem){
-		"not root":   func(o *Options, s *fakeSystem) { s.euid = 1000 },
-		"no systemd": func(o *Options, s *fakeSystem) { s.systemd = false },
-		"bad code":   func(o *Options, s *fakeSystem) { o.Code = "short" },
-		"no code":    func(o *Options, s *fakeSystem) { o.Code = "" },
-		"bad site":   func(o *Options, s *fakeSystem) { o.Site = "http://shop.example" },
-		// Run A attempt 1: an admin page that knew only EmDash's saved localhost address.
-		"loopback site": func(o *Options, s *fakeSystem) { o.Site = "http://localhost:4321" },
-		"127 site":      func(o *Options, s *fakeSystem) { o.Site = "http://127.0.0.1:4321" },
-		"::1 site":      func(o *Options, s *fakeSystem) { o.Site = "http://[::1]:4321" },
-	} {
-		t.Run(name, func(t *testing.T) {
-			opts, sys, tty, st := harness(t)
-			tweak(&opts, sys)
-			if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err == nil {
-				t.Fatal("installed")
-			}
-			if len(tty.asked) != 0 || len(sys.calls) != 0 || len(st.order) != 0 {
-				t.Fatalf("did things before refusing: asked %v calls %v steps %v", tty.asked, sys.calls, st.order)
-			}
-			if e, _ := os.ReadDir(opts.Paths.Root); len(e) != 0 {
-				t.Fatalf("wrote files: %v", e)
-			}
-		})
-	}
+	t.Run("[T15] refused before any key is asked for", func(t *testing.T) {
+		for name, tweak := range map[string]func(*Options, *fakeSystem){
+			"not root":   func(o *Options, s *fakeSystem) { s.euid = 1000 },
+			"no systemd": func(o *Options, s *fakeSystem) { s.systemd = false },
+			"bad code":   func(o *Options, s *fakeSystem) { o.Code = "short" },
+			"no code":    func(o *Options, s *fakeSystem) { o.Code = "" },
+			"bad site":   func(o *Options, s *fakeSystem) { o.Site = "http://shop.example" },
+			// Run A attempt 1: an admin page that knew only EmDash's saved localhost address.
+			"loopback site": func(o *Options, s *fakeSystem) { o.Site = "http://localhost:4321" },
+			"127 site":      func(o *Options, s *fakeSystem) { o.Site = "http://127.0.0.1:4321" },
+			"::1 site":      func(o *Options, s *fakeSystem) { o.Site = "http://[::1]:4321" },
+		} {
+			t.Run(name, func(t *testing.T) {
+				opts, sys, tty, st := harness(t)
+				tweak(&opts, sys)
+				if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err == nil {
+					t.Fatal("installed")
+				}
+				if len(tty.asked) != 0 || len(sys.calls) != 0 || len(st.order) != 0 {
+					t.Fatalf("did things before refusing: asked %v calls %v steps %v", tty.asked, sys.calls, st.order)
+				}
+				if e, _ := os.ReadDir(opts.Paths.Root); len(e) != 0 {
+					t.Fatalf("wrote files: %v", e)
+				}
+			})
+		}
+	})
 }
 
 func TestPromptRetries(t *testing.T) {
@@ -352,58 +354,62 @@ func TestSyncingNodeSaysSo(t *testing.T) {
 }
 
 func TestSameMachine(t *testing.T) {
-	opts, sys, tty, st := harness(t)
-	st.signals = []string{"a running site process (astro dev)"}
-	err := Install(context.Background(), opts, sys, tty, st.steps(sys))
-	if err == nil || !strings.Contains(err.Error(), "astro dev") || !strings.Contains(err.Error(), "separate machine") {
-		t.Fatalf("got %v", err)
-	}
-	if len(sys.calls) != 0 {
-		t.Fatal("changed the machine")
-	}
-	// Refused before the shop wallet's details are asked for (run A attempt 1 typed the view key, then was refused).
-	if len(tty.asked) != 0 {
-		t.Fatalf("asked %q before refusing", tty.asked)
-	}
-	// The stagenet-only development flag.
-	opts, sys, tty, st = harness(t)
-	st.signals = []string{"a running site process (astro dev)"}
-	opts.AllowSameMachine = true
-	if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err != nil {
-		t.Fatal(err)
-	}
-	if cfg, _ := config.Load(opts.Paths.Config()); !cfg.AllowSameMachine {
-		t.Fatal("the flag wasn't recorded")
-	}
-	// Refused on mainnet.
-	opts, sys, tty, st = harness(t)
-	opts.AllowSameMachine = true
-	tty.answers = []string{mainnetAddr}
-	st.nodes = map[string]noderpc.Info{"http://127.0.0.1:18081": {NetType: "mainnet", Height: 1, Synchronized: true}}
-	if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err == nil || !strings.Contains(err.Error(), "stagenet") {
-		t.Fatalf("mainnet with the dev flag: %v", err)
-	}
+	t.Run("[T15] the site's own machine is refused", func(t *testing.T) {
+		opts, sys, tty, st := harness(t)
+		st.signals = []string{"a running site process (astro dev)"}
+		err := Install(context.Background(), opts, sys, tty, st.steps(sys))
+		if err == nil || !strings.Contains(err.Error(), "astro dev") || !strings.Contains(err.Error(), "separate machine") {
+			t.Fatalf("got %v", err)
+		}
+		if len(sys.calls) != 0 {
+			t.Fatal("changed the machine")
+		}
+		// Refused before the shop wallet's details are asked for (run A attempt 1 typed the view key, then was refused).
+		if len(tty.asked) != 0 {
+			t.Fatalf("asked %q before refusing", tty.asked)
+		}
+		// The stagenet-only development flag.
+		opts, sys, tty, st = harness(t)
+		st.signals = []string{"a running site process (astro dev)"}
+		opts.AllowSameMachine = true
+		if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err != nil {
+			t.Fatal(err)
+		}
+		if cfg, _ := config.Load(opts.Paths.Config()); !cfg.AllowSameMachine {
+			t.Fatal("the flag wasn't recorded")
+		}
+		// Refused on mainnet.
+		opts, sys, tty, st = harness(t)
+		opts.AllowSameMachine = true
+		tty.answers = []string{mainnetAddr}
+		st.nodes = map[string]noderpc.Info{"http://127.0.0.1:18081": {NetType: "mainnet", Height: 1, Synchronized: true}}
+		if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err == nil || !strings.Contains(err.Error(), "stagenet") {
+			t.Fatalf("mainnet with the dev flag: %v", err)
+		}
+	})
 }
 
 // A loopback --site says what's wrong with the address, not only that this machine runs the site.
 func TestLoopbackSite(t *testing.T) {
-	opts, sys, tty, st := harness(t)
-	opts.Site = "http://localhost:4321"
-	err := Install(context.Background(), opts, sys, tty, st.steps(sys))
-	if err == nil || !strings.Contains(err.Error(), "http://localhost:4321") || !strings.Contains(err.Error(), "only reaches this machine") || !strings.Contains(err.Error(), "admin page") {
-		t.Fatalf("got %v", err)
-	}
-	if len(tty.asked) != 0 {
-		t.Fatalf("asked %q", tty.asked)
-	}
-	// Development on one machine (stagenet only) still installs with the flag.
-	opts, sys, tty, st = harness(t)
-	opts.Site = "http://localhost:4321"
-	opts.AllowSameMachine = true
-	st.signals = []string{"the site's address (localhost) resolves to this machine"}
-	if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err != nil {
-		t.Fatal(err)
-	}
+	t.Run("[T15] a loopback site is refused", func(t *testing.T) {
+		opts, sys, tty, st := harness(t)
+		opts.Site = "http://localhost:4321"
+		err := Install(context.Background(), opts, sys, tty, st.steps(sys))
+		if err == nil || !strings.Contains(err.Error(), "http://localhost:4321") || !strings.Contains(err.Error(), "only reaches this machine") || !strings.Contains(err.Error(), "admin page") {
+			t.Fatalf("got %v", err)
+		}
+		if len(tty.asked) != 0 {
+			t.Fatalf("asked %q", tty.asked)
+		}
+		// Development on one machine (stagenet only) still installs with the flag.
+		opts, sys, tty, st = harness(t)
+		opts.Site = "http://localhost:4321"
+		opts.AllowSameMachine = true
+		st.signals = []string{"the site's address (localhost) resolves to this machine"}
+		if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err != nil {
+			t.Fatal(err)
+		}
+	})
 }
 
 func TestRunAgain(t *testing.T) {
@@ -432,65 +438,69 @@ func TestRunAgain(t *testing.T) {
 }
 
 func TestRestoreHeight(t *testing.T) {
-	// Spec change 17: the site's suggestion when no --restore-height is given; the flag otherwise, with a warning if
-	// it is newer than the site's oldest watched invoice.
-	for _, c := range []struct {
-		name          string
-		flag, suggest uint64
-		want          uint64
-		warn          bool
-	}{
-		{"suggested", 0, 2221280, 2221280, false},
-		{"none suggested: today", 0, 0, 2222000, false},
-		{"flag below the suggestion", 2220000, 2221280, 2220000, false},
-		{"flag above the suggestion", 2221900, 2221280, 2221900, true},
-	} {
-		t.Run(c.name, func(t *testing.T) {
-			opts, sys, tty, st := harness(t)
-			opts.RestoreHeight, st.suggest = c.flag, c.suggest
-			if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err != nil {
-				t.Fatalf("%v\n%s", err, tty.said.String())
-			}
-			cfg, err := config.Load(opts.Paths.Config())
-			if err != nil || cfg.RestoreHeight != c.want || st.walletCfg.RestoreHeight != c.want {
-				t.Fatalf("restore height: config %d, wallet %d, want %d (%v)", cfg.RestoreHeight, st.walletCfg.RestoreHeight, c.want, err)
-			}
-			if sys.chowned[opts.Paths.Config()] != [2]int{991, 991} {
-				t.Fatal("config not handed to the service account")
-			}
-			if warned := strings.Contains(tty.said.String(), "uninstall --delete-data"); warned != c.warn {
-				t.Fatalf("warning %v, want %v:\n%s", warned, c.warn, tty.said.String())
-			}
-		})
-	}
+	t.Run("[R09] the restore height", func(t *testing.T) {
+		// Spec change 17: the site's suggestion when no --restore-height is given; the flag otherwise, with a warning if
+		// it is newer than the site's oldest watched invoice.
+		for _, c := range []struct {
+			name          string
+			flag, suggest uint64
+			want          uint64
+			warn          bool
+		}{
+			{"suggested", 0, 2221280, 2221280, false},
+			{"none suggested: today", 0, 0, 2222000, false},
+			{"flag below the suggestion", 2220000, 2221280, 2220000, false},
+			{"flag above the suggestion", 2221900, 2221280, 2221900, true},
+		} {
+			t.Run(c.name, func(t *testing.T) {
+				opts, sys, tty, st := harness(t)
+				opts.RestoreHeight, st.suggest = c.flag, c.suggest
+				if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err != nil {
+					t.Fatalf("%v\n%s", err, tty.said.String())
+				}
+				cfg, err := config.Load(opts.Paths.Config())
+				if err != nil || cfg.RestoreHeight != c.want || st.walletCfg.RestoreHeight != c.want {
+					t.Fatalf("restore height: config %d, wallet %d, want %d (%v)", cfg.RestoreHeight, st.walletCfg.RestoreHeight, c.want, err)
+				}
+				if sys.chowned[opts.Paths.Config()] != [2]int{991, 991} {
+					t.Fatal("config not handed to the service account")
+				}
+				if warned := strings.Contains(tty.said.String(), "uninstall --delete-data"); warned != c.warn {
+					t.Fatalf("warning %v, want %v:\n%s", warned, c.warn, tty.said.String())
+				}
+			})
+		}
+	})
 }
 
 func TestRestoreHeightKeptWallet(t *testing.T) {
-	// A kept wallet keeps its restore height; when the site's oldest watched invoice is older, the installer says how
-	// to start over, and changes nothing else.
-	opts, sys, tty, st := harness(t)
-	if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err != nil {
-		t.Fatal(err)
-	}
-	for _, c := range []struct {
-		suggest uint64
-		warn    bool
-	}{{2223000, false}, {2221280, true}} {
-		tty2 := &fakeTTY{answers: []string{stagenetAddr}, secrets: []string{viewKey}}
-		st2 := &fakeSteps{nodes: stagenetNode(), suggest: c.suggest}
-		if err := Install(context.Background(), opts, sys, tty2, st2.steps(sys)); err != nil {
+	t.Run("[R09] a kept wallet keeps its restore height", func(t *testing.T) {
+		// A kept wallet keeps its restore height; when the site's oldest watched invoice is older, the installer says how
+		// to start over, and changes nothing else.
+		opts, sys, tty, st := harness(t)
+		if err := Install(context.Background(), opts, sys, tty, st.steps(sys)); err != nil {
 			t.Fatal(err)
 		}
-		if strings.Join(st2.order, ",") != "pair" {
-			t.Fatalf("steps %v", st2.order)
+		for _, c := range []struct {
+			suggest uint64
+			warn    bool
+		}{{2223000, false}, {2221280, true}} {
+			tty2 := &fakeTTY{answers: []string{stagenetAddr}, secrets: []string{viewKey}}
+			st2 := &fakeSteps{nodes: stagenetNode(), suggest: c.suggest}
+			if err := Install(context.Background(), opts, sys, tty2, st2.steps(sys)); err != nil {
+				t.Fatal(err)
+			}
+			if strings.Join(st2.order, ",") != "pair" {
+				t.Fatalf("steps %v", st2.order)
+			}
+			if cfg, _ := config.Load(opts.Paths.Config()); cfg.RestoreHeight != 2222000 {
+				t.Fatalf("the kept wallet's restore height changed: %d", cfg.RestoreHeight)
+			}
+			if warned := strings.Contains(tty2.said.String(), "uninstall --delete-data"); warned != c.warn {
+				t.Fatalf("suggest %d: warning %v, want %v:\n%s", c.suggest, warned, c.warn, tty2.said.String())
+			}
 		}
-		if cfg, _ := config.Load(opts.Paths.Config()); cfg.RestoreHeight != 2222000 {
-			t.Fatalf("the kept wallet's restore height changed: %d", cfg.RestoreHeight)
-		}
-		if warned := strings.Contains(tty2.said.String(), "uninstall --delete-data"); warned != c.warn {
-			t.Fatalf("suggest %d: warning %v, want %v:\n%s", c.suggest, warned, c.warn, tty2.said.String())
-		}
-	}
+	})
 }
 
 func TestWalletFailsAfterPairing(t *testing.T) {

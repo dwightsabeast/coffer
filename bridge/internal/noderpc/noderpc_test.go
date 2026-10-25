@@ -69,35 +69,37 @@ func TestGetInfoSyncing(t *testing.T) {
 }
 
 func TestGetInfoRefuses(t *testing.T) {
-	cases := map[string]struct {
-		body   string
-		status int
-	}{
-		"HTTP 500":        {infoJSON, 500},
-		"not JSON":        {"<html>", 200},
-		"RPC error":       {`{"jsonrpc":"2.0","id":"0","error":{"code":-32601,"message":"Method not found"}}`, 200},
-		"status BUSY":     {strings.Replace(infoJSON, `"status":"OK"`, `"status":"BUSY"`, 1), 200},
-		"no nettype":      {strings.Replace(infoJSON, `"nettype":"stagenet",`, ``, 1), 200},
-		"unknown nettype": {strings.Replace(infoJSON, `"nettype":"stagenet"`, `"nettype":"fakenet"`, 1), 200},
-		"too large":       {infoJSON[:len(infoJSON)-2] + `,"pad":"` + strings.Repeat("a", 1<<20) + `"}}`, 200},
-	}
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			srv, _ := node(t, c.body, c.status)
-			_, err := GetInfo(context.Background(), srv.URL, nil)
-			if err == nil {
-				t.Fatal("accepted")
-			}
-			if name == "too large" && !strings.Contains(err.Error(), "too large") {
-				t.Fatalf("want the size error, got %v", err)
-			}
-		})
-	}
-	for _, bad := range []string{"127.0.0.1:38081", "ftp://127.0.0.1:38081", "http://"} {
-		if _, err := GetInfo(context.Background(), bad, nil); err == nil {
-			t.Errorf("%q accepted", bad)
+	t.Run("[F05] bad get_info replies are refused", func(t *testing.T) {
+		cases := map[string]struct {
+			body   string
+			status int
+		}{
+			"HTTP 500":        {infoJSON, 500},
+			"not JSON":        {"<html>", 200},
+			"RPC error":       {`{"jsonrpc":"2.0","id":"0","error":{"code":-32601,"message":"Method not found"}}`, 200},
+			"status BUSY":     {strings.Replace(infoJSON, `"status":"OK"`, `"status":"BUSY"`, 1), 200},
+			"no nettype":      {strings.Replace(infoJSON, `"nettype":"stagenet",`, ``, 1), 200},
+			"unknown nettype": {strings.Replace(infoJSON, `"nettype":"stagenet"`, `"nettype":"fakenet"`, 1), 200},
+			"too large":       {infoJSON[:len(infoJSON)-2] + `,"pad":"` + strings.Repeat("a", 1<<20) + `"}}`, 200},
 		}
-	}
+		for name, c := range cases {
+			t.Run(name, func(t *testing.T) {
+				srv, _ := node(t, c.body, c.status)
+				_, err := GetInfo(context.Background(), srv.URL, nil)
+				if err == nil {
+					t.Fatal("accepted")
+				}
+				if name == "too large" && !strings.Contains(err.Error(), "too large") {
+					t.Fatalf("want the size error, got %v", err)
+				}
+			})
+		}
+		for _, bad := range []string{"127.0.0.1:38081", "ftp://127.0.0.1:38081", "http://"} {
+			if _, err := GetInfo(context.Background(), bad, nil); err == nil {
+				t.Errorf("%q accepted", bad)
+			}
+		}
+	})
 }
 
 func TestGetInfoTimeout(t *testing.T) {

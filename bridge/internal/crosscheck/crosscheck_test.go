@@ -104,23 +104,27 @@ func TestHonestNodes(t *testing.T) {
 }
 
 func TestFabricatedBlock(t *testing.T) {
-	primary := chain(110)
-	primary.hashes[100] = fake1
-	c := checker(t, primary, chain(110))
-	got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)})
-	if rep.State != Mismatch || got[0].Confirmations != 0 || !strings.Contains(rep.Detail, "100") {
-		t.Fatalf("report %+v, confirmations %d", rep, got[0].Confirmations)
-	}
+	t.Run("[T14] a fabricated block", func(t *testing.T) {
+		primary := chain(110)
+		primary.hashes[100] = fake1
+		c := checker(t, primary, chain(110))
+		got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)})
+		if rep.State != Mismatch || got[0].Confirmations != 0 || !strings.Contains(rep.Detail, "100") {
+			t.Fatalf("report %+v, confirmations %d", rep, got[0].Confirmations)
+		}
+	})
 }
 
 func TestTransactionNotInBlock(t *testing.T) {
-	second := chain(110)
-	second.txs[100] = []string{tx2}
-	c := checker(t, chain(110), second)
-	got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)})
-	if rep.State != Mismatch || got[0].Confirmations != 0 {
-		t.Fatalf("report %+v, confirmations %d", rep, got[0].Confirmations)
-	}
+	t.Run("[T14] a transaction not in its block", func(t *testing.T) {
+		second := chain(110)
+		second.txs[100] = []string{tx2}
+		c := checker(t, chain(110), second)
+		got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)})
+		if rep.State != Mismatch || got[0].Confirmations != 0 {
+			t.Fatalf("report %+v, confirmations %d", rep, got[0].Confirmations)
+		}
+	})
 }
 
 func TestSecondNodeBehind(t *testing.T) {
@@ -176,27 +180,31 @@ func TestVerifiedOnceThenCached(t *testing.T) {
 
 // The configured node is on the built-in list: it must never stand in as its own second node.
 func TestNeverItsOwnSecondNode(t *testing.T) {
-	primary, down := chain(110), chain(110)
-	down.down = true
-	u := primary.serve(t).URL
-	c := New(u, "stagenet", []string{u, down.serve(t).URL}, nil)
-	got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)})
-	if rep.State != Unavailable || got[0].Confirmations != 10 {
-		t.Fatalf("report %+v, confirmations %d", rep, got[0].Confirmations)
-	}
-	if n := primary.calls.Load(); n != 0 {
-		t.Fatalf("the configured node was asked %d times", n)
-	}
+	t.Run("[T14] never its own second node", func(t *testing.T) {
+		primary, down := chain(110), chain(110)
+		down.down = true
+		u := primary.serve(t).URL
+		c := New(u, "stagenet", []string{u, down.serve(t).URL}, nil)
+		got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)})
+		if rep.State != Unavailable || got[0].Confirmations != 10 {
+			t.Fatalf("report %+v, confirmations %d", rep, got[0].Confirmations)
+		}
+		if n := primary.calls.Load(); n != 0 {
+			t.Fatalf("the configured node was asked %d times", n)
+		}
+	})
 }
 
 // The same host over another scheme or port is the same node (stagenet.xmr.kernal.eu answers on http and https).
 func TestSameHostIsNotASecondNode(t *testing.T) {
-	c := New("https://Node.Example.:38089", "stagenet", []string{
-		"http://node.example:38089", "http://NODE.example:38081", "https://node.example", "http://other.example:38089",
-	}, nil)
-	if len(c.seconds) != 1 || c.seconds[0] != "http://other.example:38089" {
-		t.Fatalf("second nodes %v", c.seconds)
-	}
+	t.Run("[T14] the same host is not a second node", func(t *testing.T) {
+		c := New("https://Node.Example.:38089", "stagenet", []string{
+			"http://node.example:38089", "http://NODE.example:38081", "https://node.example", "http://other.example:38089",
+		}, nil)
+		if len(c.seconds) != 1 || c.seconds[0] != "http://other.example:38089" {
+			t.Fatalf("second nodes %v", c.seconds)
+		}
+	})
 }
 
 func TestSyncingSecondNodeSkipped(t *testing.T) {

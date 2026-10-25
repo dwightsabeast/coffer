@@ -65,23 +65,25 @@ func TestGetTransfersEmpty(t *testing.T) {
 }
 
 func TestGetTransfersRefusesBadValues(t *testing.T) {
-	cases := map[string]string{
-		"amount over uint64":  strings.Replace(transfersJSON, "18446744073709551615,\"confirmations\"", "18446744073709551616,\"confirmations\"", 1),
-		"negative amount":     strings.Replace(transfersJSON, "1807305128", "-1", 1),
-		"fractional amount":   strings.Replace(transfersJSON, "1807305128", "1.5", 1),
-		"amount as float exp": strings.Replace(transfersJSON, "1807305128", "1.8e9", 1),
-		"short txid":          strings.Replace(transfersJSON, txA, "abc", 1),
-		"uppercase txid":      strings.Replace(transfersJSON, txA, strings.ToUpper(txA), 1),
-		"other account":       strings.Replace(transfersJSON, `{"major":0,"minor":12}`, `{"major":1,"minor":12}`, 1),
-		"unrequested index":   strings.Replace(transfersJSON, `"minor":17`, `"minor":99`, 1),
-	}
-	for name, body := range cases {
-		t.Run(name, func(t *testing.T) {
-			f, srv := newFake(t)
-			f.results["get_transfers"] = body
-			if _, err := client(f, srv).GetTransfers(context.Background(), []uint32{12, 17}); err == nil {
-				t.Fatal("accepted")
-			}
-		})
-	}
+	t.Run("[T11][F05] bad transfer values are refused", func(t *testing.T) {
+		cases := map[string]string{
+			"amount over uint64":  strings.Replace(transfersJSON, "18446744073709551615,\"confirmations\"", "18446744073709551616,\"confirmations\"", 1),
+			"negative amount":     strings.Replace(transfersJSON, "1807305128", "-1", 1),
+			"fractional amount":   strings.Replace(transfersJSON, "1807305128", "1.5", 1),
+			"amount as float exp": strings.Replace(transfersJSON, "1807305128", "1.8e9", 1),
+			"short txid":          strings.Replace(transfersJSON, txA, "abc", 1),
+			"uppercase txid":      strings.Replace(transfersJSON, txA, strings.ToUpper(txA), 1),
+			"other account":       strings.Replace(transfersJSON, `{"major":0,"minor":12}`, `{"major":1,"minor":12}`, 1),
+			"unrequested index":   strings.Replace(transfersJSON, `"minor":17`, `"minor":99`, 1),
+		}
+		for name, body := range cases {
+			t.Run(name, func(t *testing.T) {
+				f, srv := newFake(t)
+				f.results["get_transfers"] = body
+				if _, err := client(f, srv).GetTransfers(context.Background(), []uint32{12, 17}); err == nil {
+					t.Fatal("accepted")
+				}
+			})
+		}
+	})
 }

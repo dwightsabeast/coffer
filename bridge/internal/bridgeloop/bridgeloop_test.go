@@ -175,107 +175,115 @@ func tr(txid byte, amount string, height uint64) walletrpc.Transfer {
 }
 
 func TestReconcileOnStart(t *testing.T) {
-	l, w, s, _ := setup(t)
-	s.watch = []uint32{12, 17}
-	s.target = 0
-	w.transfers[12] = []walletrpc.Transfer{tr('a', "1000", 2221990)}
-	if err := l.SyncOnce(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if b := s.last(); len(b.Snapshots) != 0 || b.V != 1 || b.Height != 2222000 {
-		t.Fatalf("first sync after start: %+v", b)
-	}
-	if !l.Soon() {
-		t.Fatal("the reconcile sync should follow at once")
-	}
-	if err := l.SyncOnce(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	b := s.last()
-	if len(b.Snapshots) != 2 || b.Snapshots[0].Index != 12 || len(b.Snapshots[0].Transfers) != 1 || b.Snapshots[1].Index != 17 || len(b.Snapshots[1].Transfers) != 0 {
-		t.Fatalf("reconcile: %+v", b.Snapshots)
-	}
-	got := b.Snapshots[0].Transfers[0]
-	if got.Amount != "1000" || got.UnlockTime != "0" || got.Height != 2221990 || got.TxID != strings.Repeat("a", 64) {
-		t.Fatalf("transfer %+v", got)
-	}
-	if l.Soon() {
-		t.Fatal("nothing left to do, but another immediate sync is planned")
-	}
+	t.Run("[R05] reconciles on start", func(t *testing.T) {
+		l, w, s, _ := setup(t)
+		s.watch = []uint32{12, 17}
+		s.target = 0
+		w.transfers[12] = []walletrpc.Transfer{tr('a', "1000", 2221990)}
+		if err := l.SyncOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if b := s.last(); len(b.Snapshots) != 0 || b.V != 1 || b.Height != 2222000 {
+			t.Fatalf("first sync after start: %+v", b)
+		}
+		if !l.Soon() {
+			t.Fatal("the reconcile sync should follow at once")
+		}
+		if err := l.SyncOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		b := s.last()
+		if len(b.Snapshots) != 2 || b.Snapshots[0].Index != 12 || len(b.Snapshots[0].Transfers) != 1 || b.Snapshots[1].Index != 17 || len(b.Snapshots[1].Transfers) != 0 {
+			t.Fatalf("reconcile: %+v", b.Snapshots)
+		}
+		got := b.Snapshots[0].Transfers[0]
+		if got.Amount != "1000" || got.UnlockTime != "0" || got.Height != 2221990 || got.TxID != strings.Repeat("a", 64) {
+			t.Fatalf("transfer %+v", got)
+		}
+		if l.Soon() {
+			t.Fatal("nothing left to do, but another immediate sync is planned")
+		}
+	})
 }
 
 func TestPoolTopUp(t *testing.T) {
-	l, w, s, dir := setup(t)
-	ctx := context.Background()
-	l.SyncOnce(ctx) // free 0 of 50: creates 50
-	if w.created != 50 || w.labels["coffer"] != 50 {
-		t.Fatalf("created %d, labels %v", w.created, w.labels)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "run", "pending.json")); err != nil {
-		t.Fatalf("pending addresses not saved: %v", err)
-	}
-	l.SyncOnce(ctx)
-	if b := s.last(); len(b.Addresses) != 50 || b.Addresses[0].Index != 1 {
-		t.Fatalf("addresses sent: %d", len(b.Addresses))
-	}
-	if len(s.pool) != 50 {
-		t.Fatalf("pool %d", len(s.pool))
-	}
-	if _, err := os.Stat(filepath.Join(dir, "run", "pending.json")); !os.IsNotExist(err) {
-		t.Fatal("pending file kept after the site took them")
-	}
-	l.SyncOnce(ctx)
-	if w.created != 50 || len(s.last().Addresses) != 0 {
-		t.Fatalf("pool full, yet created %d / sent %d", w.created, len(s.last().Addresses))
-	}
+	t.Run("[T05] the pool is topped up to its target", func(t *testing.T) {
+		l, w, s, dir := setup(t)
+		ctx := context.Background()
+		l.SyncOnce(ctx) // free 0 of 50: creates 50
+		if w.created != 50 || w.labels["coffer"] != 50 {
+			t.Fatalf("created %d, labels %v", w.created, w.labels)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "run", "pending.json")); err != nil {
+			t.Fatalf("pending addresses not saved: %v", err)
+		}
+		l.SyncOnce(ctx)
+		if b := s.last(); len(b.Addresses) != 50 || b.Addresses[0].Index != 1 {
+			t.Fatalf("addresses sent: %d", len(b.Addresses))
+		}
+		if len(s.pool) != 50 {
+			t.Fatalf("pool %d", len(s.pool))
+		}
+		if _, err := os.Stat(filepath.Join(dir, "run", "pending.json")); !os.IsNotExist(err) {
+			t.Fatal("pending file kept after the site took them")
+		}
+		l.SyncOnce(ctx)
+		if w.created != 50 || len(s.last().Addresses) != 0 {
+			t.Fatalf("pool full, yet created %d / sent %d", w.created, len(s.last().Addresses))
+		}
+	})
 }
 
 func TestPendingSurvivesFailureAndRestart(t *testing.T) {
-	l, w, s, dir := setup(t)
-	ctx := context.Background()
-	l.SyncOnce(ctx) // creates 50 pending
-	s.fail = errors.New("site down")
-	if err := l.SyncOnce(ctx); err == nil {
-		t.Fatal("no error")
-	}
-	if w.created != 50 {
-		t.Fatalf("created more while the site was down: %d", w.created)
-	}
-	// A new loop (a restart) picks the pending addresses up from disk.
-	k, _ := syncsign.NewKey()
-	l2, err := New(Options{Wallet: func(context.Context) (Wallet, error) { return w, nil }, Site: s, Key: k, DataDir: dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	s.fail = nil
-	l2.SyncOnce(ctx)
-	if b := s.last(); len(b.Addresses) != 50 {
-		t.Fatalf("after restart sent %d", len(b.Addresses))
-	}
-	if w.created != 50 {
-		t.Fatalf("created %d", w.created)
-	}
-	fi, _ := os.Stat(filepath.Join(dir, "run"))
-	if fi.Mode().Perm() != 0o700 {
-		t.Fatalf("run dir mode %v", fi.Mode().Perm())
-	}
+	t.Run("[R05] a pending sync survives a failure and a restart", func(t *testing.T) {
+		l, w, s, dir := setup(t)
+		ctx := context.Background()
+		l.SyncOnce(ctx) // creates 50 pending
+		s.fail = errors.New("site down")
+		if err := l.SyncOnce(ctx); err == nil {
+			t.Fatal("no error")
+		}
+		if w.created != 50 {
+			t.Fatalf("created more while the site was down: %d", w.created)
+		}
+		// A new loop (a restart) picks the pending addresses up from disk.
+		k, _ := syncsign.NewKey()
+		l2, err := New(Options{Wallet: func(context.Context) (Wallet, error) { return w, nil }, Site: s, Key: k, DataDir: dir})
+		if err != nil {
+			t.Fatal(err)
+		}
+		s.fail = nil
+		l2.SyncOnce(ctx)
+		if b := s.last(); len(b.Addresses) != 50 {
+			t.Fatalf("after restart sent %d", len(b.Addresses))
+		}
+		if w.created != 50 {
+			t.Fatalf("created %d", w.created)
+		}
+		fi, _ := os.Stat(filepath.Join(dir, "run"))
+		if fi.Mode().Perm() != 0o700 {
+			t.Fatalf("run dir mode %v", fi.Mode().Perm())
+		}
+	})
 }
 
 func TestAtMost100AddressesPerSync(t *testing.T) {
-	l, w, s, _ := setup(t)
-	s.target = 250
-	ctx := context.Background()
-	for i := 0; i < 6; i++ {
-		l.SyncOnce(ctx)
-	}
-	for _, b := range s.bodies {
-		if len(b.Addresses) > 100 {
-			t.Fatalf("%d addresses in one sync", len(b.Addresses))
+	t.Run("[R11] at most 100 addresses per sync", func(t *testing.T) {
+		l, w, s, _ := setup(t)
+		s.target = 250
+		ctx := context.Background()
+		for i := 0; i < 6; i++ {
+			l.SyncOnce(ctx)
 		}
-	}
-	if len(s.pool) != 250 || w.created != 250 {
-		t.Fatalf("pool %d created %d", len(s.pool), w.created)
-	}
+		for _, b := range s.bodies {
+			if len(b.Addresses) > 100 {
+				t.Fatalf("%d addresses in one sync", len(b.Addresses))
+			}
+		}
+		if len(s.pool) != 250 || w.created != 250 {
+			t.Fatalf("pool %d created %d", len(s.pool), w.created)
+		}
+	})
 }
 
 func TestLargestThirtyTwo(t *testing.T) {
@@ -315,9 +323,11 @@ func TestLargestThirtyTwo(t *testing.T) {
 }
 
 func TestAmountsCompareAsNumbers(t *testing.T) {
-	if !less("999", "1000") || less("1000", "999") || less("5", "5") || !less("18446744073709551614", "18446744073709551615") {
-		t.Fatal("decimal comparison")
-	}
+	t.Run("[T11] amounts compare as numbers up to 2^64-1", func(t *testing.T) {
+		if !less("999", "1000") || less("1000", "999") || less("5", "5") || !less("18446744073709551614", "18446744073709551615") {
+			t.Fatal("decimal comparison")
+		}
+	})
 }
 
 func TestDuplicateTxidsCollapsed(t *testing.T) {
@@ -333,66 +343,72 @@ func TestDuplicateTxidsCollapsed(t *testing.T) {
 }
 
 func TestRotationCoversEveryIndex(t *testing.T) {
-	l, w, s, _ := setup(t)
-	s.target = 0
-	for i := uint32(1); i <= 250; i++ {
-		s.watch = append(s.watch, i)
-	}
-	ctx := context.Background()
-	l.SyncOnce(ctx) // learns the watch list
-	seen := map[uint32]bool{}
-	for i := 0; i < 3; i++ {
-		l.SyncOnce(ctx)
-		b := s.last()
-		if len(b.Snapshots) > 100 {
-			t.Fatalf("%d snapshots", len(b.Snapshots))
+	t.Run("[R11] the rotation covers every watched index over several syncs", func(t *testing.T) {
+		l, w, s, _ := setup(t)
+		s.target = 0
+		for i := uint32(1); i <= 250; i++ {
+			s.watch = append(s.watch, i)
 		}
-		for _, sn := range b.Snapshots {
-			seen[sn.Index] = true
+		ctx := context.Background()
+		l.SyncOnce(ctx) // learns the watch list
+		seen := map[uint32]bool{}
+		for i := 0; i < 3; i++ {
+			l.SyncOnce(ctx)
+			b := s.last()
+			if len(b.Snapshots) > 100 {
+				t.Fatalf("%d snapshots", len(b.Snapshots))
+			}
+			for _, sn := range b.Snapshots {
+				seen[sn.Index] = true
+			}
+			if i < 2 && !l.Soon() {
+				t.Fatal("more indexes to cover: the next sync should follow at once")
+			}
 		}
-		if i < 2 && !l.Soon() {
-			t.Fatal("more indexes to cover: the next sync should follow at once")
+		if len(seen) != 250 {
+			t.Fatalf("covered %d of 250", len(seen))
 		}
-	}
-	if len(seen) != 250 {
-		t.Fatalf("covered %d of 250", len(seen))
-	}
-	if len(w.asked) != 3 {
-		t.Fatalf("get_transfers calls %d", len(w.asked))
-	}
+		if len(w.asked) != 3 {
+			t.Fatalf("get_transfers calls %d", len(w.asked))
+		}
+	})
 }
 
 func TestTooLargeSendsFewerSnapshots(t *testing.T) {
-	l, _, s, _ := setup(t)
-	s.target = 0
-	for i := uint32(1); i <= 80; i++ {
-		s.watch = append(s.watch, i)
-	}
-	s.limit = 30
-	ctx := context.Background()
-	l.SyncOnce(ctx)
-	if err := l.SyncOnce(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if n := len(s.last().Snapshots); n == 0 || n > 30 {
-		t.Fatalf("%d snapshots", n)
-	}
+	t.Run("[R11] a body too large sends fewer snapshots", func(t *testing.T) {
+		l, _, s, _ := setup(t)
+		s.target = 0
+		for i := uint32(1); i <= 80; i++ {
+			s.watch = append(s.watch, i)
+		}
+		s.limit = 30
+		ctx := context.Background()
+		l.SyncOnce(ctx)
+		if err := l.SyncOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if n := len(s.last().Snapshots); n == 0 || n > 30 {
+			t.Fatalf("%d snapshots", n)
+		}
+	})
 }
 
 func TestSeqAlwaysRises(t *testing.T) {
-	l, _, s, _ := setup(t)
-	clock := time.Unix(1790000000, 0)
-	l.o.Now = func() time.Time { return clock }
-	ctx := context.Background()
-	l.SyncOnce(ctx)
-	clock = clock.Add(-time.Hour) // the clock steps back
-	l.SyncOnce(ctx)
-	l.SyncOnce(ctx)
-	for i := 1; i < len(s.bodies); i++ {
-		if s.bodies[i].Seq <= s.bodies[i-1].Seq {
-			t.Fatalf("seq %d after %d", s.bodies[i].Seq, s.bodies[i-1].Seq)
+	t.Run("[T04] seq always rises", func(t *testing.T) {
+		l, _, s, _ := setup(t)
+		clock := time.Unix(1790000000, 0)
+		l.o.Now = func() time.Time { return clock }
+		ctx := context.Background()
+		l.SyncOnce(ctx)
+		clock = clock.Add(-time.Hour) // the clock steps back
+		l.SyncOnce(ctx)
+		l.SyncOnce(ctx)
+		for i := 1; i < len(s.bodies); i++ {
+			if s.bodies[i].Seq <= s.bodies[i-1].Seq {
+				t.Fatalf("seq %d after %d", s.bodies[i].Seq, s.bodies[i-1].Seq)
+			}
 		}
-	}
+	})
 }
 
 func TestErrorsAreRecorded(t *testing.T) {
@@ -490,24 +506,26 @@ func (f *fakeCheck) Check(_ context.Context, ts []walletrpc.Transfer) ([]walletr
 }
 
 func TestCrossCheckApplied(t *testing.T) {
-	l, w, s, _ := setup(t)
-	fc := &fakeCheck{}
-	l.o.CrossCheck = fc
-	s.target, s.watch = 0, []uint32{5}
-	w.transfers[5] = []walletrpc.Transfer{tr('a', "1000", 100)}
-	ctx := context.Background()
-	l.SyncOnce(ctx)
-	l.SyncOnce(ctx)
-	b := s.last()
-	if b.Snapshots[0].Transfers[0].Confirmations != 0 {
-		t.Fatal("the cross-check's confirmations weren't used")
-	}
-	if b.Checks == nil || b.Checks.Node == nil || b.Checks.Node.State != "mismatch" || !strings.Contains(b.Checks.Node.Detail, "block 100") {
-		t.Fatalf("checks sent: %+v", b.Checks)
-	}
-	if st := l.Status(); st.NodeCheck.State != crosscheck.Mismatch {
-		t.Fatalf("status %+v", st.NodeCheck)
-	}
+	t.Run("[T14] a failed cross-check withholds confirmations", func(t *testing.T) {
+		l, w, s, _ := setup(t)
+		fc := &fakeCheck{}
+		l.o.CrossCheck = fc
+		s.target, s.watch = 0, []uint32{5}
+		w.transfers[5] = []walletrpc.Transfer{tr('a', "1000", 100)}
+		ctx := context.Background()
+		l.SyncOnce(ctx)
+		l.SyncOnce(ctx)
+		b := s.last()
+		if b.Snapshots[0].Transfers[0].Confirmations != 0 {
+			t.Fatal("the cross-check's confirmations weren't used")
+		}
+		if b.Checks == nil || b.Checks.Node == nil || b.Checks.Node.State != "mismatch" || !strings.Contains(b.Checks.Node.Detail, "block 100") {
+			t.Fatalf("checks sent: %+v", b.Checks)
+		}
+		if st := l.Status(); st.NodeCheck.State != crosscheck.Mismatch {
+			t.Fatalf("status %+v", st.NodeCheck)
+		}
+	})
 }
 
 func TestNoCrossCheckIsOff(t *testing.T) {
@@ -570,92 +588,96 @@ func noEmptyReport(t *testing.T, s *fakeSite) {
 }
 
 func TestCatchUpAfterReinstall(t *testing.T) {
-	l, w, s, dir := reinstalled(t)
-	var during Status
-	w.onRescan = func() { during = l.Status() }
-	if err := l.SyncOnce(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	if w.next != 312 || w.rescans != 1 {
-		t.Fatalf("after the first sync: wallet at %d, %d rescans; want 312 and 1", w.next, w.rescans)
-	}
-	if during.CatchUp == nil || !during.CatchUp.Rescanning || during.CatchUp.Target != 312 || during.CatchUp.Addresses != 312 {
-		t.Fatalf("status during the rescan: %+v", during.CatchUp)
-	}
-	if st := l.Status(); st.CatchUp != nil {
-		t.Fatalf("status after: %+v", st.CatchUp)
-	}
-	if _, err := os.Stat(filepath.Join(dir, "run", "catchup.json")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("marker left behind: %v", err)
-	}
-	if !l.Soon() {
-		t.Fatal("the reconcile should follow at once")
-	}
-	if err := l.SyncOnce(context.Background()); err != nil {
-		t.Fatal(err)
-	}
-	b := s.last()
-	if len(b.Snapshots) != 2 || b.Snapshots[0].Index != 261 || len(b.Snapshots[0].Transfers) != 1 {
-		t.Fatalf("reconcile after the catch-up: %+v", b.Snapshots)
-	}
-	noEmptyReport(t, s)
-	if len(s.dupes) != 0 {
-		t.Fatalf("addresses the site already had were sent: %v", s.dupes)
-	}
-
-	// Checkouts claim rows: top-ups now continue above the pool's top, never below it, with no burst of syncs.
-	s.claimed = 312 - 49
-	syncs := len(s.bodies)
-	for i := 0; i < 3; i++ {
+	t.Run("[R09] catches up after a reinstall", func(t *testing.T) {
+		l, w, s, dir := reinstalled(t)
+		var during Status
+		w.onRescan = func() { during = l.Status() }
 		if err := l.SyncOnce(context.Background()); err != nil {
 			t.Fatal(err)
 		}
-	}
-	if len(s.dupes) != 0 || !s.pool[313] || w.rescans != 1 || len(s.bodies)-syncs != 3 {
-		t.Fatalf("top-up after the catch-up: dupes %v, 313 in pool %v, rescans %d", s.dupes, s.pool[313], w.rescans)
-	}
+		if w.next != 312 || w.rescans != 1 {
+			t.Fatalf("after the first sync: wallet at %d, %d rescans; want 312 and 1", w.next, w.rescans)
+		}
+		if during.CatchUp == nil || !during.CatchUp.Rescanning || during.CatchUp.Target != 312 || during.CatchUp.Addresses != 312 {
+			t.Fatalf("status during the rescan: %+v", during.CatchUp)
+		}
+		if st := l.Status(); st.CatchUp != nil {
+			t.Fatalf("status after: %+v", st.CatchUp)
+		}
+		if _, err := os.Stat(filepath.Join(dir, "run", "catchup.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("marker left behind: %v", err)
+		}
+		if !l.Soon() {
+			t.Fatal("the reconcile should follow at once")
+		}
+		if err := l.SyncOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		b := s.last()
+		if len(b.Snapshots) != 2 || b.Snapshots[0].Index != 261 || len(b.Snapshots[0].Transfers) != 1 {
+			t.Fatalf("reconcile after the catch-up: %+v", b.Snapshots)
+		}
+		noEmptyReport(t, s)
+		if len(s.dupes) != 0 {
+			t.Fatalf("addresses the site already had were sent: %v", s.dupes)
+		}
+
+		// Checkouts claim rows: top-ups now continue above the pool's top, never below it, with no burst of syncs.
+		s.claimed = 312 - 49
+		syncs := len(s.bodies)
+		for i := 0; i < 3; i++ {
+			if err := l.SyncOnce(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if len(s.dupes) != 0 || !s.pool[313] || w.rescans != 1 || len(s.bodies)-syncs != 3 {
+			t.Fatalf("top-up after the catch-up: dupes %v, 313 in pool %v, rescans %d", s.dupes, s.pool[313], w.rescans)
+		}
+	})
 }
 
 func TestCatchUpIsRedoneAfterAFailedRescan(t *testing.T) {
-	l, w, s, dir := reinstalled(t)
-	w.rescanErr = errors.New("wallet-rpc went away")
-	if err := l.SyncOnce(context.Background()); err == nil {
-		t.Fatal("a failed rescan must fail the sync (and back off)")
-	}
-	if _, err := os.Stat(filepath.Join(dir, "run", "catchup.json")); err != nil {
-		t.Fatalf("marker: %v", err)
-	}
-	if st := l.Status(); st.CatchUp == nil || st.LastError == "" {
-		t.Fatalf("status after the failure: %+v", st)
-	}
+	t.Run("[R09] the catch-up is redone after a failed rescan", func(t *testing.T) {
+		l, w, s, dir := reinstalled(t)
+		w.rescanErr = errors.New("wallet-rpc went away")
+		if err := l.SyncOnce(context.Background()); err == nil {
+			t.Fatal("a failed rescan must fail the sync (and back off)")
+		}
+		if _, err := os.Stat(filepath.Join(dir, "run", "catchup.json")); err != nil {
+			t.Fatalf("marker: %v", err)
+		}
+		if st := l.Status(); st.CatchUp == nil || st.LastError == "" {
+			t.Fatalf("status after the failure: %+v", st)
+		}
 
-	// The bridge restarts (a new Loop on the same data folder). wallet-rpc kept the created addresses, so the probe
-	// alone would say "caught up": the marker is what makes the rescan happen, before any snapshot.
-	w.rescanErr = nil
-	sent := len(s.bodies)
-	k, _ := syncsign.NewKey()
-	l2, err := New(Options{Wallet: func(context.Context) (Wallet, error) { return w, nil }, Site: s, Key: k, DataDir: dir})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if st := l2.Status(); st.CatchUp == nil || st.CatchUp.Target != 312 {
-		t.Fatalf("a restarted loop should report the unfinished catch-up: %+v", st.CatchUp)
-	}
-	for i := 0; i < 3; i++ {
-		if err := l2.SyncOnce(context.Background()); err != nil {
+		// The bridge restarts (a new Loop on the same data folder). wallet-rpc kept the created addresses, so the probe
+		// alone would say "caught up": the marker is what makes the rescan happen, before any snapshot.
+		w.rescanErr = nil
+		sent := len(s.bodies)
+		k, _ := syncsign.NewKey()
+		l2, err := New(Options{Wallet: func(context.Context) (Wallet, error) { return w, nil }, Site: s, Key: k, DataDir: dir})
+		if err != nil {
 			t.Fatal(err)
 		}
-		if i == 0 && w.rescans != 2 {
-			t.Fatalf("rescans %d; the restart should redo it before sending", w.rescans)
+		if st := l2.Status(); st.CatchUp == nil || st.CatchUp.Target != 312 {
+			t.Fatalf("a restarted loop should report the unfinished catch-up: %+v", st.CatchUp)
 		}
-	}
-	if len(s.bodies) == sent || w.rescans != 2 {
-		t.Fatalf("bodies %d, rescans %d", len(s.bodies)-sent, w.rescans)
-	}
-	noEmptyReport(t, s)
-	if _, err := os.Stat(filepath.Join(dir, "run", "catchup.json")); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("marker left behind: %v", err)
-	}
+		for i := 0; i < 3; i++ {
+			if err := l2.SyncOnce(context.Background()); err != nil {
+				t.Fatal(err)
+			}
+			if i == 0 && w.rescans != 2 {
+				t.Fatalf("rescans %d; the restart should redo it before sending", w.rescans)
+			}
+		}
+		if len(s.bodies) == sent || w.rescans != 2 {
+			t.Fatalf("bodies %d, rescans %d", len(s.bodies)-sent, w.rescans)
+		}
+		noEmptyReport(t, s)
+		if _, err := os.Stat(filepath.Join(dir, "run", "catchup.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("marker left behind: %v", err)
+		}
+	})
 }
 
 func TestCreatedIndexAtOrBelowPoolTopIsNotSent(t *testing.T) {

@@ -151,25 +151,27 @@ func TestLatestRefuses(t *testing.T) {
 
 // A plain-http address is refused before any request, even when a server would answer it.
 func TestPlainHTTPRefused(t *testing.T) {
-	var hits int
-	plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		hits++
-		w.Write(fixture(t, "hashes-good.txt"))
-	}))
-	defer plain.Close()
-	f := &Fetcher{HashesURL: plain.URL + "/hashes.txt", ArchiveBase: plain.URL + "/cli/", Key: fixtureKey(t), Arch: "x64", HTTP: plain.Client(), Now: func() time.Time { return now }}
-	if _, err := f.Latest(context.Background()); err == nil || hits != 0 {
-		t.Fatalf("plain http: err %v, %d requests", err, hits)
-	}
-	// An https list that redirects to plain http on the same host and port is refused too.
-	srv := server(t, map[string][]byte{"/downloads/hashes.txt": nil})
-	f = fetcher(t, srv, "x64")
-	srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, "http://"+r.Host+"/x", http.StatusFound)
+	t.Run("[T16] plain http is refused", func(t *testing.T) {
+		var hits int
+		plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			hits++
+			w.Write(fixture(t, "hashes-good.txt"))
+		}))
+		defer plain.Close()
+		f := &Fetcher{HashesURL: plain.URL + "/hashes.txt", ArchiveBase: plain.URL + "/cli/", Key: fixtureKey(t), Arch: "x64", HTTP: plain.Client(), Now: func() time.Time { return now }}
+		if _, err := f.Latest(context.Background()); err == nil || hits != 0 {
+			t.Fatalf("plain http: err %v, %d requests", err, hits)
+		}
+		// An https list that redirects to plain http on the same host and port is refused too.
+		srv := server(t, map[string][]byte{"/downloads/hashes.txt": nil})
+		f = fetcher(t, srv, "x64")
+		srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "http://"+r.Host+"/x", http.StatusFound)
+		})
+		if _, err := f.Latest(context.Background()); err == nil || !strings.Contains(err.Error(), "redirect") {
+			t.Fatalf("redirect to http: %v", err)
+		}
 	})
-	if _, err := f.Latest(context.Background()); err == nil || !strings.Contains(err.Error(), "redirect") {
-		t.Fatalf("redirect to http: %v", err)
-	}
 }
 
 func TestRedirectWithinHost(t *testing.T) {
@@ -235,66 +237,70 @@ func TestInstall(t *testing.T) {
 }
 
 func TestInstallRefuses(t *testing.T) {
-	tampered := fixture(t, "good-x64.tar.bz2")
-	tampered[len(tampered)/2] ^= 0x01
-	cases := map[string]struct {
-		hashes, archive string
-		tweak           func(*Fetcher)
-		served          []byte
-	}{
-		"tampered archive":     {"hashes-good.txt", "good-x64.tar.bz2", nil, tampered},
-		"archive over the cap": {"hashes-good.txt", "good-x64.tar.bz2", func(f *Fetcher) { f.MaxArchive = 100 }, nil},
-		"symlink entry":        {"hashes-bad-symlink.txt", "bad-symlink.tar.bz2", nil, nil},
-		"two entries":          {"hashes-bad-two.txt", "bad-two.tar.bz2", nil, nil},
-		"no entry":             {"hashes-bad-missing.txt", "bad-missing.tar.bz2", nil, nil},
-		"nested entry":         {"hashes-bad-nested.txt", "bad-nested.tar.bz2", nil, nil},
-		"entry over the cap":   {"hashes-big-entry.txt", "big-entry.tar.bz2", func(f *Fetcher) { f.MaxBinary = 1024 }, nil},
-	}
-	for name, c := range cases {
-		t.Run(name, func(t *testing.T) {
-			dir, _, err := install(t, c.hashes, c.archive, c.tweak, c.served)
-			if err == nil {
-				t.Fatal("installed")
-			}
-			if entries, _ := os.ReadDir(dir); len(entries) != 0 {
-				t.Fatalf("left files behind: %v", entries)
-			}
-			if name == "archive over the cap" && !strings.Contains(err.Error(), "larger than") {
-				t.Fatalf("over the cap: want the size error, got %v", err)
-			}
-		})
-	}
+	t.Run("[T16] a download not matching the signed hashes is refused", func(t *testing.T) {
+		tampered := fixture(t, "good-x64.tar.bz2")
+		tampered[len(tampered)/2] ^= 0x01
+		cases := map[string]struct {
+			hashes, archive string
+			tweak           func(*Fetcher)
+			served          []byte
+		}{
+			"tampered archive":     {"hashes-good.txt", "good-x64.tar.bz2", nil, tampered},
+			"archive over the cap": {"hashes-good.txt", "good-x64.tar.bz2", func(f *Fetcher) { f.MaxArchive = 100 }, nil},
+			"symlink entry":        {"hashes-bad-symlink.txt", "bad-symlink.tar.bz2", nil, nil},
+			"two entries":          {"hashes-bad-two.txt", "bad-two.tar.bz2", nil, nil},
+			"no entry":             {"hashes-bad-missing.txt", "bad-missing.tar.bz2", nil, nil},
+			"nested entry":         {"hashes-bad-nested.txt", "bad-nested.tar.bz2", nil, nil},
+			"entry over the cap":   {"hashes-big-entry.txt", "big-entry.tar.bz2", func(f *Fetcher) { f.MaxBinary = 1024 }, nil},
+		}
+		for name, c := range cases {
+			t.Run(name, func(t *testing.T) {
+				dir, _, err := install(t, c.hashes, c.archive, c.tweak, c.served)
+				if err == nil {
+					t.Fatal("installed")
+				}
+				if entries, _ := os.ReadDir(dir); len(entries) != 0 {
+					t.Fatalf("left files behind: %v", entries)
+				}
+				if name == "archive over the cap" && !strings.Contains(err.Error(), "larger than") {
+					t.Fatalf("over the cap: want the size error, got %v", err)
+				}
+			})
+		}
+	})
 }
 
 // A failed install leaves the previous one untouched.
 func TestFailedInstallKeepsPrevious(t *testing.T) {
-	dir, prev, err := install(t, "hashes-good.txt", "good-x64.tar.bz2", nil, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
-	tampered := fixture(t, "good-x64.tar.bz2")
-	tampered[10] ^= 0x01
-	srv := server(t, map[string][]byte{
-		"/downloads/hashes.txt":                   fixture(t, "hashes-good.txt"),
-		"/cli/monero-linux-x64-v0.18.5.1.tar.bz2": tampered,
+	t.Run("[T16] a failed install keeps the previous one", func(t *testing.T) {
+		dir, prev, err := install(t, "hashes-good.txt", "good-x64.tar.bz2", nil, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tampered := fixture(t, "good-x64.tar.bz2")
+		tampered[10] ^= 0x01
+		srv := server(t, map[string][]byte{
+			"/downloads/hashes.txt":                   fixture(t, "hashes-good.txt"),
+			"/cli/monero-linux-x64-v0.18.5.1.tar.bz2": tampered,
+		})
+		f := fetcher(t, srv, "x64")
+		rel, err := f.Latest(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := f.Install(context.Background(), rel, dir); err == nil {
+			t.Fatal("tampered archive installed")
+		}
+		got, err := ReadInstalled(dir)
+		if err != nil || got != prev {
+			t.Fatalf("previous install changed: %+v %v", got, err)
+		}
+		b, _ := os.ReadFile(filepath.Join(dir, BinaryName))
+		if string(b) != "fake monero-wallet-rpc for linux-x64\n" {
+			t.Fatal("previous binary changed")
+		}
+		if entries, _ := os.ReadDir(dir); len(entries) != 2 {
+			t.Fatalf("leftover files: %v", entries)
+		}
 	})
-	f := fetcher(t, srv, "x64")
-	rel, err := f.Latest(context.Background())
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := f.Install(context.Background(), rel, dir); err == nil {
-		t.Fatal("tampered archive installed")
-	}
-	got, err := ReadInstalled(dir)
-	if err != nil || got != prev {
-		t.Fatalf("previous install changed: %+v %v", got, err)
-	}
-	b, _ := os.ReadFile(filepath.Join(dir, BinaryName))
-	if string(b) != "fake monero-wallet-rpc for linux-x64\n" {
-		t.Fatal("previous binary changed")
-	}
-	if entries, _ := os.ReadDir(dir); len(entries) != 2 {
-		t.Fatalf("leftover files: %v", entries)
-	}
 }

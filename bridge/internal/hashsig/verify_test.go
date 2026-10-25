@@ -20,17 +20,19 @@ const testMessage = "# xmr-pay hash-list verifier test file. Not a real Monero r
 	"#"
 
 func TestPinnedKeyMatchesPublishedKey(t *testing.T) {
-	pub := loadKey(t, "binaryfate.asc")
-	if pub.Fingerprint != MoneroReleaseKey.Fingerprint || pub.Created != MoneroReleaseKey.Created ||
-		pub.Key.N.Cmp(MoneroReleaseKey.Key.N) != 0 || pub.Key.E != MoneroReleaseKey.Key.E {
-		t.Fatal("the pinned key differs from testdata/binaryfate.asc")
-	}
-	if got := strings.ToUpper(hex.EncodeToString(MoneroReleaseKey.Fingerprint[:])); got != "81AC591FE9C4B65C5806AFC3F0AF4D462A0BDF92" {
-		t.Fatalf("pinned fingerprint %s", got)
-	}
-	if MoneroReleaseKey.Key.N.BitLen() != 4096 {
-		t.Fatalf("pinned key is %d bits", MoneroReleaseKey.Key.N.BitLen())
-	}
+	t.Run("[T16] the pinned key matches the published key", func(t *testing.T) {
+		pub := loadKey(t, "binaryfate.asc")
+		if pub.Fingerprint != MoneroReleaseKey.Fingerprint || pub.Created != MoneroReleaseKey.Created ||
+			pub.Key.N.Cmp(MoneroReleaseKey.Key.N) != 0 || pub.Key.E != MoneroReleaseKey.Key.E {
+			t.Fatal("the pinned key differs from testdata/binaryfate.asc")
+		}
+		if got := strings.ToUpper(hex.EncodeToString(MoneroReleaseKey.Fingerprint[:])); got != "81AC591FE9C4B65C5806AFC3F0AF4D462A0BDF92" {
+			t.Fatalf("pinned fingerprint %s", got)
+		}
+		if MoneroReleaseKey.Key.N.BitLen() != 4096 {
+			t.Fatalf("pinned key is %d bits", MoneroReleaseKey.Key.N.BitLen())
+		}
+	})
 }
 
 func TestRealHashesVerify(t *testing.T) {
@@ -61,23 +63,25 @@ func TestGoodTestFiles(t *testing.T) {
 }
 
 func TestBadTestFiles(t *testing.T) {
-	a := loadKey(t, "testkey-a.asc")
-	cases := map[string]error{
-		"bad-wrong-signer.txt":         ErrUnknownSigner,
-		"bad-subkey-signer.txt":        ErrUnknownSigner,
-		"bad-two-signatures.txt":       nil, // any error
-		"bad-sha384.txt":               nil,
-		"bad-expired.txt":              ErrExpired,
-		"bad-hash-header-mismatch.txt": nil,
-	}
-	for name, want := range cases {
-		_, err := Verify(readFile(t, name), a, now)
-		if err == nil {
-			t.Errorf("%s: verified", name)
-		} else if want != nil && !errors.Is(err, want) {
-			t.Errorf("%s: %v, want %v", name, err, want)
+	t.Run("[T16] bad signatures are refused", func(t *testing.T) {
+		a := loadKey(t, "testkey-a.asc")
+		cases := map[string]error{
+			"bad-wrong-signer.txt":         ErrUnknownSigner,
+			"bad-subkey-signer.txt":        ErrUnknownSigner,
+			"bad-two-signatures.txt":       nil, // any error
+			"bad-sha384.txt":               nil,
+			"bad-expired.txt":              ErrExpired,
+			"bad-hash-header-mismatch.txt": nil,
 		}
-	}
+		for name, want := range cases {
+			_, err := Verify(readFile(t, name), a, now)
+			if err == nil {
+				t.Errorf("%s: verified", name)
+			} else if want != nil && !errors.Is(err, want) {
+				t.Errorf("%s: %v, want %v", name, err, want)
+			}
+		}
+	})
 }
 
 func TestKeysAreNotInterchangeable(t *testing.T) {
@@ -113,46 +117,48 @@ func TestCanonicalEquivalents(t *testing.T) {
 }
 
 func TestTamperedRealFile(t *testing.T) {
-	real := readFile(t, "monero-hashes.txt")
-	head, sig := splitSigned(t, real)
-	rep := func(old, new string) []byte {
-		if !bytes.Contains(real, []byte(old)) {
-			t.Fatalf("test setup: %q not found", old)
+	t.Run("[T16] a tampered hashes.txt", func(t *testing.T) {
+		real := readFile(t, "monero-hashes.txt")
+		head, sig := splitSigned(t, real)
+		rep := func(old, new string) []byte {
+			if !bytes.Contains(real, []byte(old)) {
+				t.Fatalf("test setup: %q not found", old)
+			}
+			return bytes.Replace(real, []byte(old), []byte(new), 1)
 		}
-		return bytes.Replace(real, []byte(old), []byte(new), 1)
-	}
-	sigBody, err := decodeArmor(sig, "PGP SIGNATURE")
-	if err != nil {
-		t.Fatal(err)
-	}
-	cases := map[string][]byte{
-		"one hash character changed":    rep("22a7dda7b0cb", "22a7dda7b0cc"),
-		"a signed line added":           rep("## GUI\n", "## GUI\n0000000000000000000000000000000000000000000000000000000000000000  monero-linux-x64-v0.18.5.1.tar.bz2\n"),
-		"text before the signed block":  append([]byte("22a7dda7b0cb699fdd6b7674c3b4a4465b337cc98a54983523b759e1e7cc9958  evil.tar.bz2\n"), real...),
-		"text after the signature":      append(append([]byte{}, real...), []byte("0000000000000000000000000000000000000000000000000000000000000000  monero-linux-x64-v0.18.5.1.tar.bz2\n")...),
-		"a blank line after the end":    append(append([]byte{}, real...), '\n'),
-		"armor checksum changed":        rep("=WC0m", "=WC0n"),
-		"armor checksum missing":        rep("=WC0m\n", ""),
-		"header in the signature block": rep("-----BEGIN PGP SIGNATURE-----\n", "-----BEGIN PGP SIGNATURE-----\nVersion: x\n"),
-		"extra message header":          rep("Hash: SHA256\n", "Hash: SHA256\nComment: x\n"),
-		"hash header missing":           rep("Hash: SHA256\n", ""),
-		"hash header twice":             rep("Hash: SHA256\n", "Hash: SHA256\nHash: SHA256\n"),
-		"hash header SHA512":            rep("Hash: SHA256\n", "Hash: SHA512\n"),
-		"hash header list":              rep("Hash: SHA256\n", "Hash: SHA256,SHA512\n"),
-		"unescaped dash line":           rep("## CLI\n", "-x\n## CLI\n"),
-		"base64 character corrupted":    rep("iQIzBAEBCAAdFiEEgaxZ", "iQIzBAEBCAAdFiEEgaxY"),
-		"signature block cut short":     bytes.Replace(real, []byte("-----END PGP SIGNATURE-----\n"), nil, 1),
-		"two signed messages":           append(append([]byte{}, real...), real...),
-		"extra packet after signature":  append(append([]byte{}, head...), armorSignature(append(append([]byte{}, sigBody...), 0xcb, 0x01, 0x00))...),
-		"signature packet truncated":    append(append([]byte{}, head...), armorSignature(sigBody[:len(sigBody)-1])...),
-		"empty signature":               append(append([]byte{}, head...), armorSignature(nil)...),
-		"begin line with leading space": append([]byte(" "), real...),
-	}
-	for name, data := range cases {
-		if _, err := Verify(data, MoneroReleaseKey, now); err == nil {
-			t.Errorf("%s: verified", name)
+		sigBody, err := decodeArmor(sig, "PGP SIGNATURE")
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
+		cases := map[string][]byte{
+			"one hash character changed":    rep("22a7dda7b0cb", "22a7dda7b0cc"),
+			"a signed line added":           rep("## GUI\n", "## GUI\n0000000000000000000000000000000000000000000000000000000000000000  monero-linux-x64-v0.18.5.1.tar.bz2\n"),
+			"text before the signed block":  append([]byte("22a7dda7b0cb699fdd6b7674c3b4a4465b337cc98a54983523b759e1e7cc9958  evil.tar.bz2\n"), real...),
+			"text after the signature":      append(append([]byte{}, real...), []byte("0000000000000000000000000000000000000000000000000000000000000000  monero-linux-x64-v0.18.5.1.tar.bz2\n")...),
+			"a blank line after the end":    append(append([]byte{}, real...), '\n'),
+			"armor checksum changed":        rep("=WC0m", "=WC0n"),
+			"armor checksum missing":        rep("=WC0m\n", ""),
+			"header in the signature block": rep("-----BEGIN PGP SIGNATURE-----\n", "-----BEGIN PGP SIGNATURE-----\nVersion: x\n"),
+			"extra message header":          rep("Hash: SHA256\n", "Hash: SHA256\nComment: x\n"),
+			"hash header missing":           rep("Hash: SHA256\n", ""),
+			"hash header twice":             rep("Hash: SHA256\n", "Hash: SHA256\nHash: SHA256\n"),
+			"hash header SHA512":            rep("Hash: SHA256\n", "Hash: SHA512\n"),
+			"hash header list":              rep("Hash: SHA256\n", "Hash: SHA256,SHA512\n"),
+			"unescaped dash line":           rep("## CLI\n", "-x\n## CLI\n"),
+			"base64 character corrupted":    rep("iQIzBAEBCAAdFiEEgaxZ", "iQIzBAEBCAAdFiEEgaxY"),
+			"signature block cut short":     bytes.Replace(real, []byte("-----END PGP SIGNATURE-----\n"), nil, 1),
+			"two signed messages":           append(append([]byte{}, real...), real...),
+			"extra packet after signature":  append(append([]byte{}, head...), armorSignature(append(append([]byte{}, sigBody...), 0xcb, 0x01, 0x00))...),
+			"signature packet truncated":    append(append([]byte{}, head...), armorSignature(sigBody[:len(sigBody)-1])...),
+			"empty signature":               append(append([]byte{}, head...), armorSignature(nil)...),
+			"begin line with leading space": append([]byte(" "), real...),
+		}
+		for name, data := range cases {
+			if _, err := Verify(data, MoneroReleaseKey, now); err == nil {
+				t.Errorf("%s: verified", name)
+			}
+		}
+	})
 }
 
 func TestSizeCap(t *testing.T) {

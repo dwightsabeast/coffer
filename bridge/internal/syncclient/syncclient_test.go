@@ -64,20 +64,22 @@ func TestPoolTop(t *testing.T) {
 }
 
 func TestRestoreHeight(t *testing.T) {
-	// Spec change 17: only on a pairing response; absent reads as 0 (no suggestion). A suggestion of 0 reads as 1, so it
-	// can never be taken for "today".
-	for reply, want := range map[string]uint64{
-		okReply: 0,
-		`{"success":true,"data":{"ok":true,"poolFree":41,"poolTarget":50,"watch":[],"restoreHeight":2221280}}`: 2221280,
-		`{"success":true,"data":{"ok":true,"poolFree":41,"poolTarget":50,"watch":[],"restoreHeight":0}}`:       1,
-	} {
-		srv, _ := site(t, 200, reply)
-		k, _ := syncsign.NewKey()
-		resp, err := client(srv).Send(context.Background(), k, Body{V: 1, Seq: 1})
-		if err != nil || resp.RestoreHeight != want {
-			t.Fatalf("%s: RestoreHeight %d, %v", reply, resp.RestoreHeight, err)
+	t.Run("[R09] the site's suggested restore height", func(t *testing.T) {
+		// Spec change 17: only on a pairing response; absent reads as 0 (no suggestion). A suggestion of 0 reads as 1, so it
+		// can never be taken for "today".
+		for reply, want := range map[string]uint64{
+			okReply: 0,
+			`{"success":true,"data":{"ok":true,"poolFree":41,"poolTarget":50,"watch":[],"restoreHeight":2221280}}`: 2221280,
+			`{"success":true,"data":{"ok":true,"poolFree":41,"poolTarget":50,"watch":[],"restoreHeight":0}}`:       1,
+		} {
+			srv, _ := site(t, 200, reply)
+			k, _ := syncsign.NewKey()
+			resp, err := client(srv).Send(context.Background(), k, Body{V: 1, Seq: 1})
+			if err != nil || resp.RestoreHeight != want {
+				t.Fatalf("%s: RestoreHeight %d, %v", reply, resp.RestoreHeight, err)
+			}
 		}
-	}
+	})
 }
 
 func TestSend(t *testing.T) {

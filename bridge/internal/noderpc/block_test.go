@@ -51,19 +51,21 @@ func TestBlock(t *testing.T) {
 }
 
 func TestBlockRefuses(t *testing.T) {
-	for name, reply := range map[string]string{
-		"node error":    `{"jsonrpc":"2.0","id":"0","error":{"code":-2,"message":"Requested block height: 9999999 greater than current top block height"}}`,
-		"bad hash":      `{"jsonrpc":"2.0","id":"0","result":{"status":"OK","block_header":{"hash":"xyz","height":2221449},"tx_hashes":[]}}`,
-		"bad tx hash":   `{"jsonrpc":"2.0","id":"0","result":{"status":"OK","block_header":{"hash":"` + hashA + `","height":2221449},"tx_hashes":["nothex"]}}`,
-		"wrong height":  `{"jsonrpc":"2.0","id":"0","result":{"status":"OK","block_header":{"hash":"` + hashA + `","height":5},"tx_hashes":[]}}`,
-		"status not OK": `{"jsonrpc":"2.0","id":"0","result":{"status":"BUSY","block_header":{"hash":"` + hashA + `","height":2221449},"tx_hashes":[]}}`,
-		"too large":     `{"jsonrpc":"2.0","id":"0","result":{"status":"OK","pad":"` + strings.Repeat("a", 5<<20) + `"}}`,
-	} {
-		t.Run(name, func(t *testing.T) {
-			srv := methodNode(t, map[string]string{"get_block": reply})
-			if _, err := GetBlock(context.Background(), srv.URL, nil, 2221449); err == nil {
-				t.Fatal("accepted")
-			}
-		})
-	}
+	t.Run("[F05] bad block replies are refused", func(t *testing.T) {
+		for name, reply := range map[string]string{
+			"node error":    `{"jsonrpc":"2.0","id":"0","error":{"code":-2,"message":"Requested block height: 9999999 greater than current top block height"}}`,
+			"bad hash":      `{"jsonrpc":"2.0","id":"0","result":{"status":"OK","block_header":{"hash":"xyz","height":2221449},"tx_hashes":[]}}`,
+			"bad tx hash":   `{"jsonrpc":"2.0","id":"0","result":{"status":"OK","block_header":{"hash":"` + hashA + `","height":2221449},"tx_hashes":["nothex"]}}`,
+			"wrong height":  `{"jsonrpc":"2.0","id":"0","result":{"status":"OK","block_header":{"hash":"` + hashA + `","height":5},"tx_hashes":[]}}`,
+			"status not OK": `{"jsonrpc":"2.0","id":"0","result":{"status":"BUSY","block_header":{"hash":"` + hashA + `","height":2221449},"tx_hashes":[]}}`,
+			"too large":     `{"jsonrpc":"2.0","id":"0","result":{"status":"OK","pad":"` + strings.Repeat("a", 5<<20) + `"}}`,
+		} {
+			t.Run(name, func(t *testing.T) {
+				srv := methodNode(t, map[string]string{"get_block": reply})
+				if _, err := GetBlock(context.Background(), srv.URL, nil, 2221449); err == nil {
+					t.Fatal("accepted")
+				}
+			})
+		}
+	})
 }

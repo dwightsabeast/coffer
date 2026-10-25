@@ -108,64 +108,68 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 }
 
 func TestStartsAndBecomesReady(t *testing.T) {
-	h := start(t, "", nil)
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	c, err := h.s.WaitReady(ctx)
-	if err != nil {
-		t.Fatal(err)
-	}
-	v, err := c.GetVersion(ctx)
-	if err != nil || v.Version != 65562 {
-		t.Fatalf("GetVersion through the supervisor's client: %+v %v", v, err)
-	}
-	recs := h.records(t)
-	if len(recs) != 1 {
-		t.Fatalf("%d starts", len(recs))
-	}
-	r := recs[0]
-	args := strings.Join(r.Args, " ")
-	for _, want := range []string{"--config-file " + filepath.Join(h.data, "run", "wallet-rpc.conf"), "--rpc-bind-ip 127.0.0.1",
-		"--non-interactive", "--stagenet", "--daemon-address 127.0.0.1:38081", "--daemon-ssl disabled",
-		"--wallet-dir " + filepath.Join(h.data, "wallet"), "--shared-ringdb-dir " + filepath.Join(h.data, "ringdb"),
-		"--log-file " + filepath.Join(h.data, "log", "wallet-rpc.log"), "--max-log-files 2",
-		"--tx-notify /usr/local/bin/xmr-bridge notify --pid 4242 %s"} {
-		if !strings.Contains(args, want) {
-			t.Errorf("args lack %q:\n%s", want, args)
+	t.Run("[T10] wallet-rpc listens on 127.0.0.1 with a login", func(t *testing.T) {
+		h := start(t, "", nil)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		c, err := h.s.WaitReady(ctx)
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	if r.PassInArgs || r.User == "" || r.PassMD5 == "" || r.ConfMode != "-rw-------" || r.ConfLines != 1 {
-		t.Fatalf("login handling: %+v", r)
-	}
-	for _, e := range r.Env {
-		if strings.HasPrefix(e, "HOME=") || strings.HasPrefix(e, "PATH=") {
-			t.Errorf("child inherited %s", e)
+		v, err := c.GetVersion(ctx)
+		if err != nil || v.Version != 65562 {
+			t.Fatalf("GetVersion through the supervisor's client: %+v %v", v, err)
 		}
-	}
-	waitFor(t, "the config file to be removed", func() bool {
-		_, err := os.Stat(filepath.Join(h.data, "run", "wallet-rpc.conf"))
-		return errors.Is(err, os.ErrNotExist)
+		recs := h.records(t)
+		if len(recs) != 1 {
+			t.Fatalf("%d starts", len(recs))
+		}
+		r := recs[0]
+		args := strings.Join(r.Args, " ")
+		for _, want := range []string{"--config-file " + filepath.Join(h.data, "run", "wallet-rpc.conf"), "--rpc-bind-ip 127.0.0.1",
+			"--non-interactive", "--stagenet", "--daemon-address 127.0.0.1:38081", "--daemon-ssl disabled",
+			"--wallet-dir " + filepath.Join(h.data, "wallet"), "--shared-ringdb-dir " + filepath.Join(h.data, "ringdb"),
+			"--log-file " + filepath.Join(h.data, "log", "wallet-rpc.log"), "--max-log-files 2",
+			"--tx-notify /usr/local/bin/xmr-bridge notify --pid 4242 %s"} {
+			if !strings.Contains(args, want) {
+				t.Errorf("args lack %q:\n%s", want, args)
+			}
+		}
+		if r.PassInArgs || r.User == "" || r.PassMD5 == "" || r.ConfMode != "-rw-------" || r.ConfLines != 1 {
+			t.Fatalf("login handling: %+v", r)
+		}
+		for _, e := range r.Env {
+			if strings.HasPrefix(e, "HOME=") || strings.HasPrefix(e, "PATH=") {
+				t.Errorf("child inherited %s", e)
+			}
+		}
+		waitFor(t, "the config file to be removed", func() bool {
+			_, err := os.Stat(filepath.Join(h.data, "run", "wallet-rpc.conf"))
+			return errors.Is(err, os.ErrNotExist)
+		})
+		st := h.s.Status()
+		if !st.Running || !st.Ready || st.PID != r.PID || st.Restarts != 0 {
+			t.Fatalf("status %+v", st)
+		}
 	})
-	st := h.s.Status()
-	if !st.Running || !st.Ready || st.PID != r.PID || st.Restarts != 0 {
-		t.Fatalf("status %+v", st)
-	}
 }
 
 func TestRestartsAfterCrashWithNewLogin(t *testing.T) {
-	h := start(t, "crash-after-ready", nil)
-	waitFor(t, "three starts", func() bool { return len(h.records(t)) >= 3 && h.s.Status().Restarts >= 2 })
-	st := h.s.Status()
-	if !strings.Contains(st.LastExit, "exit status 7") || !strings.Contains(st.LastExit, "crashing on purpose") {
-		t.Fatalf("last exit %q", st.LastExit)
-	}
-	recs := h.records(t)
-	if len(recs) < 3 {
-		t.Fatalf("%d starts", len(recs))
-	}
-	if recs[0].PassMD5 == recs[1].PassMD5 || recs[1].PassMD5 == recs[2].PassMD5 {
-		t.Fatal("the login was reused across starts")
-	}
+	t.Run("[T10][R07] restarted after a crash with a new login", func(t *testing.T) {
+		h := start(t, "crash-after-ready", nil)
+		waitFor(t, "three starts", func() bool { return len(h.records(t)) >= 3 && h.s.Status().Restarts >= 2 })
+		st := h.s.Status()
+		if !strings.Contains(st.LastExit, "exit status 7") || !strings.Contains(st.LastExit, "crashing on purpose") {
+			t.Fatalf("last exit %q", st.LastExit)
+		}
+		recs := h.records(t)
+		if len(recs) < 3 {
+			t.Fatalf("%d starts", len(recs))
+		}
+		if recs[0].PassMD5 == recs[1].PassMD5 || recs[1].PassMD5 == recs[2].PassMD5 {
+			t.Fatal("the login was reused across starts")
+		}
+	})
 }
 
 func TestStopLeavesNoChild(t *testing.T) {
@@ -204,15 +208,17 @@ func TestStopKillsAChildThatIgnoresTerm(t *testing.T) {
 }
 
 func TestNeverReadyIsRestarted(t *testing.T) {
-	h := start(t, "never-ready", func(o *Options) { o.ReadyTimeout = 300 * time.Millisecond })
-	waitFor(t, "a restart", func() bool { return h.s.Status().Restarts >= 1 })
-	if st := h.s.Status(); !strings.Contains(st.LastExit, "not ready") {
-		t.Fatalf("last exit %q", st.LastExit)
-	}
-	recs := h.records(t)
-	if len(recs) >= 2 && alive(recs[0].PID) {
-		t.Fatalf("the unready child %d was left running", recs[0].PID)
-	}
+	t.Run("[R07] a wallet-rpc that never gets ready is restarted", func(t *testing.T) {
+		h := start(t, "never-ready", func(o *Options) { o.ReadyTimeout = 300 * time.Millisecond })
+		waitFor(t, "a restart", func() bool { return h.s.Status().Restarts >= 1 })
+		if st := h.s.Status(); !strings.Contains(st.LastExit, "not ready") {
+			t.Fatalf("last exit %q", st.LastExit)
+		}
+		recs := h.records(t)
+		if len(recs) >= 2 && alive(recs[0].PID) {
+			t.Fatalf("the unready child %d was left running", recs[0].PID)
+		}
+	})
 }
 
 func TestWaitReadyHonorsContext(t *testing.T) {
@@ -273,30 +279,32 @@ func TestDefaultEnvironmentIsEmpty(t *testing.T) {
 
 // If the bridge is killed outright (no chance to stop its child), wallet-rpc goes with it (parent-death signal).
 func TestChildDiesWithTheBridge(t *testing.T) {
-	self, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
-	dir := t.TempDir()
-	pidfile := filepath.Join(dir, "child.pid")
-	bridge := exec.Command(self)
-	bridge.Env = []string{"XMR_FAKE_BRIDGE=1", "XMR_FAKE_DATA=" + dir, "XMR_FAKE_PIDFILE=" + pidfile}
-	if err := bridge.Start(); err != nil {
-		t.Fatal(err)
-	}
-	defer bridge.Process.Kill()
-	var child int
-	waitFor(t, "the fake bridge's child", func() bool {
-		b, err := os.ReadFile(pidfile)
-		if err != nil || len(b) == 0 {
-			return false
+	t.Run("[R07] wallet-rpc dies with the bridge", func(t *testing.T) {
+		self, err := os.Executable()
+		if err != nil {
+			t.Fatal(err)
 		}
-		child, err = strconv.Atoi(string(b))
-		return err == nil && alive(child)
+		dir := t.TempDir()
+		pidfile := filepath.Join(dir, "child.pid")
+		bridge := exec.Command(self)
+		bridge.Env = []string{"XMR_FAKE_BRIDGE=1", "XMR_FAKE_DATA=" + dir, "XMR_FAKE_PIDFILE=" + pidfile}
+		if err := bridge.Start(); err != nil {
+			t.Fatal(err)
+		}
+		defer bridge.Process.Kill()
+		var child int
+		waitFor(t, "the fake bridge's child", func() bool {
+			b, err := os.ReadFile(pidfile)
+			if err != nil || len(b) == 0 {
+				return false
+			}
+			child, err = strconv.Atoi(string(b))
+			return err == nil && alive(child)
+		})
+		bridge.Process.Signal(syscall.SIGKILL)
+		bridge.Wait()
+		waitFor(t, "the child to exit after the bridge was killed", func() bool { return !alive(child) || zombieOrGone(child) })
 	})
-	bridge.Process.Signal(syscall.SIGKILL)
-	bridge.Wait()
-	waitFor(t, "the child to exit after the bridge was killed", func() bool { return !alive(child) || zombieOrGone(child) })
 }
 
 // zombieOrGone: an exited child of a killed parent is reparented and reaped, but may briefly show as a zombie.
@@ -342,16 +350,18 @@ func TestInitRunsEachStart(t *testing.T) {
 // With a credential, wallet-rpc runs as that account (here: our own, since tests aren't root) and the login file
 // it reads is owned by it.
 func TestCredential(t *testing.T) {
-	uid, gid := os.Getuid(), os.Getgid()
-	h := start(t, "", func(o *Options) {
-		o.Credential = &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid), NoSetGroups: true}
-	}) // setgroups needs root
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	if _, err := h.s.WaitReady(ctx); err != nil {
-		t.Fatal(err)
-	}
-	if h.s.owner == nil || *h.s.owner != [2]int{uid, gid} {
-		t.Fatalf("the login file wasn't handed to the account: %v", h.s.owner)
-	}
+	t.Run("[T10] the wallet-rpc login", func(t *testing.T) {
+		uid, gid := os.Getuid(), os.Getgid()
+		h := start(t, "", func(o *Options) {
+			o.Credential = &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid), NoSetGroups: true}
+		}) // setgroups needs root
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if _, err := h.s.WaitReady(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if h.s.owner == nil || *h.s.owner != [2]int{uid, gid} {
+			t.Fatalf("the login file wasn't handed to the account: %v", h.s.owner)
+		}
+	})
 }

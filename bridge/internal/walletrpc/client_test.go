@@ -60,25 +60,27 @@ func TestStaleNonceRetriesOnce(t *testing.T) {
 }
 
 func TestWrongPassword(t *testing.T) {
-	f, srv := newFake(t)
-	f.results["get_height"] = `{"height":1}`
-	const wrong = "not-the-password-77"
-	c := New(srv.URL, f.user, secret.New(wrong), srv.Client())
-	_, err := c.GetHeight(context.Background())
-	if !errors.Is(err, ErrUnauthorized) {
-		t.Fatalf("want ErrUnauthorized, got %v", err)
-	}
-	if f.requests != 2 {
-		t.Fatalf("wrong password: %d requests, want 2 (no loop)", f.requests)
-	}
-	if strings.Contains(err.Error(), wrong) || strings.Contains(err.Error(), f.pass) {
-		t.Fatalf("error leaks a password: %v", err)
-	}
-	// A later call tries again (once), still without looping.
-	_, err = c.GetHeight(context.Background())
-	if !errors.Is(err, ErrUnauthorized) || f.requests > 4 {
-		t.Fatalf("second call: %v after %d requests", err, f.requests)
-	}
+	t.Run("[T10] a wrong wallet-rpc login is refused", func(t *testing.T) {
+		f, srv := newFake(t)
+		f.results["get_height"] = `{"height":1}`
+		const wrong = "not-the-password-77"
+		c := New(srv.URL, f.user, secret.New(wrong), srv.Client())
+		_, err := c.GetHeight(context.Background())
+		if !errors.Is(err, ErrUnauthorized) {
+			t.Fatalf("want ErrUnauthorized, got %v", err)
+		}
+		if f.requests != 2 {
+			t.Fatalf("wrong password: %d requests, want 2 (no loop)", f.requests)
+		}
+		if strings.Contains(err.Error(), wrong) || strings.Contains(err.Error(), f.pass) {
+			t.Fatalf("error leaks a password: %v", err)
+		}
+		// A later call tries again (once), still without looping.
+		_, err = c.GetHeight(context.Background())
+		if !errors.Is(err, ErrUnauthorized) || f.requests > 4 {
+			t.Fatalf("second call: %v after %d requests", err, f.requests)
+		}
+	})
 }
 
 func TestUnsupportedChallenge(t *testing.T) {
@@ -113,34 +115,38 @@ func TestRPCError(t *testing.T) {
 }
 
 func TestHTTPStatusAndBadBodies(t *testing.T) {
-	for name, h := range map[string]http.HandlerFunc{
-		"500":       func(w http.ResponseWriter, r *http.Request) { http.Error(w, "boom", 500) },
-		"not JSON":  func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("<html>")) },
-		"no result": func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"jsonrpc":"2.0","id":"0"}`)) },
-		"trailing data": func(w http.ResponseWriter, r *http.Request) {
-			w.Write([]byte(`{"jsonrpc":"2.0","id":"0","result":{"height":1}} x`))
-		},
-	} {
-		t.Run(name, func(t *testing.T) {
-			srv := httptest.NewServer(h)
-			defer srv.Close()
-			if _, err := New(srv.URL, "u", secret.New("p"), srv.Client()).GetHeight(context.Background()); err == nil {
-				t.Fatal("accepted")
-			}
-		})
-	}
+	t.Run("[F05] bad statuses and bodies", func(t *testing.T) {
+		for name, h := range map[string]http.HandlerFunc{
+			"500":       func(w http.ResponseWriter, r *http.Request) { http.Error(w, "boom", 500) },
+			"not JSON":  func(w http.ResponseWriter, r *http.Request) { w.Write([]byte("<html>")) },
+			"no result": func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(`{"jsonrpc":"2.0","id":"0"}`)) },
+			"trailing data": func(w http.ResponseWriter, r *http.Request) {
+				w.Write([]byte(`{"jsonrpc":"2.0","id":"0","result":{"height":1}} x`))
+			},
+		} {
+			t.Run(name, func(t *testing.T) {
+				srv := httptest.NewServer(h)
+				defer srv.Close()
+				if _, err := New(srv.URL, "u", secret.New("p"), srv.Client()).GetHeight(context.Background()); err == nil {
+					t.Fatal("accepted")
+				}
+			})
+		}
+	})
 }
 
 func TestResponseSizeCap(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte(`{"jsonrpc":"2.0","id":"0","result":{"height":1,"pad":"` + strings.Repeat("a", 2000) + `"}}`))
-	}))
-	defer srv.Close()
-	c := New(srv.URL, "u", secret.New("p"), srv.Client())
-	c.maxResponse = 1000
-	if _, err := c.GetHeight(context.Background()); err == nil || !strings.Contains(err.Error(), "too large") {
-		t.Fatalf("want too large, got %v", err)
-	}
+	t.Run("[F05] the response size cap", func(t *testing.T) {
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Write([]byte(`{"jsonrpc":"2.0","id":"0","result":{"height":1,"pad":"` + strings.Repeat("a", 2000) + `"}}`))
+		}))
+		defer srv.Close()
+		c := New(srv.URL, "u", secret.New("p"), srv.Client())
+		c.maxResponse = 1000
+		if _, err := c.GetHeight(context.Background()); err == nil || !strings.Contains(err.Error(), "too large") {
+			t.Fatalf("want too large, got %v", err)
+		}
+	})
 }
 
 func TestContextTimeout(t *testing.T) {

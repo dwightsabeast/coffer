@@ -65,12 +65,14 @@ func TestSaveLoadRoundTrip(t *testing.T) {
 }
 
 func TestLoadRefusesReadableByOthers(t *testing.T) {
-	for _, mode := range []os.FileMode{0o640, 0o604, 0o644, 0o660} {
-		p := write(t, `{"site":"https://shop.example","network":"stagenet","address":"`+testaddr.Stagenet+`","node":"http://127.0.0.1:38081","dataDir":"/var/lib/xmr-bridge"}`, mode)
-		if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "chmod 600") {
-			t.Fatalf("mode %v: want a chmod 600 error, got %v", mode, err)
+	t.Run("[T10] a config readable by others is refused", func(t *testing.T) {
+		for _, mode := range []os.FileMode{0o640, 0o604, 0o644, 0o660} {
+			p := write(t, `{"site":"https://shop.example","network":"stagenet","address":"`+testaddr.Stagenet+`","node":"http://127.0.0.1:38081","dataDir":"/var/lib/xmr-bridge"}`, mode)
+			if _, err := Load(p); err == nil || !strings.Contains(err.Error(), "chmod 600") {
+				t.Fatalf("mode %v: want a chmod 600 error, got %v", mode, err)
+			}
 		}
-	}
+	})
 }
 
 func TestLoadStrictJSON(t *testing.T) {
@@ -101,54 +103,56 @@ func TestLoadSizeCap(t *testing.T) {
 }
 
 func TestValidate(t *testing.T) {
-	ok := []func(*Config){
-		func(c *Config) {},
-		func(c *Config) { c.Site = "https://shop.example/" },
-		func(c *Config) { c.Site = "https://shop.example:8443" },
-		func(c *Config) { c.Site = "http://localhost:4321" },
-		func(c *Config) { c.Site = "http://127.0.0.1:4322" },
-		func(c *Config) { c.Site = "http://[::1]:4321" },
-		func(c *Config) {
-			c.Network = Mainnet
-			c.Address = testaddr.Mainnet
-			c.Node = "https://node.example:18089"
-		},
-		func(c *Config) { c.AllowSameMachine = true }, // stagenet only
-	}
-	for i, f := range ok {
-		c := valid()
-		f(&c)
-		if err := c.Validate(); err != nil {
-			t.Errorf("ok case %d: %v", i, err)
+	t.Run("[T15] validation, including the stagenet-only same-machine flag", func(t *testing.T) {
+		ok := []func(*Config){
+			func(c *Config) {},
+			func(c *Config) { c.Site = "https://shop.example/" },
+			func(c *Config) { c.Site = "https://shop.example:8443" },
+			func(c *Config) { c.Site = "http://localhost:4321" },
+			func(c *Config) { c.Site = "http://127.0.0.1:4322" },
+			func(c *Config) { c.Site = "http://[::1]:4321" },
+			func(c *Config) {
+				c.Network = Mainnet
+				c.Address = testaddr.Mainnet
+				c.Node = "https://node.example:18089"
+			},
+			func(c *Config) { c.AllowSameMachine = true }, // stagenet only
 		}
-	}
-	bad := map[string]func(*Config){
-		"http site off loopback":     func(c *Config) { c.Site = "http://shop.example" },
-		"site with a path":           func(c *Config) { c.Site = "https://shop.example/blog" },
-		"site with a query":          func(c *Config) { c.Site = "https://shop.example/?a=1" },
-		"site with user info":        func(c *Config) { c.Site = "https://u:p@shop.example" },
-		"site not a URL":             func(c *Config) { c.Site = "shop.example" },
-		"site empty":                 func(c *Config) { c.Site = "" },
-		"unknown network":            func(c *Config) { c.Network = "regtest" },
-		"node empty":                 func(c *Config) { c.Node = "" },
-		"node not http":              func(c *Config) { c.Node = "ftp://127.0.0.1:38081" },
-		"node without a port":        func(c *Config) { c.Node = "https://node.example" }, // supervise.New needs one (spec change 30)
-		"node with user info":        func(c *Config) { c.Node = "http://u:p@127.0.0.1:38081" },
-		"data dir relative":          func(c *Config) { c.DataDir = "data" },
-		"data dir empty":             func(c *Config) { c.DataDir = "" },
-		"same machine on mainnet":    func(c *Config) { c.Network = Mainnet; c.Address = testaddr.Mainnet; c.AllowSameMachine = true },
-		"same machine on testnet":    func(c *Config) { c.Network = Testnet; c.Address = testaddr.Testnet; c.AllowSameMachine = true },
-		"address missing":            func(c *Config) { c.Address = "" },
-		"address of another network": func(c *Config) { c.Address = testaddr.Mainnet },
-		"subaddress":                 func(c *Config) { c.Address = testaddr.Make(36, 1) },
-	}
-	for name, f := range bad {
-		c := valid()
-		f(&c)
-		if err := c.Validate(); err == nil {
-			t.Errorf("%s: accepted", name)
+		for i, f := range ok {
+			c := valid()
+			f(&c)
+			if err := c.Validate(); err != nil {
+				t.Errorf("ok case %d: %v", i, err)
+			}
 		}
-	}
+		bad := map[string]func(*Config){
+			"http site off loopback":     func(c *Config) { c.Site = "http://shop.example" },
+			"site with a path":           func(c *Config) { c.Site = "https://shop.example/blog" },
+			"site with a query":          func(c *Config) { c.Site = "https://shop.example/?a=1" },
+			"site with user info":        func(c *Config) { c.Site = "https://u:p@shop.example" },
+			"site not a URL":             func(c *Config) { c.Site = "shop.example" },
+			"site empty":                 func(c *Config) { c.Site = "" },
+			"unknown network":            func(c *Config) { c.Network = "regtest" },
+			"node empty":                 func(c *Config) { c.Node = "" },
+			"node not http":              func(c *Config) { c.Node = "ftp://127.0.0.1:38081" },
+			"node without a port":        func(c *Config) { c.Node = "https://node.example" }, // supervise.New needs one (spec change 30)
+			"node with user info":        func(c *Config) { c.Node = "http://u:p@127.0.0.1:38081" },
+			"data dir relative":          func(c *Config) { c.DataDir = "data" },
+			"data dir empty":             func(c *Config) { c.DataDir = "" },
+			"same machine on mainnet":    func(c *Config) { c.Network = Mainnet; c.Address = testaddr.Mainnet; c.AllowSameMachine = true },
+			"same machine on testnet":    func(c *Config) { c.Network = Testnet; c.Address = testaddr.Testnet; c.AllowSameMachine = true },
+			"address missing":            func(c *Config) { c.Address = "" },
+			"address of another network": func(c *Config) { c.Address = testaddr.Mainnet },
+			"subaddress":                 func(c *Config) { c.Address = testaddr.Make(36, 1) },
+		}
+		for name, f := range bad {
+			c := valid()
+			f(&c)
+			if err := c.Validate(); err == nil {
+				t.Errorf("%s: accepted", name)
+			}
+		}
+	})
 }
 
 func TestSaveRefusesInvalid(t *testing.T) {

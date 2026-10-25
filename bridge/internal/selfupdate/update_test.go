@@ -115,40 +115,42 @@ func TestBridgeNothingToDo(t *testing.T) {
 }
 
 func TestBridgeRefuses(t *testing.T) {
-	cases := map[string]func(r *release, u *Updater){
-		"tampered binary": func(r *release, u *Updater) {
-			r.files["xmr-bridge-0.2.0-linux-amd64"] = append(r.files["xmr-bridge-0.2.0-linux-amd64"], ' ')
-		},
-		"wrong key": func(r *release, u *Updater) {
-			other, _ := keyPair(t)
-			u.Keys = []ed25519.PublicKey{other}
-		},
-		"no key pinned":                  func(r *release, u *Updater) { u.Keys = nil },
-		"binary reports another version": func(r *release, u *Updater) { r.publish("0.2.0", t0.Add(-49*time.Hour), "0.1.9") },
-		"no file for this CPU":           func(r *release, u *Updater) { u.Arch = "arm64" },
-		"plain http to elsewhere":        func(r *release, u *Updater) { u.BaseURL = "http://127.0.0.1:1" },
-	}
-	for name, tweak := range cases {
-		t.Run(name, func(t *testing.T) {
-			r := newRelease(t)
-			r.publish("0.2.0", t0.Add(-49*time.Hour), "0.2.0")
-			u, d := updater(t, r, "0.1.0")
-			tweak(r, u)
-			p, err := u.PrepareBridge(context.Background())
-			if err == nil || p != nil {
-				t.Fatalf("accepted: %+v", p)
-			}
-			if name == "no key pinned" && !errors.Is(err, ErrNoKey) {
-				t.Fatalf("%v", err)
-			}
-			if read(t, d, "bin/xmr-bridge") != "current bridge" {
-				t.Fatal("the running binary changed")
-			}
-			if e, _ := filepath.Glob(filepath.Join(d, "bin", ".xmr-bridge-*")); len(e) != 0 {
-				t.Fatalf("leftovers %v", e)
-			}
-		})
-	}
+	t.Run("[T16] a bad bridge update is refused", func(t *testing.T) {
+		cases := map[string]func(r *release, u *Updater){
+			"tampered binary": func(r *release, u *Updater) {
+				r.files["xmr-bridge-0.2.0-linux-amd64"] = append(r.files["xmr-bridge-0.2.0-linux-amd64"], ' ')
+			},
+			"wrong key": func(r *release, u *Updater) {
+				other, _ := keyPair(t)
+				u.Keys = []ed25519.PublicKey{other}
+			},
+			"no key pinned":                  func(r *release, u *Updater) { u.Keys = nil },
+			"binary reports another version": func(r *release, u *Updater) { r.publish("0.2.0", t0.Add(-49*time.Hour), "0.1.9") },
+			"no file for this CPU":           func(r *release, u *Updater) { u.Arch = "arm64" },
+			"plain http to elsewhere":        func(r *release, u *Updater) { u.BaseURL = "http://127.0.0.1:1" },
+		}
+		for name, tweak := range cases {
+			t.Run(name, func(t *testing.T) {
+				r := newRelease(t)
+				r.publish("0.2.0", t0.Add(-49*time.Hour), "0.2.0")
+				u, d := updater(t, r, "0.1.0")
+				tweak(r, u)
+				p, err := u.PrepareBridge(context.Background())
+				if err == nil || p != nil {
+					t.Fatalf("accepted: %+v", p)
+				}
+				if name == "no key pinned" && !errors.Is(err, ErrNoKey) {
+					t.Fatalf("%v", err)
+				}
+				if read(t, d, "bin/xmr-bridge") != "current bridge" {
+					t.Fatal("the running binary changed")
+				}
+				if e, _ := filepath.Glob(filepath.Join(d, "bin", ".xmr-bridge-*")); len(e) != 0 {
+					t.Fatalf("leftovers %v", e)
+				}
+			})
+		}
+	})
 }
 
 // Wyatt's 1a: update -> rollback -> the next daily check skips that version; only a newer one is installed.

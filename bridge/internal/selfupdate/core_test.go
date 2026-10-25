@@ -48,33 +48,35 @@ var manifestJSON = `{"product":"xmr-bridge","version":"0.2.0","date":"2026-10-01
  "files":[{"name":"xmr-bridge-0.2.0-linux-amd64","os":"linux","arch":"amd64","sha256":"` + strings.Repeat("a", 64) + `","size":10}]}`
 
 func TestVerifyManifest(t *testing.T) {
-	pub, priv := keyPair(t)
-	other, otherPriv := keyPair(t)
-	m := []byte(manifestJSON)
-	got, err := VerifyManifest(m, sign(priv, m), []ed25519.PublicKey{other, pub})
-	if err != nil || got.Version != "0.2.0" || got.Date != time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) || got.Files[0].Size != 10 {
-		t.Fatalf("%+v %v", got, err)
-	}
-	for name, c := range map[string]struct {
-		m, sig []byte
-		keys   []ed25519.PublicKey
-	}{
-		"wrong key":      {m, sign(otherPriv, m), []ed25519.PublicKey{pub}},
-		"changed byte":   {[]byte(strings.Replace(manifestJSON, "0.2.0", "0.3.0", 1)), sign(priv, m), []ed25519.PublicKey{pub}},
-		"no prefix":      {m, []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(priv, m))), []ed25519.PublicKey{pub}},
-		"no keys pinned": {m, sign(priv, m), nil},
-		"garbage sig":    {m, []byte("not base64"), []ed25519.PublicKey{pub}},
-		"other product":  {[]byte(strings.Replace(manifestJSON, "xmr-bridge\"", "other\"", 1)), nil, []ed25519.PublicKey{pub}},
-		"bad version":    {[]byte(strings.Replace(manifestJSON, "\"0.2.0\"", "\"two\"", 1)), nil, []ed25519.PublicKey{pub}},
-	} {
-		sig := c.sig
-		if sig == nil {
-			sig = sign(priv, c.m)
+	t.Run("[T16] the release manifest's signature", func(t *testing.T) {
+		pub, priv := keyPair(t)
+		other, otherPriv := keyPair(t)
+		m := []byte(manifestJSON)
+		got, err := VerifyManifest(m, sign(priv, m), []ed25519.PublicKey{other, pub})
+		if err != nil || got.Version != "0.2.0" || got.Date != time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC) || got.Files[0].Size != 10 {
+			t.Fatalf("%+v %v", got, err)
 		}
-		if _, err := VerifyManifest(c.m, sig, c.keys); err == nil {
-			t.Errorf("%s: accepted", name)
+		for name, c := range map[string]struct {
+			m, sig []byte
+			keys   []ed25519.PublicKey
+		}{
+			"wrong key":      {m, sign(otherPriv, m), []ed25519.PublicKey{pub}},
+			"changed byte":   {[]byte(strings.Replace(manifestJSON, "0.2.0", "0.3.0", 1)), sign(priv, m), []ed25519.PublicKey{pub}},
+			"no prefix":      {m, []byte(base64.StdEncoding.EncodeToString(ed25519.Sign(priv, m))), []ed25519.PublicKey{pub}},
+			"no keys pinned": {m, sign(priv, m), nil},
+			"garbage sig":    {m, []byte("not base64"), []ed25519.PublicKey{pub}},
+			"other product":  {[]byte(strings.Replace(manifestJSON, "xmr-bridge\"", "other\"", 1)), nil, []ed25519.PublicKey{pub}},
+			"bad version":    {[]byte(strings.Replace(manifestJSON, "\"0.2.0\"", "\"two\"", 1)), nil, []ed25519.PublicKey{pub}},
+		} {
+			sig := c.sig
+			if sig == nil {
+				sig = sign(priv, c.m)
+			}
+			if _, err := VerifyManifest(c.m, sig, c.keys); err == nil {
+				t.Errorf("%s: accepted", name)
+			}
 		}
-	}
+	})
 }
 
 func TestStateFiles(t *testing.T) {

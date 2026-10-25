@@ -32,41 +32,43 @@ func rfcKey(t *testing.T, name string) ed25519.PrivateKey {
 
 // The shared vectors (contract/test-vectors/sync-signature.json) bind the Go bridge to the plugin byte for byte.
 func TestSharedVectors(t *testing.T) {
-	raw, err := os.ReadFile("../../../contract/test-vectors/sync-signature.json")
-	if err != nil {
-		t.Fatal(err)
-	}
-	var vf vectorFile
-	if err := json.Unmarshal(raw, &vf); err != nil {
-		t.Fatal(err)
-	}
-	for name, k := range vf.Keys {
-		if got := base64.StdEncoding.EncodeToString(rfcKey(t, name).Public().(ed25519.PublicKey)); got != k.PublicKey {
-			t.Fatalf("key %s: the RFC seed gives %s, the vectors say %s", name, got, k.PublicKey)
+	t.Run("[T03] the shared signature vectors", func(t *testing.T) {
+		raw, err := os.ReadFile("../../../contract/test-vectors/sync-signature.json")
+		if err != nil {
+			t.Fatal(err)
 		}
-	}
-	if len(vf.Cases) < 9 {
-		t.Fatalf("%d cases", len(vf.Cases))
-	}
-	paired := rfcKey(t, "test1").Public().(ed25519.PublicKey)
-	for _, c := range vf.Cases {
-		body, _ := base64.StdEncoding.DecodeString(c.Body)
-		msg, _ := base64.StdEncoding.DecodeString(c.Message)
-		if got := Message(c.Ts, body); string(got) != string(msg) && c.Expected != "BAD_SIGNATURE" {
-			t.Errorf("%s: message differs", c.Name)
+		var vf vectorFile
+		if err := json.Unmarshal(raw, &vf); err != nil {
+			t.Fatal(err)
 		}
-		if c.Expected != "BAD_SIGNATURE" {
-			// Ed25519 is deterministic: the bridge's signer must reproduce the plugin side's signature exactly.
-			if got := Sign(rfcKey(t, c.SignedWith), c.Ts, body); got != c.Signature {
-				t.Errorf("%s: signature %s, want %s", c.Name, got, c.Signature)
+		for name, k := range vf.Keys {
+			if got := base64.StdEncoding.EncodeToString(rfcKey(t, name).Public().(ed25519.PublicKey)); got != k.PublicKey {
+				t.Fatalf("key %s: the RFC seed gives %s, the vectors say %s", name, got, k.PublicKey)
 			}
 		}
-		sig, _ := base64.StdEncoding.DecodeString(c.Signature)
-		ok := ed25519.Verify(paired, Message(c.Ts, body), sig)
-		if ok != (c.Expected != "BAD_SIGNATURE") {
-			t.Errorf("%s: verifies=%v, expected %s", c.Name, ok, c.Expected)
+		if len(vf.Cases) < 9 {
+			t.Fatalf("%d cases", len(vf.Cases))
 		}
-	}
+		paired := rfcKey(t, "test1").Public().(ed25519.PublicKey)
+		for _, c := range vf.Cases {
+			body, _ := base64.StdEncoding.DecodeString(c.Body)
+			msg, _ := base64.StdEncoding.DecodeString(c.Message)
+			if got := Message(c.Ts, body); string(got) != string(msg) && c.Expected != "BAD_SIGNATURE" {
+				t.Errorf("%s: message differs", c.Name)
+			}
+			if c.Expected != "BAD_SIGNATURE" {
+				// Ed25519 is deterministic: the bridge's signer must reproduce the plugin side's signature exactly.
+				if got := Sign(rfcKey(t, c.SignedWith), c.Ts, body); got != c.Signature {
+					t.Errorf("%s: signature %s, want %s", c.Name, got, c.Signature)
+				}
+			}
+			sig, _ := base64.StdEncoding.DecodeString(c.Signature)
+			ok := ed25519.Verify(paired, Message(c.Ts, body), sig)
+			if ok != (c.Expected != "BAD_SIGNATURE") {
+				t.Errorf("%s: verifies=%v, expected %s", c.Name, ok, c.Expected)
+			}
+		}
+	})
 }
 
 func TestKeyFile(t *testing.T) {

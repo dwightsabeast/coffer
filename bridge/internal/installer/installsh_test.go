@@ -159,24 +159,26 @@ func TestInstallShArm64(t *testing.T) {
 }
 
 func TestInstallShRefuses(t *testing.T) {
-	bad := map[string][]byte{"/xmr-bridge-0.0.0-test-linux-amd64": []byte(fakeBridge + "# tampered\n")}
-	for name, c := range map[string]struct {
-		c    shCase
-		want string
-	}{
-		"tampered download": {shCase{uname: "Linux", arch: "x86_64", uid: "1000", served: bad}, "doesn't match"},
-		"missing download":  {shCase{uname: "Linux", arch: "x86_64", uid: "1000", served: map[string][]byte{}}, "download failed"},
-		"template":          {shCase{uname: "Linux", arch: "x86_64", uid: "1000", template: true}, "template"},
-		"other CPU":         {shCase{uname: "Linux", arch: "riscv64", uid: "1000"}, "CPU"},
-		"not Linux":         {shCase{uname: "Darwin", arch: "arm64", uid: "1000"}, "Linux only"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			code, out, rec, _, _ := runInstallSh(t, c.c)
-			if code == 0 || rec != "" || !strings.Contains(out, "xmr-bridge installer: ") || !strings.Contains(out, c.want) {
-				t.Fatalf("exit %d, record %q: %s", code, rec, out)
-			}
-		})
-	}
+	t.Run("[T16] install.sh refuses", func(t *testing.T) {
+		bad := map[string][]byte{"/xmr-bridge-0.0.0-test-linux-amd64": []byte(fakeBridge + "# tampered\n")}
+		for name, c := range map[string]struct {
+			c    shCase
+			want string
+		}{
+			"tampered download": {shCase{uname: "Linux", arch: "x86_64", uid: "1000", served: bad}, "doesn't match"},
+			"missing download":  {shCase{uname: "Linux", arch: "x86_64", uid: "1000", served: map[string][]byte{}}, "download failed"},
+			"template":          {shCase{uname: "Linux", arch: "x86_64", uid: "1000", template: true}, "template"},
+			"other CPU":         {shCase{uname: "Linux", arch: "riscv64", uid: "1000"}, "CPU"},
+			"not Linux":         {shCase{uname: "Darwin", arch: "arm64", uid: "1000"}, "Linux only"},
+		} {
+			t.Run(name, func(t *testing.T) {
+				code, out, rec, _, _ := runInstallSh(t, c.c)
+				if code == 0 || rec != "" || !strings.Contains(out, "xmr-bridge installer: ") || !strings.Contains(out, c.want) {
+					t.Fatalf("exit %d, record %q: %s", code, rec, out)
+				}
+			})
+		}
+	})
 }
 
 func TestInstallShNoexecTmp(t *testing.T) {
@@ -210,31 +212,33 @@ func TestInstallShWget(t *testing.T) {
 }
 
 func TestInstallShWgetRefuses(t *testing.T) {
-	bad := map[string][]byte{"/xmr-bridge-0.0.0-test-linux-amd64": []byte(fakeBridge + "# tampered\n")}
-	for name, c := range map[string]struct {
-		c    shCase
-		want string
-	}{
-		"tampered download": {shCase{uname: "Linux", arch: "x86_64", uid: "1000", served: bad, tools: "wget"}, "doesn't match"},
-		"missing download":  {shCase{uname: "Linux", arch: "x86_64", uid: "1000", served: map[string][]byte{}, tools: "wget"}, "download failed"},
-		// GNU wget can't limit a redirect's protocol the way curl's --proto does, so it follows none (Wyatt, 2026-10-12).
-		"redirect": {shCase{uname: "Linux", arch: "x86_64", uid: "1000", redirect: true, tools: "wget"}, "download failed"},
-		"neither":  {shCase{uname: "Linux", arch: "x86_64", uid: "1000", tools: "none"}, "needs curl or wget"},
-	} {
-		t.Run(name, func(t *testing.T) {
-			code, out, rec, _, _ := runInstallSh(t, c.c)
-			if code == 0 || rec != "" || !strings.Contains(out, "xmr-bridge installer: ") || !strings.Contains(out, c.want) {
-				t.Fatalf("exit %d, record %q: %s", code, rec, out)
-			}
-			if name == "neither" && (!strings.Contains(out, "sudo apt install curl") || !strings.Contains(out, "paste the install command again")) {
-				t.Fatalf("doesn't say what to install: %s", out)
-			}
-		})
-	}
-	// curl follows a redirect within the protocols the release allows, as before.
-	c := linuxAmd64()
-	c.redirect, c.tools = true, "curl"
-	if code, out, rec, _, _ := runInstallSh(t, c); code != 0 || rec == "" {
-		t.Fatalf("curl and a redirect: exit %d: %s", code, out)
-	}
+	t.Run("[T16] install.sh with wget refuses", func(t *testing.T) {
+		bad := map[string][]byte{"/xmr-bridge-0.0.0-test-linux-amd64": []byte(fakeBridge + "# tampered\n")}
+		for name, c := range map[string]struct {
+			c    shCase
+			want string
+		}{
+			"tampered download": {shCase{uname: "Linux", arch: "x86_64", uid: "1000", served: bad, tools: "wget"}, "doesn't match"},
+			"missing download":  {shCase{uname: "Linux", arch: "x86_64", uid: "1000", served: map[string][]byte{}, tools: "wget"}, "download failed"},
+			// GNU wget can't limit a redirect's protocol the way curl's --proto does, so it follows none (Wyatt, 2026-10-12).
+			"redirect": {shCase{uname: "Linux", arch: "x86_64", uid: "1000", redirect: true, tools: "wget"}, "download failed"},
+			"neither":  {shCase{uname: "Linux", arch: "x86_64", uid: "1000", tools: "none"}, "needs curl or wget"},
+		} {
+			t.Run(name, func(t *testing.T) {
+				code, out, rec, _, _ := runInstallSh(t, c.c)
+				if code == 0 || rec != "" || !strings.Contains(out, "xmr-bridge installer: ") || !strings.Contains(out, c.want) {
+					t.Fatalf("exit %d, record %q: %s", code, rec, out)
+				}
+				if name == "neither" && (!strings.Contains(out, "sudo apt install curl") || !strings.Contains(out, "paste the install command again")) {
+					t.Fatalf("doesn't say what to install: %s", out)
+				}
+			})
+		}
+		// curl follows a redirect within the protocols the release allows, as before.
+		c := linuxAmd64()
+		c.redirect, c.tools = true, "curl"
+		if code, out, rec, _, _ := runInstallSh(t, c); code != 0 || rec == "" {
+			t.Fatalf("curl and a redirect: exit %d: %s", code, out)
+		}
+	})
 }

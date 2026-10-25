@@ -13,6 +13,7 @@ The owner is Wyatt. He makes every design decision and handles every account, ke
 | The phase you're on | `docs/phases/NN-*.md`, one phase per session. `docs/phases/README.md` is the index. |
 | What happened so far | `docs/progress.md`. Read it first; append to it last. |
 | Proposed design changes | `docs/spec-changes.md`. Write proposals here, never edit `docs/spec.md`. |
+| Security claims and their tests | `docs/security-matrix.md`: each claim's ID, pass conditions, coverage and tagged tests (the live copy). |
 | Setup snags and their lessons | `docs/setup-friction.md`. Add a row whenever a setup step trips Wyatt or you. |
 | Dev box facts | `docs/dev-environment.md` (local only, gitignored) |
 | EmDash reference | `emdash-docs` MCP server (`search_docs`), then `docs/reference/emdash-knowledge-base.md`, then the installed packages' type definitions. Prefer these over memory. Never put private code, keys or user data in a docs query. |
@@ -22,7 +23,7 @@ The owner is Wyatt. He makes every design decision and handles every account, ke
 
 1. Start each session by reading `docs/progress.md`, then the phase file Wyatt names, then the spec sections that phase lists.
 2. Plan first. Sessions start in plan mode. Present a short plan: files to create or change, tests to write, open questions, anything that needs Wyatt. Wait for approval.
-3. Tests first. Write the failing test, then the code. Port the proof of concept's scenarios as tests rather than inventing new behavior.
+3. Tests first. Write the failing test, then the code. Port the proof of concept's scenarios as tests rather than inventing new behavior. A test that covers a security-matrix row carries its ID at the start of its name (`docs/security-matrix.md`, "Tagging tests"); layout and wording tests need none. A new test of security behavior with no row gets its row added to the matrix first. A phase closes only after its matrix rows are updated.
 4. Small steps, each one green: tests pass, types check, lint clean, then a local commit with a clear message.
 5. Stay inside the phase. If you find work for a later phase, note it in `docs/progress.md` instead of doing it.
 6. End every session by appending to `docs/progress.md`: date, phase, what was done, test results, open issues, the exact next step.

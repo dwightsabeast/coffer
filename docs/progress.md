@@ -3404,3 +3404,58 @@ Dates:
 Next session: 07b setup, after the before-07b checklist.
 
     Phase 07b, adversarial testing pass 1, setup. Read docs/phases/07b-adversarial-testing.md and docs/progress.md, then plan the setup work in "For the builder".
+
+## 2026-10-25 · Before 07b: the security matrix's tagging session
+
+Wyatt's `docs/security-matrix.md` (audited at `37b046b`) is now the live copy in the repo. This session tagged the tests behind each row, corrected the rows that disagreed with the code at `eb63872`, logged C02–C06 as spec change 43, and added the matrix rule to CLAUDE.md. No feature or test logic changed; only test names did.
+
+Done:
+- **Tags.** 155 plugin tests, 29 theme tests and 50 Go tests carry `[ID]` tags (each vitest name differs only by its tag, checked against the diff). Every T, P, R and F row has at least one, except P01 (no test yet). Several IDs are written as `[T03][F01]`. Go: the body goes inside one tagged `t.Run`; top-level names are unchanged, so `-run TestName` still works. C rows aren't tagged. `grep -rn '\[T05\]' plugin/tests theme/tests bridge` lists a row's tests.
+- **Matrix corrections:**
+  - **T01:** `release.requires` is tested (manifest, added in `4db9a53`).
+  - **T02:** the token's shape is tested (22 base64url characters); its random source is in code only.
+  - **T03:** Partial → **Covered**. "a new pairing replaces the old key" checks the old key's next sync gets `BAD_SIGNATURE`.
+  - **T04:** the tested boundaries are 300 s (accepted) and 301 s (refused), not 299 and 301.
+  - **T10:** `TestStartsAndBecomesReady` checks `--rpc-bind-ip 127.0.0.1`.
+  - **T15:** `TestSameMachine` refuses the dev flag on mainnet, so the stagenet-only condition is tested. Other same-machine and config tests added.
+  - **T20:** the address, claim and theme tip tests added.
+  - **R09:** `TestRestoreHeight` exists in both installer and syncclient; both are named.
+  - **C02:** `TestBridgeNothingToDo`'s "older version" case already tests the downgrade.
+  - New count: 32 Covered, 15 Partial, 1 Planned, 1 Gap.
+- **Spec change 43** (proposed): C02–C06 with the evidence and the matrix's suggested decisions; a still-to-decide row in `docs/decisions.md`.
+- **CLAUDE.md:** the matrix in "Where the truth lives". "How we work" item 3, as Wyatt worded it after review: a test that covers a matrix row carries its ID; layout and wording tests need none; a new test of security behavior with no row gets its row first; a phase closes only after its rows are updated. Also a decided row in `docs/decisions.md` and a line under the matrix's "Tagging tests".
+
+Tests (all run 2026-10-25, after the tags; counts match the run before them):
+- **Plugin:** typecheck clean; validate passes; bundle 58.3 KB across 3 files (unchanged); `pnpm test` 254 passed + 1 skipped, then 92 + 1 with the switch on (the same as 7g).
+- **Theme:** `COFFER_REQUIRE_ZBAR=1 pnpm test` 65 passed + 1 skipped; typecheck clean.
+- **Bridge:** gofmt clean, `go vet` clean. `go test -json ./...`, before and after: the same 238 top-level tests passed and 9 skipped (the live tests), with identical names and results. Subtests 118 → 168: the 50 tagged wrappers, all passing.
+- **Not run:** scripts' `node --test` (no script changed), live and stagenet checks, CI (nothing pushed).
+
+Rows still not Covered, with the smallest test that would close each:
+
+| Row | State | Smallest closing test |
+| --- | --- | --- |
+| T01 | Partial | Host test: `ctx.http.fetch` to a host outside `allowedHosts` is refused, and reading an undeclared storage collection throws. Provenance and passkey approval: phase 09's first release run |
+| T02 | Partial | 07b's data-at-rest scanner after a full payment: no view key, wallet-rpc login or plaintext code in storage, KV or settings |
+| T08 | Partial | Pass 1: 07b's manual admin-page injection check, recorded. Pass 2: Block Kit tests for the email and refund address with the tip note's hostile strings |
+| T10 | Partial | Manual, recorded: `ss -tlnp` on the wallet host (wallet-rpc on 127.0.0.1 only, nothing from the bridge) and `ss -tnp` over a sync cycle (only the site, node(s) and release hosts) |
+| T15 | Partial | 07b's scanner (as P01) |
+| T20 | Partial | Host test: a sync carrying a mainnet subaddress to a stagenet site's pool is refused. It fails today (needs code; 07b, written first) |
+| T21 | Partial | Host test with the switch off: every route and admin action, including product checkout's body and the All invoices action, reaches no order path |
+| T23 | Partial | Theme test: rendering TipButton on a page sets no response header, and only `preparePayPage` sets the CSP and privacy headers |
+| T18 | Gap | Theme or host test: two checkouts from one `requestMeta.ip` with different `X-Forwarded-For` / `CF-Connecting-IP` land in the same per-client bucket, and a spoofed header can't fill another visitor's bucket |
+| P01 | Planned | 07b's scanner: no view key in storage, KV, settings, logs or the site's database after setup and a payment |
+| P03 | Partial | 07b's scanner, after checkouts with `requestMeta.ip` set: no raw IP anywhere |
+| R04 | Partial | Live stagenet: one invoice paid in two parts (`dev-invoices.mjs pay-script` with two fractions), recorded here |
+| R05 | Partial | Live stagenet: restart the bridge, then the site, between "seen" and "settled"; one payment, counted once, recorded here |
+| R11 | Partial | Runtime test: one sync over a 20,000-row backlog on the Node runner, timed under 30 s |
+| F01 | Partial | Protocol tests: a body with a duplicate JSON key (`{"seq":1,"seq":2}`), and a seeded loop of random bytes; Go fuzzing in 07b |
+| F03 | Partial | Host test: `status` with a 10,000-character token gets the same `INVOICE_NOT_FOUND` reply as an unknown one, with no stack or internal ID |
+| F04 | Partial | Runtime test: the admin route called anonymously, as a non-admin, and without `X-EmDash-Request` is refused (EmDash's checks, guarded here) |
+
+Open:
+- **Not pushed:** `ed05338` through these commits wait for Wyatt's OK. CI last ran green on `37b046b`.
+- Spec change 43 (C02–C06): Wyatt's decision, before 07b.
+- R06–R09's 3h evidence is still to attach to the matrix from this file's 3h entries (07b setup).
+
+Next step: push, with Wyatt's OK, and check CI on the new head. Then the rest of the before-07b checklist (spec change 43's decisions, Feather's buyer amounts, the `pre-redteam-1` snapshot), then 07b's setup session.

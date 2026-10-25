@@ -28,12 +28,12 @@
 		"typecheck": "tsc --noEmit"
 	},
 	"peerDependencies": {
-		"astro": ">=7 <8",
-		"emdash": ">=1.1.0 <2"
+		"astro": ">=7.3.5 <8",
+		"emdash": ">=1.3.1 <2"
 	},
 	"devDependencies": {
 		"astro": "7.3.5",
-		"emdash": "1.1.0",
+		"emdash": "1.3.1",
 		"typescript": "5.9.3",
 		"vitest": "4.1.11"
 	},

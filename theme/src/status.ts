@@ -1,7 +1,8 @@
 /**
- * Reading an invoice's status on the server, in-process: EmDash 1.1.0 gives SSR pages the public plugin route dispatcher
- * (`getPublicPluginApiRouteHandler`, from `emdash/plugin-utils`), so there's no network request to the site's own
- * address, which a Cloudflare Worker can't always make. Only routes the plugin marks public are reachable this way.
+ * Reading an invoice's status on the server, in-process: EmDash 1.1.0 and later give SSR pages the public plugin route
+ * dispatcher (`getPublicPluginApiRouteHandler`, from `emdash/plugin-utils`), so there's no network request to the
+ * site's own address, which a Cloudflare Worker can't always make. Only routes the plugin marks public are reachable
+ * this way.
  */
 import { getPublicPluginApiRouteHandler, type PublicPluginRuntimeLocals } from "emdash/plugin-utils";
 

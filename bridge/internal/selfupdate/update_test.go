@@ -97,7 +97,7 @@ func TestBridgeNothingToDo(t *testing.T) {
 		date                      time.Time
 	}{
 		"same version":        {"0.1.0", "0.1.0", "0.1.0", t0.Add(-100 * time.Hour)},
-		"older version":       {"0.0.9", "0.0.9", "0.1.0", t0.Add(-100 * time.Hour)},
+		"[T26] older version": {"0.0.9", "0.0.9", "0.1.0", t0.Add(-100 * time.Hour)},
 		"inside the 48 hours": {"0.2.0", "0.2.0", "0.1.0", t0.Add(-47 * time.Hour)},
 	} {
 		t.Run(name, func(t *testing.T) {

@@ -151,7 +151,7 @@ func TestLatestRefuses(t *testing.T) {
 
 // A plain-http address is refused before any request, even when a server would answer it.
 func TestPlainHTTPRefused(t *testing.T) {
-	t.Run("[T16] plain http is refused", func(t *testing.T) {
+	t.Run("[T16][T27] plain http is refused", func(t *testing.T) {
 		var hits int
 		plain := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			hits++

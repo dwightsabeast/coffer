@@ -8,7 +8,7 @@ Every security claim Coffer makes gets an ID, a pass condition and at least one 
 
 **Audit of 2026-10-25.** Every row was checked against the repo at `37b046b` (main) by reading the test names and the code they cover. Of 49 T, P, R and F rows: 31 Covered, 16 Partial, 1 Planned and 1 Gap; 5 candidates await a decision. Eleven rows are new since Oct 6 (T17–T21, T23–T25, R12–R13, F07), and C01 became T22. The "Tests found" column names them by test file (without `.test.ts`) and test name, Go tests by function.
 
-**Tagged on 2026-10-25** (the tagging session, at `eb63872`). Every test in a "Tests found" column carries its row's tag, and so do other tests found to cover a row. The column names the main tests; `grep -rn '\[T05\]' plugin/tests theme/tests bridge` lists them all. The session corrected T01, T02, T03, T04, T10, T15, T20 and R09 (T03 is now Covered), so the count is 32 Covered, 15 Partial, 1 Planned and 1 Gap. C rows carry no tags: they aren't claims until Wyatt decides them (spec change 43).
+**Tagged on 2026-10-25** (the tagging session, at `eb63872`). Every test in a "Tests found" column carries its row's tag, and so do other tests found to cover a row. The column names the main tests; `grep -rn '\[T05\]' plugin/tests theme/tests bridge` lists them all. The session corrected T01, T02, T03, T04, T10, T15, T20 and R09 (T03 is now Covered), so the count is 32 Covered, 15 Partial, 1 Planned and 1 Gap. The same day Wyatt accepted spec change 43's suggested decisions: C02, C03, C04 and C06 became T26–T29, and C05 is deferred to release 1.x. With those rows the count is 33 Covered, 17 Partial, 2 Planned and 1 Gap, across 53 rows.
 
 **ID prefixes**
 
@@ -51,7 +51,7 @@ Every security claim Coffer makes gets an ID, a pass condition and at least one 
 
 ## Threats (T)
 
-16 threats come from the spec's security model and 9 from spec changes since. 16 are Covered and 8 Partial; T18 is the one Gap.
+16 threats come from the spec's security model, 9 from spec changes since, and 4 from the candidates (spec change 43). 17 are Covered, 10 Partial and 1 Planned (T28); T18 is the one Gap.
 
 | ID | Threat | Must hold (pass conditions) | Layer | Pass | Coverage | Tests found (37b046b; corrected at eb63872) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -80,6 +80,10 @@ Every security claim Coffer makes gets an ID, a pass condition and at least one 
 | T23 | Coffer's code on the site's own pages (new, spec change 36 R4/R5) | TipButton renders no script and only scoped `coffer-tip` styles; CSP and privacy headers are set only on Coffer's own responses; no middleware | Theme | 1 | Partial: headers-only-on-Coffer's-responses was checked by reading, not by a test | tipbutton: "leaves the rest of the site alone (spec change 36, R5)" |
 | T24 | Tampered vendored code (new) | The vendored qrcodegen matches its recorded SHA-256 and upstream commit; every QR decodes, through the independent `zbarimg`, to the exact `monero:` URI | Theme, CI | 1+2 | Covered | vendor: "matches the hash recorded in SOURCE.md", "is upstream's file once the three recorded edits are undone"; qr-decode (CI requires zbar) |
 | T25 | Install command pointed at the wrong site (new, spec changes 23 and 42) | The install command uses the saved https site address, never the request's host; a loopback, plain-http or missing address falls back to an https browser origin; with no usable address there's no command and no code | Host | 1 | Covered; spec change 42 (EmDash 1.2+ site URL) still to decide | admin-site: all `walletHostSite` tests and "the admin page with EmDash's saved address on localhost" |
+| T26 | Downgrade to an older signed bridge (was C02; spec change 43) | Self-update never installs a bridge version lower than or equal to the running one, even when the release is validly signed | Go | 1+2 | Covered for the bridge; the `monero-wallet-rpc` update path's downgrade case isn't checked | Go `TestBridgeNothingToDo` ("older version": a signed 0.0.9 offered to 0.1.0 is not downloaded), `TestNewer` |
+| T27 | Bridge TLS checks (was C03; spec change 43) | The bridge refuses an untrusted or self-signed certificate from the site and from the release and download hosts; no build can skip the check; plain http is refused for downloads | Go | 1+2 | Partial: plain http is tested; the certificate refusal test is planned (07b): the sync client and the downloader each against an `httptest` TLS server whose certificate isn't trusted | Go `TestPlainHTTPRefused`; no `InsecureSkipVerify` in the bridge (outside `bridge/oracle/`) |
+| T28 | Dependency drift (was C04; spec change 43) | CI runs `govulncheck` on the bridge and `pnpm audit` on the plugin, and fails when a dependency is added outside the tiers; lockfiles are frozen; the 7-day release-age rule stays on | CI | 1+2 | Planned: `govulncheck` needs the dependency ask; `pnpm audit`'s scope and level are still to set | CI installs with `--frozen-lockfile`; strict 7-day release age in each `pnpm-workspace.yaml` |
+| T29 | Secrets in logs and shell history (was C06; spec change 43) | Bridge logs, the systemd journal and saved install transcripts never hold the view key, the wallet-rpc login or the pairing code; a pairing code left in shell history is limited by single use and the 15-minute expiry (T13), and the report says so | Go, Manual | 1 | Partial: the journal and transcript scan is in 07b | Go `TestNeverPrinted`, `TestWalletErrorsDontLeakSecrets`, `TestInstallLog` (the install log holds no answer or code) |
 
 ## Privacy claims (P)
 
@@ -130,16 +134,16 @@ Every public route and every parser that reads outside data should refuse bad in
 
 ## Candidates not in the spec (C)
 
-C01 has since been decided and built through spec change 39, so it moved to T22. The other five are logged as spec change 43 (proposed, 2026-10-25) and need Wyatt's decision before 07b, or he accepts that 07b only probes and reports them.
+C01 has since been decided and built through spec change 39, so it moved to T22. Wyatt decided the other five on 2026-10-25 as suggested (spec change 43): C02, C03, C04 and C06 moved to T26–T29, and C05 is deferred to release 1.x and reported as a known limit.
 
 | ID | Risk | Proposed rule | Found on Oct 25 | Suggested decision |
 | --- | --- | --- | --- | --- |
 | C01 | Open redirect through `returnUrl` | Accept only paths on the site's own origin | Built as spec change 39 with tests | Done: now T22 |
-| C02 | Downgrade to an older signed bridge | Refuse any update with a lower version than the one installed | Self-update only installs a newer version (`Newer`, `TestNewer`); `TestBridgeNothingToDo`'s "older version" case already names the downgrade: a signed 0.0.9 offered to 0.1.0 is not downloaded | Accept as built; promote to a T row once a test names the downgrade case |
-| C03 | Bridge TLS checks | The bridge refuses invalid or self-signed certificates for the site and the release host; no user build can skip the check | Go's default verification; no `InsecureSkipVerify` in the bridge; plain http refused for downloads | Accept for release 1 with one test against a self-signed server |
-| C04 | Dependency drift | CI runs `govulncheck` on the bridge and `pnpm audit` on the plugin, and fails when a dependency is added outside the tiers; the release-age rule stays on | Release-age rule on (strict, 7 days) and frozen lockfiles in CI; no `govulncheck` or `pnpm audit` in CI | Add both CI steps (CI tooling only, never shipped) |
-| C05 | Clock skew | A bridge clock more than 300 s off drops every sync without saying why; Health shows the skew and turns red before it reaches the window | Not built | Defer to release 1.x; report as a known limit |
-| C06 | Secrets in logs and shell history | Bridge logs, the systemd journal and saved install transcripts never contain the view key, wallet-rpc login or pairing code; the pairing code in shell history is limited by single use and the 15-minute expiry, and the report says so | Secrets wrapped so they can't print (`TestNeverPrinted`, `TestWalletErrorsDontLeakSecrets`) | Accept; 07b's journal scan checks the rest |
+| C02 | Downgrade to an older signed bridge | Refuse any update with a lower version than the one installed | Self-update only installs a newer version (`Newer`, `TestNewer`); `TestBridgeNothingToDo`'s "older version" case already names the downgrade: a signed 0.0.9 offered to 0.1.0 is not downloaded | Done: now T26 |
+| C03 | Bridge TLS checks | The bridge refuses invalid or self-signed certificates for the site and the release host; no user build can skip the check | Go's default verification; no `InsecureSkipVerify` in the bridge; plain http refused for downloads | Done: now T27 (the test is planned for 07b) |
+| C04 | Dependency drift | CI runs `govulncheck` on the bridge and `pnpm audit` on the plugin, and fails when a dependency is added outside the tiers; the release-age rule stays on | Release-age rule on (strict, 7 days) and frozen lockfiles in CI; no `govulncheck` or `pnpm audit` in CI | Done: now T28 (the steps are planned; `govulncheck` needs the dependency ask) |
+| C05 | Clock skew | A bridge clock more than 300 s off drops every sync without saying why; Health shows the skew and turns red before it reaches the window | Not built | Deferred to release 1.x (Wyatt, 2026-10-25); the report lists it under Known limits |
+| C06 | Secrets in logs and shell history | Bridge logs, the systemd journal and saved install transcripts never contain the view key, wallet-rpc login or pairing code; the pairing code in shell history is limited by single use and the 15-minute expiry, and the report says so | Secrets wrapped so they can't print (`TestNeverPrinted`, `TestWalletErrorsDontLeakSecrets`) | Done: now T29 (07b's journal scan checks the rest) |
 
 ## Instructions for Claude Code
 

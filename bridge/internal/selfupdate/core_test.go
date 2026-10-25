@@ -12,23 +12,25 @@ import (
 )
 
 func TestNewer(t *testing.T) {
-	for _, c := range []struct {
-		a, b string
-		want bool
-	}{
-		{"0.1.1", "0.1.0", true}, {"0.1.0", "0.1.0", false}, {"0.1.0", "0.1.1", false}, {"1.0.0", "0.9.9", true},
-		{"0.0.202610050102-dev.abc", "0.0.202610050101-dev.def", true}, {"0.0.5-dev.x", "0.0.5", false},
-		{"0.18.5.2", "0.18.5.1", true}, {"0.18.10.0", "0.18.9.9", true}, {"0.18.5.1", "0.18.5.1", false}, {"0.19.0.0", "0.18.99.99", true},
-	} {
-		if got := Newer(c.a, c.b); got != c.want {
-			t.Errorf("Newer(%s, %s) = %v", c.a, c.b, got)
+	t.Run("[T26] version order", func(t *testing.T) {
+		for _, c := range []struct {
+			a, b string
+			want bool
+		}{
+			{"0.1.1", "0.1.0", true}, {"0.1.0", "0.1.0", false}, {"0.1.0", "0.1.1", false}, {"1.0.0", "0.9.9", true},
+			{"0.0.202610050102-dev.abc", "0.0.202610050101-dev.def", true}, {"0.0.5-dev.x", "0.0.5", false},
+			{"0.18.5.2", "0.18.5.1", true}, {"0.18.10.0", "0.18.9.9", true}, {"0.18.5.1", "0.18.5.1", false}, {"0.19.0.0", "0.18.99.99", true},
+		} {
+			if got := Newer(c.a, c.b); got != c.want {
+				t.Errorf("Newer(%s, %s) = %v", c.a, c.b, got)
+			}
 		}
-	}
-	for _, bad := range []string{"", "1", "1.x.0", "v1.0.0", "1..0"} {
-		if _, err := parseVersion(bad); err == nil {
-			t.Errorf("%q accepted", bad)
+		for _, bad := range []string{"", "1", "1.x.0", "v1.0.0", "1..0"} {
+			if _, err := parseVersion(bad); err == nil {
+				t.Errorf("%q accepted", bad)
+			}
 		}
-	}
+	})
 }
 
 func keyPair(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey) {

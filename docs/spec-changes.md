@@ -1242,7 +1242,7 @@ Decisions for Wyatt: whether to change the wording (item 3) now, before 07b, or 
 Wyatt's decision (2026-10-25): item 3 in **phase 09**, not before 07b. In 7g, only items 2 and 4 (the code comment and the checklist row). The exact text is still to approve when phase 09 builds it.
 Built in 7g (2026-10-25): items 2 and 4. Live on 1.3.1, the dev site (no `siteUrl`, no Site URL, setup address `http://localhost:4321`) still hands Coffer localhost, and the admin page shows the red banner, or the browser's https origin when there is one, as on 1.1.0.
 
-## 43. Five security candidates from the matrix (C02–C06)  (status: proposed, 2026-10-25)
+## 43. Five security candidates from the matrix (C02–C06)  (status: accepted, 2026-10-25, as suggested)
 Found in: `docs/security-matrix.md`, "Candidates not in the spec" (Wyatt's audit, 2026-10-25), checked against the code in the tagging session at `eb63872`.
 Spec says: nothing. None of the five is in the spec's security model or Privacy list; each needs a decision before it becomes a T row with tests, or 07b only probes it and reports.
 Evidence and proposals, one per candidate (the suggested decision is the matrix's):
@@ -1254,3 +1254,9 @@ Evidence and proposals, one per candidate (the suggested decision is the matrix'
 Proposal: Wyatt decides each candidate as suggested, or accepts probe-and-report for 07b. An accepted one becomes a T or P row in the matrix, with its tests tagged.
 Effect on the admin budget: none for C02, C03, C04 and C06. C05's Health line would be a new admin-page line, not a new step.
 Effect on the trust contract: none. C04 adds CI steps only; nothing in the plugin bundle or the bridge changes.
+Wyatt's decision (2026-10-25): go with the suggested decision for each.
+- C02: accepted as built; now matrix row T26, with `TestBridgeNothingToDo`'s "older version" case and `TestNewer` tagged.
+- C03: accepted for release 1; now T27. The certificate refusal test is written in 07b; `TestPlainHTTPRefused` is tagged for the plain-http part.
+- C04: accepted; now T28. Both CI steps still to build: `govulncheck` goes through the dependency ask first (CLAUDE.md, "Dependencies"), and `pnpm audit`'s scope and level are set then.
+- C05: deferred to release 1.x; stays a candidate, and the report lists it under Known limits.
+- C06: accepted; now T29, with `TestNeverPrinted`, `TestWalletErrorsDontLeakSecrets` and `TestInstallLog` tagged; 07b's journal scan checks the rest.

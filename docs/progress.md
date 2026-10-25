@@ -3459,3 +3459,24 @@ Open:
 - R06–R09's 3h evidence is still to attach to the matrix from this file's 3h entries (07b setup).
 
 Next step: push, with Wyatt's OK, and check CI on the new head. Then the rest of the before-07b checklist (spec change 43's decisions, Feather's buyer amounts, the `pre-redteam-1` snapshot), then 07b's setup session.
+
+### 2026-10-25 (later) · Spec change 43 decided; pushed
+
+Wyatt accepted spec change 43's suggested decisions:
+- **New rows:** C02 → T26 (Covered), C03 → T27 (Partial), C04 → T28 (Planned), C06 → T29 (Partial).
+- **C05** is deferred to release 1.x and reported as a known limit.
+- **Newly tagged** (existing tests only, nothing new written): `TestBridgeNothingToDo`'s "older version" case and `TestNewer` [T26]; `TestPlainHTTPRefused` [T16][T27]; `TestNeverPrinted`, `TestWalletErrorsDontLeakSecrets` and `TestInstallLog` [T29].
+- **Matrix:** 33 Covered, 17 Partial, 2 Planned, 1 Gap.
+
+More rows not yet Covered:
+
+| Row | State | Smallest closing test |
+| --- | --- | --- |
+| T26 | Covered (bridge) | The `monero-wallet-rpc` update path's downgrade case isn't checked: a `TestWalletRPCUpdate` case offering an older signed wallet-rpc |
+| T27 | Partial | Go: the sync client and the downloader each refuse an `httptest.NewTLSServer` whose certificate isn't in the trust store (07b) |
+| T28 | Planned | CI steps: `govulncheck` (dependency ask first: `golang.org/x/vuln`, the Go team) and `pnpm audit` (built into pnpm; scope and level to set, since EmDash's dev dependencies already carry advisories) |
+| T29 | Partial | 07b: scan the journal and the install transcript after a real install for the view key, the wallet-rpc login and the pairing code |
+
+Tests: `go test -json ./...` after the new tags: 238 top-level passed and 9 skipped, the same as before. Subtests 168 → 172 (four more wrappers). gofmt and vet clean. Plugin and theme unchanged since the run above.
+
+Next step: CI on the pushed head, then the before-07b checklist (Feather's buyer amounts, the `pre-redteam-1` snapshot), then 07b's setup session. T28's dependency ask goes to Wyatt when its CI steps are built.

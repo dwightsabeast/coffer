@@ -43,21 +43,23 @@ func TestGenerateFromKeysChecksTheAddress(t *testing.T) {
 }
 
 func TestWalletErrorsDontLeakSecrets(t *testing.T) {
-	f, srv := newFake(t)
-	f.results["generate_from_keys"] = `!{"jsonrpc":"2.0","id":"0","error":{"code":-1,"message":"view key does not match standard address"}}`
-	f.results["open_wallet"] = `!{"jsonrpc":"2.0","id":"0","error":{"code":-1,"message":"Failed to open wallet"}}`
-	c := client(f, srv)
-	err1 := c.GenerateFromKeys(context.Background(), "shop", "5abc", secret.New(viewKey), secret.New(walletPass), 1)
-	err2 := c.OpenWallet(context.Background(), "shop", secret.New(walletPass))
-	var re *RPCError
-	if !errors.As(err1, &re) || !strings.Contains(re.Message, "does not match") || err2 == nil {
-		t.Fatalf("errors: %v / %v", err1, err2)
-	}
-	for _, err := range []error{err1, err2} {
-		if strings.Contains(err.Error(), viewKey) || strings.Contains(err.Error(), walletPass) {
-			t.Fatalf("error leaks a secret: %v", err)
+	t.Run("[T29] wallet errors don't carry the view key or password", func(t *testing.T) {
+		f, srv := newFake(t)
+		f.results["generate_from_keys"] = `!{"jsonrpc":"2.0","id":"0","error":{"code":-1,"message":"view key does not match standard address"}}`
+		f.results["open_wallet"] = `!{"jsonrpc":"2.0","id":"0","error":{"code":-1,"message":"Failed to open wallet"}}`
+		c := client(f, srv)
+		err1 := c.GenerateFromKeys(context.Background(), "shop", "5abc", secret.New(viewKey), secret.New(walletPass), 1)
+		err2 := c.OpenWallet(context.Background(), "shop", secret.New(walletPass))
+		var re *RPCError
+		if !errors.As(err1, &re) || !strings.Contains(re.Message, "does not match") || err2 == nil {
+			t.Fatalf("errors: %v / %v", err1, err2)
 		}
-	}
+		for _, err := range []error{err1, err2} {
+			if strings.Contains(err.Error(), viewKey) || strings.Contains(err.Error(), walletPass) {
+				t.Fatalf("error leaks a secret: %v", err)
+			}
+		}
+	})
 }
 
 func TestOpenCloseAndAddress(t *testing.T) {

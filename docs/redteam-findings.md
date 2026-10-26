@@ -18,6 +18,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-08 | Medium | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open |
 | RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open |
 | RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open |
+| RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | open |
 
 ---
 
@@ -137,3 +138,15 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Reach:** not currently exploitable. Astro and EmDash route paths case-sensitively, so `/PAY/coffer/tok` and `/_EMDASH/admin` resolve to 404, not to the pay page or the admin. A redirect or a back-link to them lands a visitor on a 404 on the same origin, not in a loop and not on the admin. It is an incomplete promised check: the validator means to refuse those areas and does so only for one casing. The fix is a case-insensitive prefix match. Every genuinely dangerous vector held: off-site (`//evil`, `https://evil`, backslashes, `javascript:`, `data:`), CRLF and control characters, over-length, and encoded slashes stay a single same-origin path segment (spec change 39's intended behaviour).
 - **Evidence:** vitest output, round 1.
 - **Status:** open.
+
+## RT-11 — A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding)
+
+- **Rows:** T20, P02. **Severity:** High. **Pass 1, round 1.** Group L5 (`plugin/tests/redteam/network.test.ts`, the two "[T20][P02] [RT-11]" tests).
+- **Pre-agreed:** Wyatt, 2026-10-26 (`docs/decisions.md`, "A pool that mixes networks is fixed in 07b pass 1"): the attacker files it, a fix session writes the failing [T20] test first, then the fix, before release 1. The failing tests are written here.
+- **What I did:** a paired stagenet site (its pool and invoices stagenet, as on the dev site) got a signed sync whose `addresses` carried a **mainnet** subaddress (network byte 42); and a mainnet site got a stagenet one. Both syncs are well-formed.
+- **What happened:** the wrong-network address is added to the pool. The protocol parser (`src/sync/protocol.ts`) admits any `addresses` entry whose `subaddressNetwork` is non-null; it never compares the address's network with the site's. So a stagenet pool ends up with a mainnet address (and the reverse).
+- **What the spec says:** spec change 36 and T20: "the fallback tip address must match the site's network; a mainnet address in a stagenet site's pool, or the reverse, is refused". Each invoice stores its network, and a sync drops an address whose network can't be read — but not one whose network is readable and wrong.
+- **Reach:** a later checkout can claim that pool address, so a tipper on a stagenet site is handed a mainnet address (or the reverse). The shop's wallet watches only its own network, so it never sees the payment: the tip is lost to an address the shop can't spend from. On a real install this needs the bridge to send a wrong-network address, which the bridge (one wallet, one network) shouldn't do on its own; combined with RT-08 (a stolen key pushing attacker addresses), it lets the attacker's addresses be any network. Severity High: a tip can be recorded against an address the shop can't see, i.e. paid to nowhere the shop controls. Wyatt rules.
+- **Also checked, holds:** an address whose network byte isn't any Monero subaddress byte is still dropped (the existing guard).
+- **Evidence:** vitest output, round 1.
+- **Status:** open; fix in pass 1 per the ruling.

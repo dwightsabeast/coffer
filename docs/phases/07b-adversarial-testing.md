@@ -4,7 +4,7 @@ One file for both passes: pass 1 is phase 07b (release 1, tips), pass 2 is phase
 
 **Goal:** attack a running Coffer the way a hostile visitor, a hostile network or someone holding a stolen key would, before each release's security review. Every attack is tagged with a matrix ID, so its result goes straight into the public security report.
 **Spec sections:** Security model (all), API contracts, Invoice lifecycle rules, Bridge service, "What the sandbox does and does not guarantee".
-**Matrix:** `docs/security-matrix.md`, every row: T01–T16, P01–P04, R01–R11, F01–F06, and C01–C06 where decided.
+**Matrix:** `docs/security-matrix.md`, every row: T01–T29, P01–P04, R01–R13 and F01–F07. Of the old candidates, C01 is now T22 and C02, C03, C04 and C06 are T26–T29 (spec changes 39 and 43); C05 (clock skew) is deferred to release 1.x, so pass 1 probes it and reports it as a Known limit.
 
 ## Two passes
 
@@ -168,7 +168,7 @@ The attacker's starting list, grouped by who is attacking. The plan session may 
 | Spoofed `Host` and `X-Forwarded-Host` on every public route | F06 | Runtime, dev site | 1 |
 | Fill the open-invoice cap; with the bridge stopped, flood tips (tips stay open, so the pool can't refill) until the pool is empty. Nothing may reuse an address. In pass 2, orders must also still refuse correctly | T05, P02 | Host, dev site | 1+2 |
 | 50 concurrent checkouts racing for the last free address | T05, P02 | Host, dev site | 1 |
-| `returnUrl` pointing off-site, at `//evil.example`, `javascript:` or an encoded variant | C01 | Host | 1 |
+| `returnUrl` pointing off-site, at `//evil.example`, `javascript:` or an encoded variant | T22 | Host, Theme | 1 |
 | Tips below the dust floor, at it, and absurdly large | F02 | Host | 1 |
 | Per-entry tip totals: tip a nonexistent, draft, trashed or private entry; tip with another entry's ID. Only settled tips may count toward a total; expired, underpaid, late and reversed tips never do | F02, T06 (propose a row) | Host | 1 |
 | If tip notes or per-entry totals appear anywhere on the public site, check they render as plain text and leak nothing about other tippers | T08, P03 (propose a row) | dev site | 1 |
@@ -214,9 +214,9 @@ The spec says the worst case is free goods, not lost funds. For tips, the matchi
 | --- | --- | --- | --- |
 | The site answers with `poolTop` near 2^32, a `poolTarget` of a billion, or a million-entry watch list. Does the bridge create millions of subaddresses or rescan forever? | F05 | Go (`httptest`) | 1 |
 | A 100 MB reply, a reply that drips for minutes, a redirect to another host, a 401 or 403, the wrong content type, invalid JSON | F05 | Go | 1 |
-| A self-signed or expired certificate on the site and on the release host | C03 | Go (`httptest.NewTLSServer`) | 1 |
+| A self-signed or expired certificate on the site and on the release host | T27 | Go (`httptest.NewTLSServer`) | 1 |
 | A dishonest node: lies about height, puts the txid in the wrong block, or the second node lies too; both nodes unreachable | T14 | Go | 1 |
-| A man in the middle on the link to an https node, with a valid certificate for a different name (spec change 28). On the dev box, a TLS proxy sits in front of a stagenet node and presents a certificate for `other.example` from a test CA. The bridge's supervisor starts wallet-rpc with that CA as its bundle, the node configured as `https://node.example:<port>` and the name pointed at the proxy. Then the proxy feeds a false height, a fake transfer and a reordered block. Record whether wallet-rpc accepts the connection (expected today: yes, because wallet-rpc doesn't check the name) and whether the cross-check catches the lies. The result is evidence for the TLS forwarder decision due before phase 09 | T14, C03 | Live (wallet-rpc), dev box | 1 |
+| A man in the middle on the link to an https node, with a valid certificate for a different name (spec change 28). On the dev box, a TLS proxy sits in front of a stagenet node and presents a certificate for `other.example` from a test CA. The bridge's supervisor starts wallet-rpc with that CA as its bundle, the node configured as `https://node.example:<port>` and the name pointed at the proxy. Then the proxy feeds a false height, a fake transfer and a reordered block. Record whether wallet-rpc accepts the connection (expected today: yes, because wallet-rpc doesn't check the name) and whether the cross-check catches the lies. The result is evidence for the TLS forwarder decision due before phase 09 | T14, T27 | Live (wallet-rpc), dev box | 1 |
 | wallet-rpc replies with huge numbers, missing fields, negative amounts or a non-zero `unlock_time` | F05, T11 | Go | 1 |
 | A double-spend flag set on a transfer that already counted | T11, T12 | Go, Host | 1 |
 
@@ -225,10 +225,10 @@ The spec says the worst case is free goods, not lost funds. For tips, the matchi
 | Attack | Matrix | Layer | Pass |
 | --- | --- | --- | --- |
 | On `coffer-test` after an install: wallet-rpc listens only on 127.0.0.1 and refuses requests without its login; the bridge opens no port; over a few sync cycles, outbound connections go only to the site, the nodes and the release and download hosts (`ss -tlnp`, `ss -tnp`) | T10 | Install, Manual (Wyatt) | 1 |
-| A bridge update with a bad signature, a validly signed older version (downgrade), and a truncated binary | T16, C02 | Go | 1 |
+| A bridge update with a bad signature, a validly signed older version (downgrade), and a truncated binary; an older signed `monero-wallet-rpc` offered as an update | T16, T26 | Go | 1 |
 | A `hashes.txt` with a bad GPG signature or a mismatched hash for wallet-rpc | T16 | Go | 1 |
 | A tampered `install.sh` served from the dev release server; the same-machine check bypassed by a flag on mainnet | T16, T15 | Install (Wyatt runs `sudo`) | 1 |
-| `pnpm audit`, `govulncheck` (ask first), and a lockfile diff against the dependency tiers | C04 | CI | 1+2 |
+| `pnpm audit`, `govulncheck` (ask first), and a lockfile diff against the dependency tiers | T28 | CI | 1+2 |
 
 **G. The sandbox itself**
 
@@ -251,7 +251,7 @@ The spec says the worst case is free goods, not lost funds. For tips, the matchi
 | Attack | Matrix | Layer | Pass |
 | --- | --- | --- | --- |
 | Scan a `VACUUM INTO` copy of `data.db`, plugin KV and settings, and the astro logs for the view key, the plaintext pairing code and raw IPs. The scanner reads the view key only through `scripts/with-shop-env.sh` and prints PASS or FAIL with a location, never the value | T02, P01, P03 | E2E | 1+2 |
-| The bridge's journal, the install transcript and the same database copy checked for the view key and the wallet-rpc login, run by Wyatt with `sudo`, output written to a file | C06, T02 | Manual | 1 |
+| The bridge's journal, the install transcript and the same database copy checked for the view key and the wallet-rpc login, run by Wyatt with `sudo`, output written to a file | T29, T02 | Manual | 1 |
 | Fast-forward the clock past 30 days and confirm buyer fields are gone: the tip note in pass 1, email and refund address in pass 2 | P04 | Runtime | 1+2 |
 
 **J. Failures at bad moments**
@@ -259,7 +259,7 @@ The spec says the worst case is free goods, not lost funds. For tips, the matchi
 | Attack | Matrix | Layer | Pass |
 | --- | --- | --- | --- |
 | Kill the dev site in the middle of a sync, and the bridge in the middle of a POST; after restart, nothing is lost or counted twice | R05 | E2E | 1 |
-| Set the bridge's clock 301 s fast, then 301 s slow: syncs are refused, and does the admin page say why? | C05, T04 | Runtime, dev site | 1 |
+| Set the bridge's clock 301 s fast, then 301 s slow: syncs are refused, and does the admin page say why? (C05 is deferred to release 1.x: probe and report as a Known limit, don't file a finding for the missing Health line) | C05, T04 | Runtime, dev site | 1 |
 | A cron housekeeping run and a sync landing at the same moment; an admin row action landing during a sync | R05, T07 | Runtime | 1 |
 | A payment that disappears before settlement | R10 | Host, Go (faked replies) | 1 |
 | R06–R09 ran in 3h: attach that evidence instead of re-running, unless round 2 finds a reason to | R06–R09 | — | 1 |
@@ -278,6 +278,18 @@ The spec says the worst case is free goods, not lost funds. For tips, the matchi
 
 Reorgs, reversed payments, time-locked and double-spend transfers can't be produced on stagenet on demand. They stay at the Host and Go layers with faked replies, and the report says so.
 
+**L. Added during phase 07** (from "For the builder", folded in at the 07b setup session, 2026-10-26)
+
+| Attack | Matrix | Layer | Pass |
+| --- | --- | --- | --- |
+| The tip endpoint (`/pay/coffer/tip`) calls checkout in-process, so it makes its own cross-site refusal: posts with a foreign, `null` or missing `Origin`, each `Sec-Fetch-Site` value, and a form posted from another page. Forged forms: wrong field names, repeated fields, amounts with decimals, exponents, signs or huge values, and hostile notes | T17, F07, T06, T08 | Theme, dev site | 1 |
+| The per-client cap on Node: spoofed `X-Forwarded-For`, `CF-Connecting-IP` and the headers `trustedProxyHeaders` names, with the origin reachable directly (7a). A visitor may neither dodge the cap nor fill another visitor's bucket; also through the tip endpoint, which forwards the visitor's headers | T18, T05, P03 | Host, Theme, dev site | 1 |
+| The Cloudflare refusal (`UNSUPPORTED_PLATFORM`, spec change 35) comes from `requestMeta.geo`: can a visitor's headers make a Node site refuse, or let a Workers site through? | T19 | Host, dev site | 1 |
+| The way back (spec change 39): open redirects through `returnTo` and `?return=`, with double encoding, Unicode look-alike slashes, backslashes, dot segments and the pay and admin pages as targets | T22 | Theme, dev site | 1 |
+| Pool addresses (spec change 36): a sync that brings a mainnet subaddress into a stagenet site's pool, or the reverse. Not refused yet: file it as a finding; it's fixed in pass 1 (Wyatt, 2026-10-26, `docs/decisions.md`) | T20, P02 | Host | 1 |
+| Coexistence (spec change 36, R4/R5): Coffer's headers, CSP and toolbar placeholder only on its own pages; `TipButton` renders no script and only its scoped styles | T23 | Theme, dev site | 1 |
+| The watch scan's 200-page cap and its Health warning (spec change 35, condition 2), under a tip flood: does the warning show, and do payments to invoices past the cap still settle once the backlog drains? | R11, R13 | Runtime, dev site | 1 |
+
 ## For the builder
 
 **Setup (session 1 of each pass)**
@@ -289,12 +301,12 @@ Reorgs, reversed payments, time-locked and double-spend transfers can't be produ
 - Pass 1: build the sandbox canary in `spikes/sandbox-canary/`. It is never shipped, and it is loaded on the dev site only while its tests run.
 - Pass 1: write the data-at-rest scanner as `scripts/redteam/scan-at-rest.mjs`. It runs under `scripts/with-shop-env.sh` and never prints a secret.
 - Pass 2: reuse all of the above, and add whatever orders and the store adapter need (a fake store calling the payment contract, for example).
-- **Pass 1, added during phase 07 (2026-10-16 to 10-18):** fold these surfaces into the catalog and matrix, tagged **1**:
+- **Pass 1, added during phase 07 (2026-10-16 to 10-18):** fold these surfaces into the catalog and matrix, tagged **1** (done at the setup session, 2026-10-26: catalog section L; each maps to an existing matrix row):
   - **The tip endpoint** (`/pay/coffer/tip`): it calls checkout in-process, so it does its own cross-site refusal (`Sec-Fetch-Site`, `Origin`). Also forged forms, amounts and notes.
   - **The per-client cap on Node:** spoofing `CF-Connecting-IP` or `trustedProxyHeaders` with the origin exposed (7a).
   - **The Cloudflare refusal** (`UNSUPPORTED_PLATFORM`, spec change 35), detected from `requestMeta.geo`.
   - **The way back** (spec change 39): open redirects through `returnTo` and `?return=`, including double encoding and Unicode look-alike slashes.
-  - **Pool addresses** (spec change 36): the sync drops an unreadable network byte, but **a pool that mixes networks isn't refused yet.** Decide with Wyatt whether pass 1 fixes it or reports it.
+  - **Pool addresses** (spec change 36): the sync drops an unreadable network byte, but **a pool that mixes networks isn't refused yet.** Wyatt, 2026-10-26: pass 1 fixes it, through the normal finding flow.
   - **Coexistence** (spec change 36, R4/R5): Coffer's headers, CSP and toolbar placeholder only on its own pages, and `TipButton` with no script.
   - **The watch scan's 200-page cap** and its Health warning (spec change 35, condition 2), under a tip flood.
 - Already done when this file was added (2026-10-13): the 07b, 08b and 09b rows in `docs/phases/README.md`, and step 1 of `docs/phases/09-release.md` starting from `docs/redteam-findings.md` and the updated matrix. Check they still match before starting.

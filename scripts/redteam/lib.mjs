@@ -55,6 +55,48 @@ export async function send(url, { method = "POST", body, headers = {}, signal } 
 	return { status: res.status, headers: res.headers, text, json, data, code };
 }
 
+// ---- EmDash sessions (dev mode only) ----
+/** The name=value pairs of a response's Set-Cookie headers, as one Cookie header. */
+export const cookieOf = (headers) => headers.getSetCookie().map((c) => c.split(";")[0]).join("; ");
+
+/** The token from a magic-link email's text (…/magic-link/verify?token=…), or null. Never printed by callers. */
+export function magicTokenFrom(text) {
+	const m = /\/_emdash\/api\/auth\/magic-link\/verify\?(\S+)/.exec(String(text ?? ""));
+	return m ? new URLSearchParams(m[1]).get("token") : null;
+}
+
+/** An admin session through EmDash's dev bypass (astro dev only). Returns the Cookie header. */
+export async function devAdminSession(site) {
+	const r = await send(new URL("/_emdash/api/auth/dev-bypass", loopbackUrl(site)).href, { method: "GET" });
+	if (r.status !== 200) throw new Error(`dev sign-in refused (${r.status} ${r.code ?? ""}); is the site in astro dev mode?`);
+	return cookieOf(r.headers);
+}
+
+/**
+ * A session for an existing user through magic-link sign-in: send the link, read it from the dev email list (the dev
+ * console provider), and verify it. The token stays inside this function. Returns the Cookie header.
+ */
+export async function magicLinkSession(site, email) {
+	const base = loopbackUrl(site);
+	const api = (path) => new URL(path, base).href;
+	const json = { "content-type": "application/json", "x-emdash-request": "1" };
+	const sent = await send(api("/_emdash/api/auth/magic-link/send"), { body: JSON.stringify({ email }), headers: json });
+	if (sent.status !== 200) throw new Error(`magic-link send refused (${sent.status} ${sent.code ?? ""})`);
+	const list = await send(api("/_emdash/api/dev/emails"), { method: "GET" });
+	const tokens = (list.json?.data?.items ?? []).filter((i) => i?.message?.to === email).map((i) => magicTokenFrom(i.message.text)).filter(Boolean);
+	if (tokens.length === 0) throw new Error(`no magic link for ${email} in the dev email list`);
+	// The list's order isn't documented, so older links may come first: try each until one verifies.
+	for (const token of [...new Set(tokens)].reverse()) {
+		const v = await send(api("/_emdash/api/auth/magic-link/verify"), { body: JSON.stringify({ token }), headers: json });
+		if (v.status === 200) return cookieOf(v.headers);
+	}
+	throw new Error(`magic-link verify refused for ${email}`);
+}
+
+/** One call to Coffer's admin route, as EmDash's admin UI makes it (page_load, block_action or form_submit). */
+export const adminCall = (site, interaction, headers = {}, method = "POST") =>
+	send(route(site, "admin"), { method, body: method === "GET" || method === "HEAD" ? undefined : JSON.stringify(interaction), headers: { "content-type": "application/json", ...headers } });
+
 // ---- keys and signing ----
 const RFC8032_SEEDS = {
 	test1: "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",

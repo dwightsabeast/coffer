@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { sign, verify } from "node:crypto";
 import { after, describe, it } from "node:test";
 
-import { backupDatabase, evidencePath, fakeAddress, flood, loopbackUrl, memAvailableMiB, rfc8032Key, route, send, signedHeaders, syncBody } from "./lib.mjs";
+import { backupDatabase, cookieOf, evidencePath, fakeAddress, flood, loopbackUrl, magicTokenFrom, memAvailableMiB, rfc8032Key, route, send, signedHeaders, syncBody } from "./lib.mjs";
 
 const { DatabaseSync } = await import("node:sqlite");
 const scratch = mkdtempSync(join(tmpdir(), "redteam-lib-"));
@@ -135,5 +135,21 @@ describe("evidence and backups", () => {
 		assert.equal(copy.prepare("SELECT v FROM t").get().v, "in the wal");
 		copy.close();
 		assert.throws(() => backupDatabase("copy", { from: src, dir: scratch }), /already exists/);
+	});
+});
+
+describe("EmDash sessions", () => {
+	it("cookieOf joins only the name=value part of each Set-Cookie", () => {
+		const h = new Headers();
+		h.append("set-cookie", "a=1; Path=/; HttpOnly");
+		h.append("set-cookie", "b=two; SameSite=Lax");
+		assert.equal(cookieOf(h), "a=1; b=two");
+		assert.equal(cookieOf(new Headers()), "");
+	});
+
+	it("magicTokenFrom takes the token from a verify link and nothing else", () => {
+		assert.equal(magicTokenFrom("Sign in: http://localhost:4321/_emdash/api/auth/magic-link/verify?token=abc_DEF-1&redirect=%2F ok"), "abc_DEF-1");
+		assert.equal(magicTokenFrom("http://localhost:4321/_emdash/api/auth/invite/accept?token=nope"), null);
+		assert.equal(magicTokenFrom(undefined), null);
 	});
 });

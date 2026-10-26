@@ -22,6 +22,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-12 | Medium | T01, R11 | 1, 1 | One expensive plugin request blocks all others on the Node runner for the full 30 s wall | open |
 | RT-13 | Low | F01 | 1, 1 | A slow request body isn't bounded by the 30 s wall; a connection can be held open past it | open |
 | RT-14 | Low | F04 | 1, 1 | The admin handler settles or expires an open tip the release-1 page offers no action for | open |
+| RT-15 | Medium | R11, R13 | 1, 1 | At a spam-cap-sized backlog each sync's watch scan takes ~28 s, within ~2 s of the 30 s wall | open |
 
 ---
 
@@ -200,4 +201,16 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
   - Pressing Get a test address 30 times claims at most one address.
   - Text after `|` in an action value acts only on the named invoice: it's the goods build's page position, not a second ID.
   - Observation (T30): when an admin marks a reversed tip settled, the tip totals stay at 0 XMR, because its payment is no longer reported.
+- **Status:** open.
+
+## RT-15 — At a spam-cap-sized backlog each sync's watch scan takes ~28 s, within ~2 s of the 30 s wall
+
+- **Rows:** R11, R13. **Severity:** Medium (Wyatt rules). **Pass 1, round 1.** Group H1/L7, live on the dev site: `scripts/redteam/backlog-live.mjs` (`seed --count 20100`, then `run`). Evidence `~/xmr-pay-dev-data/redteam/h1-2026-10-26T195804512Z.txt`.
+- **What I did:** seeded 20,100 settled stagenet tips (each a watch candidate: one shallow transfer, 3 confirmations) plus one open probe, for ~20,139 invoice rows, then paired a fresh in-memory key and ran signed syncs, timing each. The dev site was in `astro dev`; `data.db` was backed up first and restored to baseline (38 invoices, 338 pool) afterward.
+- **What happened:** every sync that returns a `watch` (which is every sync, including the empty-body pairing sync) took **~28 s**: pair 27.7 s, first backlog sync 27.9 s, the sync under the L7 flood 28.6 s. All three finished under the 30 s wall, but by less than ~2.1 s. The watch was bounded at **20,001** entries out of ~20,103 candidates (102 dropped), so the 200-page cap truncates the watch, and the admin Health banner fired: *"The watch list hit its safety cap — At 20:00 UTC, more recent invoices existed than Coffer reads in one sync (20,000), so some may not be checked for late payments…"* (R13 holds). A payment to a watched invoice settled exactly once, and a repeat sync didn't double-count.
+- **What the spec says:** spec change 35, condition 2 sized the cap to "the most the spam cap allows (40 open invoices per 30 minutes, kept 8 days for tips: about 15,400 rows; cap 200 pages)" and estimated **"about 0.2 s a sync at 15,000 invoices (session 7a)."** R11's claim is that with thousands of open and expired invoices each sync finishes inside the 30 s wall and the backlog drains. The live measurement at 20,100 is ~28 s — about 140× the spec's estimate — leaving thin headroom under the wall.
+- **Reach:** the backlog is reachable by an anonymous attacker within the spec's own limits — a flood of unpaid checkouts, bounded by the 40-open cap and the 8-day tip retention, is exactly the ~15,400 rows the cap was sized for (the Health banner even names "a flood of unpaid checkouts" as the usual cause). If the scan ever crosses 30 s — a modestly larger backlog, a busier or slower host, or contention — the sync hits the wall, fails, and settlement stalls for every invoice until the backlog is purged. So the measured headroom is the real safety margin, and it is small.
+- **Caveats / likely cause:** measured in `astro dev` (dev mode, unoptimized) on the 8 GB dev box with this script's Node process running alongside; the built copy (workerd, port 4322) should be measured before the production number is trusted — left for round 2 or a run with Wyatt. The cost is likely dominated by building and bounds-checking a ~20,000-entry `watch` response (EmDash's `validateResponseBounds` counts every node) as much as by the storage paging; worth the builder's attention when sizing a fix.
+- **Not truly exercised:** the past-cap probe (the highest index) landed *inside* the 20,001-entry watch, so the "a payment to an invoice past the cap waits for the backlog to drain" path wasn't produced — the 102 dropped candidates were others. What's proven is the cap bounds the watch, the Health warning fires, and the per-sync cost. A follow-up could force the probe past the cap to confirm the late-payment behaviour there.
+- **Also in this run (passed, no finding):** L7 — during a 28.6 s sync the site kept answering: 35 of 40 capped checkouts (≤20 in flight) got an address, the slowest in 2.1 s (the 5 refusals are the site-wide 40-open cap, expected), so the async storage paging doesn't block the event loop the way the synchronous CPU spin of RT-12 did.
 - **Status:** open.

@@ -3665,3 +3665,23 @@ Branch `redteam-1` (local). The items not run in round 1 were B1, A3, B2 and H1/
 - **B2 done:** `39d177d`, `plugin/tests/redteam/admin.test.ts`. Filed **RT-14** (Low, F04): a forged Mark settled or Expire on an open tip, which the release-1 page doesn't offer, is accepted. Everything else held (details under RT-14). Plugin 322 passed, 14 expected fail, 1 skipped; goods config 92 passed, 1 skipped; typecheck clean; bundle 58.3 KB.
 - **Session helpers:** `db6d9fe`, `scripts/redteam/lib.mjs` (`cookieOf`, `magicTokenFrom`, `devAdminSession`, `magicLinkSession`, `adminCall`), lib tests 16 passed.
 - **Safety stop:** a response was stopped by a safety classifier after the helpers' tests passed and before the B1/A3 live script was written. Following Wyatt's rule from the B2 stop, what was green is committed and B1/A3 is not retried this session. **B1 (non-admin sign-in) and A3 (seeded hostile notes and Wyatt's admin-page check) stay open** for round 2 or the retest, and Wyatt decides how. Nothing touched the dev site or `data.db`: no users were inserted, no backup was needed, and the site wasn't started.
+
+## 2026-10-26 (later) · Phase 07b pass 1 · Session 4 continued: H1/L7 large backlog (attacker)
+
+Branch `redteam-1` (local). After the B2/helpers commits and the B1/A3 safety stop, the heaviest round-1 item: a large backlog on the live dev site. New script `scripts/redteam/backlog-live.mjs` (`seed`/`run`). `data.db` backed up (`~/xmr-pay-dev-data/redteam/round1-h1-20261026T195027Z.db`), seeded 20,100 settled stagenet tips + 1 open probe (~20,139 invoice rows), ran, then restored to baseline (38 invoices, 338 pool, bridge key present). Box clean: ports free, no `astro dev`, ~4.9 GB available.
+
+Found a snag while building it (recorded so later sessions don't relearn it): the pairing sync must be **under 4 KiB** (the spec's parse-before-signature limit), so a pair body carrying 60 addresses is verified against the *old* key and gets `BAD_SIGNATURE`; pair with an empty body first, then push addresses in a second signed sync. Also the plugin refuses **~128+ snapshots in one sync body** (`INVALID_BODY`); 100 is safe.
+
+Results (evidence `~/xmr-pay-dev-data/redteam/h1-2026-10-26T195804512Z.txt`):
+- **RT-15 (Medium, R11/R13), filed:** every sync's watch scan took **~28 s** at 20,100 invoices (pair 27.7 s, first 27.9 s, under-flood 28.6 s) — all under the 30 s wall but within ~2 s of it. Spec change 35 estimated ~0.2 s at 15,000. Measured in `astro dev`; the built copy should be measured before trusting a production number (follow-up). Likely dominated by building/bounds-checking the ~20,000-entry `watch` response.
+- **Cap and warning hold (R13):** the watch truncated to 20,001 of ~20,103 candidates, and the admin Health banner fired ("The watch list hit its safety cap… more recent invoices existed than Coffer reads in one sync (20,000)…").
+- **L7 passed:** during a 28.6 s sync, 35/40 capped checkouts got an address (the 5 refusals are the site-wide 40-open cap), slowest 2.1 s — async paging doesn't block the event loop like RT-12's CPU spin did.
+- **Not truly exercised:** the probe (highest index) landed *inside* the capped watch, so a genuine past-cap late-payment wasn't produced (the 102 dropped candidates were others). Noted in RT-15 as a follow-up.
+
+Matrix updated: R11 coverage now notes the live 30 s-wall measurement and RT-15; R13 notes the cap banner verified live. CLAUDE.md gained a command row for `backlog-live.mjs`.
+
+Findings now RT-01…RT-15. High: RT-11. Medium: RT-05, RT-07, RT-08, RT-12, RT-15. Low: the rest. All open.
+
+**Round 1 still not run:** B1 (logged-in non-admin to `admin`) and A3 (Wyatt's admin-page render check of hostile tip notes) — both stopped by a safety classifier this session and not retried; open for round 2 or the retest, Wyatt decides. B2 was done earlier this session. K (real stagenet payments) stays for round 2 per the plan.
+
+Next: round 2 (white box, fresh session) per the plan, or B1/A3 with Wyatt.

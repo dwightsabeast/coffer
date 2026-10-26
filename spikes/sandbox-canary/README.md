@@ -18,5 +18,5 @@ node scripts/redteam/canary-site.mjs off    # astro.config.mjs back byte for byt
 ```
 
 It builds with Coffer's own toolchain: `node_modules` here is a symlink to `../../plugin/node_modules` (made by
-`canary-site.mjs on`), so nothing new is installed. Probes report counts and error messages only, never what another
+`canary-site.mjs on`), so nothing new is installed. The network probes aim at a listener `canary.mjs` runs on 127.0.0.1 and [::1], so a request that gets out is recorded on this box and reaches no other machine (the one exception is plain http to an allowed price host, which Coffer contacts anyway). Probes report counts and error messages only, never what another
 plugin stores. They report and never grade; the attacker judges the results.

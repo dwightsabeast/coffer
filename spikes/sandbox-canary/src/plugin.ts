@@ -6,40 +6,45 @@ import { type PluginContext, type SandboxedPlugin, pluginRoute } from "emdash/pl
  * prints the results and the attacker judges them. Probes report counts and error messages only, never what another
  * plugin stores.
  *
+ * The network probes aim at a listener the driver runs on this box (127.0.0.1:<port>, passed in the request), so a
+ * request that gets out is recorded there and nothing reaches another machine. The one exception is plain http to an
+ * allowed price host, which Coffer contacts anyway.
+ *
  * Never shipped. Loaded on the dev site only while its probes run (scripts/redteam/canary-site.mjs on|off).
  */
 
-type Outcome = { outcome: "refused" | "allowed" | "ok"; message: string };
+/** "answered": a reply came back, but from what isn't known here; the driver's listener says whether anything got out. */
+type Outcome = { outcome: "refused" | "allowed" | "answered" | "ok"; message: string };
 const refused = (err: unknown): Outcome => ({ outcome: "refused", message: err instanceof Error ? `${err.name}: ${err.message}`.slice(0, 200) : String(err).slice(0, 200) });
 const allowed = (message: string): Outcome => ({ outcome: "allowed", message });
+const snippet = async (res: Response) => JSON.stringify((await res.text().catch(() => "")).slice(0, 80));
 
 /** Fetch through ctx.http: "allowed" if any response comes back, whatever its status. */
 async function viaHttp(ctx: PluginContext, url: string): Promise<Outcome> {
 	if (!ctx.http) return { outcome: "refused", message: "no ctx.http" };
 	try {
 		const res = await ctx.http.fetch(url);
-		return allowed(`HTTP ${res.status} from ${url}`);
+		return allowed(`HTTP ${res.status} from ${url}: ${await snippet(res)}`);
 	} catch (err) {
 		return refused(err);
 	}
 }
 
-const PROBES: Record<string, (ctx: PluginContext) => Promise<Outcome>> = {
+const PROBES: Record<string, (ctx: PluginContext, port: number) => Promise<Outcome>> = {
 	ping: async (ctx) => ({ outcome: "ok", message: `${ctx.plugin.id} ${ctx.plugin.version}` }),
 
 	// Network: only the two price hosts, only through ctx.http.
-	"raw-fetch": async () => {
+	"raw-fetch": async (_ctx, port) => {
 		try {
-			const res = await fetch("https://example.com/");
-			return allowed(`global fetch answered HTTP ${res.status}`);
+			const res = await fetch(`http://127.0.0.1:${port}/raw-fetch`);
+			return { outcome: "answered", message: `global fetch returned HTTP ${res.status}: ${await snippet(res)}` };
 		} catch (err) {
 			return refused(err);
 		}
 	},
-	"http-other-host": (ctx) => viaHttp(ctx, "https://example.com/"),
-	"http-userinfo": (ctx) => viaHttp(ctx, "https://api.kraken.com@example.com/"),
-	"http-suffix": (ctx) => viaHttp(ctx, "https://api.kraken.com.example.com/"),
-	"http-loopback": (ctx) => viaHttp(ctx, "http://127.0.0.1:4321/"),
+	"http-other-host": (ctx, port) => viaHttp(ctx, `http://127.0.0.1:${port}/http-other-host`),
+	"http-userinfo": (ctx, port) => viaHttp(ctx, `http://api.kraken.com@127.0.0.1:${port}/http-userinfo`),
+	"http-suffix": (ctx, port) => viaHttp(ctx, `http://api.kraken.com.localhost:${port}/http-suffix`),
 	"http-plain-allowed-host": (ctx) => viaHttp(ctx, "http://api.kraken.com/0/public/Time"),
 
 	// Content: read only.
@@ -109,10 +114,22 @@ const PROBES: Record<string, (ctx: PluginContext) => Promise<Outcome>> = {
 			return refused(err);
 		}
 	},
+	// Which context APIs exist, and which of their methods write. content:read may bring read access to more than
+	// content (media, taxonomies); a method that writes, or users, email or comments at all, would be beyond the manifest.
 	"undeclared-apis": async (ctx) => {
-		const present = (["users", "email", "media", "comments", "redirects", "taxonomies", "bylines", "schema"] as const).filter((k) => ctx[k] !== undefined);
-		const risky = present.filter((k) => k === "users" || k === "email" || k === "media" || k === "comments");
-		return risky.length > 0 ? allowed(`ctx carries ${present.join(", ")}`) : { outcome: "refused", message: present.length ? `ctx carries only ${present.join(", ")}` : "none of users, email, media, comments, redirects, taxonomies, bylines, schema" };
+		const WRITES = new Set(["create", "update", "delete", "upload", "getUploadUrl", "updateMetadata", "createTerm", "addEntryTerms", "removeEntryTerms", "send", "moderate", "set", "publish"]);
+		const parts: string[] = [];
+		let beyond = false;
+		for (const k of ["content", "media", "taxonomies", "bylines", "schema", "redirects", "users", "email", "comments"] as const) {
+			const api = ctx[k] as Record<string, unknown> | undefined;
+			if (api === undefined) continue;
+			const methods = Object.keys(api).filter((m) => typeof api[m] === "function");
+			const writes = methods.filter((m) => WRITES.has(m));
+			if (writes.length > 0 || k === "users" || k === "email" || k === "comments") beyond = true;
+			parts.push(`${k} (${methods.join(", ")}${writes.length ? `; writes: ${writes.join(", ")}` : ""})`);
+		}
+		const message = parts.length ? `ctx carries ${parts.join("; ")}` : "no optional context APIs";
+		return beyond ? allowed(message) : { outcome: "refused", message: `${message}; none writes` };
 	},
 };
 
@@ -129,10 +146,11 @@ const plugin: SandboxedPlugin = {
 			methods: ["POST"],
 			request: { body: "json", maxBytes: 1024 },
 			handler: async (routeCtx, ctx) => {
-				const name = (routeCtx.input as { name?: unknown } | null)?.name;
+				const { name, port } = (routeCtx.input ?? {}) as { name?: unknown; port?: unknown };
 				const run = typeof name === "string" && Object.hasOwn(PROBES, name) ? PROBES[name] : undefined;
 				if (!run) return { error: { code: "UNKNOWN_PROBE" } };
-				return { probe: name, ...(await run(ctx)) };
+				if (!Number.isInteger(port) || (port as number) < 1 || (port as number) > 65535) return { error: { code: "BAD_PORT" } };
+				return { probe: name, ...(await run(ctx, port as number)) };
 			},
 		}),
 		// G2: burn the CPU for `seconds` (1 to 120) and say how long it ran before anything stopped it.

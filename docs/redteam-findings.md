@@ -13,6 +13,8 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-03 | Low | T08, F02 | 1, 1 | A tip note with a lone surrogate is stored as is | open |
 | RT-04 | Low | T05 | 1, 1 | Concurrent tips are told "no address" while free addresses remain | open |
 | RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | open |
+| RT-06 | Low | F01 | 1, 1 | The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature | open |
+| RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | open |
 
 ---
 
@@ -69,3 +71,28 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Reach:** on a site that does pass client IPs, one IPv6 visitor can still fill the site-wide cap (40 open tips per 30 minutes) and block tips until those windows close: the outage the spec states only for sites without client IPs. No money moves and no invoice is marked paid. Also checked, no finding: headers a visitor sets (`X-Forwarded-For`, `CF-Connecting-IP`, `X-Real-IP`, `True-Client-IP`, `Forwarded` and others) never became the client IP in the test host, so no bucket was made from them, and the buckets hold only salted hashes (no IPv4 or IPv6 text in KV, invoices or pool). The dev site's real header handling is in the live L2 run.
 - **Evidence:** vitest output, round 1.
 - **Status:** open.
+
+## RT-06 — The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature
+
+- **Rows:** F01. **Severity:** Low. **Pass 1, round 1.**
+- **What I did:** `plugin/tests/redteam/sync.test.ts`, the three "[F01] [RT-06]" tests. Signed with the paired key (RFC 8032 test key 1), so only the bridge, or someone holding its key, can send these: (a) an unknown field at the top level and inside a snapshot, a transfer and an address; (b) a transfer repeating `unlockTime` (`"0"` then `"99"`) or `doubleSpendSeen` (`false` then `true`), and a body repeating `v`; (c) `amount` `"18446744073709551616"` (2^64), `amount` `"0500000000"` (leading zero), `unlockTime` 2^64, and a snapshot `index` of 2^32.
+- **What happened:** All of (a) were accepted. The two repeated transfer keys were accepted with JSON's last value winning; the repeated `v` was refused only because its last value was 99. All four of (c) were accepted.
+- **What the spec says:** F01's pass conditions: "unknown fields, duplicate keys, and amounts that are negative, decimal, exponent or above 2^64−1 are all refused, with no state change". The spec's Transfer fields: the bridge reads `amount` and `unlock_time` as unsigned 64-bit integers.
+- **Reach:** none without the bridge key. No payment counted wrongly: the repeated `unlockTime` and `doubleSpendSeen` both landed on their last values, so neither payment counted ("[F01][T11] C3: a repeated key never makes a time-locked or flagged payment count" passes). The risk is a reader that disagrees with `JSON.parse` about which value counts. A 2^64 amount does count as money. Everything else in C3's list of malformed bodies was refused, and nothing changed state: random bytes, invalid and overlong UTF-8, UTF-16, a BOM, truncation, `NaN`, comments, wrong types, negative, decimal, exponent, hex and empty amounts, bad txids, a 33rd transfer, a 101st address, a 201st snapshot, and 120 seeded random bodies signed and unsigned. The 256 KiB limit is exact: 262,144 bytes are read, and 262,145 get EmDash's 413 before the plugin runs. One part may be the matrix's wording rather than the code: refusing unknown fields stops a newer bridge from adding an optional field (spec change 13 added `checks` this way). Wyatt decides whether F01 says "refused" or "ignored" for unknown fields.
+- **Evidence:** vitest output, round 1.
+- **Status:** open.
+
+## RT-07 — Two pair requests with one code at the same moment both succeed; the loser is told it paired
+
+- **Rows:** T13. **Severity:** Medium (Wyatt rules). **Pass 1, round 1.**
+- **What I did:** `sync.test.ts`, "[T13] [RT-07] C6: two pair requests with the same valid code at the same moment: exactly one wins, and its key is the one stored". An unpaired site, one code from Connect wallet host, then two pair bodies with that code at once (`Promise.all`), one naming and signed by test key 1, the other by test key 2.
+- **What happened:** In 3 of 3 rounds of the probe, and again in the test, **both** got `{ ok: true, … }`. The second key was stored each time. The first key's next sync got `BAD_SIGNATURE`. The pairing state says `used: true`. The admin page reads only "Wallet host: Paired", with nothing saying another key took over.
+- **What the spec says:** the code is "single-use" (Security model, pairing row; T13: "a second use fails"); the plugin "stores the key and burns the code". The attack catalog: "exactly one may win".
+- **Reach:** whoever holds a live code (from a screenshot, a shared terminal, shell history; T29) and sends their pair request at the same moment as the real bridge. One-at-a-time, the attacker's pairing either fails or makes the real bridge's pairing fail loudly. In the race, the real bridge is told it paired and the attacker's key is the one kept. That's the stolen-key position (T03: forged settled tips, attacker pool addresses, D2). It shows only later, as the real bridge's syncs being refused. Without a code there's no way in: every guessed, near-miss, expired, used or malformed code was refused, and none burned the real code; a pair body signed by a key other than the one it names was refused, as were all-zero and identity-point keys, short or non-base64 keys, and pair bodies over 4 KiB; 60 seeded hostile bodies sent while a code was active never crashed the route or paired. The dev-site run (the real Node runner) is in the live group.
+- **Evidence:** vitest output, round 1.
+- **Status:** open.
+
+## Observations, round 1 (no finding)
+
+- **The freshness window's future edge has a second of slack** (T04). The `x-xmr-ts` header is whole seconds and the server reads its clock a few hundred milliseconds after the sender, so a timestamp 301 s ahead was accepted once in round 1 (it landed 300.x s ahead); +301 s and beyond were refused in every later probe, as were −301 s and beyond. The exact edges are tested with a fixed clock in `protocol.test.ts`. The suite now checks ±299 s accepted and ±302 s refused.
+- **A refused sync doesn't count as hearing from the bridge** (T03, R13). Unsigned, wrong-key and stale syncs left KV, including `state:bridge`, byte for byte unchanged, so they can't hide the silent-host alert.

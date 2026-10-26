@@ -138,6 +138,8 @@ Every public route and every parser that reads outside data should refuse bad in
 
 C01 has since been decided and built through spec change 39, so it moved to T22. Wyatt decided the other five on 2026-10-25 as suggested (spec change 43): C02, C03, C04 and C06 moved to T26–T29, and C05 is deferred to release 1.x and reported as a known limit.
 
+**Added 2026-10-26** (07b pass 1, round 1): **C07**, the bridge–plugin per-sync batching contract, raised by the H1 backlog run. It needs a fix-phase decision; it isn't a finding (the caps are intentional) but the two sides' numbers aren't pinned together.
+
 | ID | Risk | Proposed rule | Found on Oct 25 | Suggested decision |
 | --- | --- | --- | --- | --- |
 | C01 | Open redirect through `returnUrl` | Accept only paths on the site's own origin | Built as spec change 39 with tests | Done: now T22 |
@@ -146,6 +148,7 @@ C01 has since been decided and built through spec change 39, so it moved to T22.
 | C04 | Dependency drift | CI runs `govulncheck` on the bridge and `pnpm audit` on the plugin, and fails when a dependency is added outside the tiers; the release-age rule stays on | Release-age rule on (strict, 7 days) and frozen lockfiles in CI; no `govulncheck` or `pnpm audit` in CI | Done: now T28 (the steps are planned; `govulncheck` needs the dependency ask) |
 | C05 | Clock skew | A bridge clock more than 300 s off drops every sync without saying why; Health shows the skew and turns red before it reaches the window | Not built | Deferred to release 1.x (Wyatt, 2026-10-25); the report lists it under Known limits |
 | C06 | Secrets in logs and shell history | Bridge logs, the systemd journal and saved install transcripts never contain the view key, wallet-rpc login or pairing code; the pairing code in shell history is limited by single use and the 15-minute expiry, and the report says so | Secrets wrapped so they can't print (`TestNeverPrinted`, `TestWalletErrorsDontLeakSecrets`) | Done: now T29 (07b's journal scan checks the rest) |
+| C07 | Per-sync batch caps (bridge–plugin contract) | The plugin accepts at most 100 addresses and 100 snapshots per sync, and at most 32 transfers per snapshot; over any of these the whole sync is refused `INVALID_BODY`. The bridge's per-sync batching must be guaranteed to stay within these caps, pinned to the same numbers on both sides and covered by a test each way (plus a plugin test that an over-cap sync is refused cleanly, not crashed), so a backlog can't produce a sync the plugin silently rejects and never drains (ties to RT-15) | Measured in 07b round 1 (H1): the plugin caps both arrays at exactly 100 (101 → INVALID_BODY) and transfers at 32 (33 → INVALID_BODY); the bridge has `TestAtMost100AddressesPerSync` and `TestTooLargeSendsFewerSnapshots`, but the plugin's cap and the bridge's limit aren't tied to a shared constant | Fix phase (Wyatt): confirm the contract and align the numbers; likely a shared constant / cross-reference test rather than a behaviour change |
 
 ## Instructions for Claude Code
 

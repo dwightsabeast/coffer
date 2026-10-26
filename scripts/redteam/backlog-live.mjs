@@ -231,7 +231,7 @@ try {
 	let probeWatched = w1 ? w1.includes(probeIndex) : null;
 	let lastWatch = w1 ? w1.length : null;
 	let maxDrainMs = 0;
-	const maxBatch = 100; // the plugin refuses ~128+ snapshots in one body (INVALID_BODY); 100 is safe
+	const maxBatch = 100; // the plugin caps snapshots per sync at exactly 100 (101+ -> INVALID_BODY); see matrix C07
 	let timingOk = true;
 	for (let round = 0; round < 40 && !probeWatched; round++) {
 		const start = round * maxBatch;

@@ -3632,3 +3632,28 @@ Full suites after the new files: plugin **308 passed, 13 expected fail, 1 skippe
 - **K** payments stay for round 2 (plan).
 
 No safety stop since the B2 one. This checkpoint is a durable point before the live stretch; the full session entry follows at the session's end.
+
+## 2026-10-26 (later) · Phase 07b pass 1 · Session 3 continued: round 1 live stretch (attacker)
+
+Branch `redteam-1` (local). After the Host/Theme checkpoint (`bb7bf3f`), the live dev-site attacks that need EmDash's own runtime. The dev DB was backed up first (`~/xmr-pay-dev-data/redteam/round1-live-2026-10-26T185213579Z.db`, VACUUM INTO) and restored to baseline (38 invoices, 338 pool rows) at the end. The box is clean: ports 4321/4322/8099 free, no tmux, no `astro dev`.
+
+Done (committed):
+
+| Commit | Group(s) | What |
+| --- | --- | --- |
+| `4943cd3` | G1, G2 | Sandbox canary. G1: network isolation and capability gating hold; a one-write follow-up (a `taxonomy-write` probe added to the canary) was refused `Missing capability: taxonomies:write`, so the exposed write methods don't work under `content:read`. G2: the 30 s wall stops a 60 s spin, but a concurrent `status` was blocked the full 30 s → **RT-12** (plugin requests serialize on the Node runner). Also recorded for Wyatt: plain http to an allowed host is accepted (EmDash enforcement, upstream). Canary turned off, `astro.config.mjs` restored and hash-checked |
+| `5255821` | A6/F06, L2 live, C5 | New `scripts/redteam/round1-live.mjs`. A6/F06: a spoofed `Host`/`X-Forwarded-Host` is never reflected. L2 live: 8 tips from one spoofed IP all go through, no `state:buckets` written → a Node site's cap is site-wide only (as the spec states). C5: a slow drip body is read past the 30 s wall → **RT-13** (Low), but the event loop isn't blocked so the site stays responsive (slowloris, proxy territory). C4 stays covered by `dev-e2e`'s header checks |
+| (this entry) | H2 | Observation only (no finding): the site sustained a capped status flood (≤50 concurrent, 300 req) at ~250–320 req/s with no outage or memory pressure. Consistent with RT-12 |
+
+Findings now RT-01…RT-13 (`docs/redteam-findings.md`). High: RT-11. Medium: RT-05, RT-07, RT-08, RT-12. Low: the rest. All open.
+
+**Gotcha for later sessions:** `cleanupCofferRows` (lib.mjs) deletes **all** `pool` and `invoices` rows, not just a run's, so the live scripts wiped the dev DB's baseline fixtures; restored from the start-of-session backup with `setup-test-reset.mjs --restore`. Back up and restore around any live run that calls it.
+
+**Round 1 still not run** (need Wyatt and/or a dedicated run):
+- **B1** — anonymous / non-admin / no-`X-EmDash-Request` calls to `admin`. The anonymous and no-session cases are already exercised by `dev-e2e` (401/403); the **logged-in non-admin** case needs Wyatt to create one lowest-role user through the dev sign-in.
+- **B2** — admin row-action abuse. Skipped earlier after a safety stop; not retried. Open for round 2.
+- **A3 render** — Wyatt views hostile tip notes on the admin page through the tunnel.
+- **H1/L7** — large-backlog sync timing and the 200-page watch-scan cap (heaviest; seed thousands of invoices, time each sync under 30 s). Best with Wyatt watching memory; `pre-redteam-1b` is the roll-back point.
+- **K** — real stagenet payments (round 2, per the plan).
+
+No safety stop in the live stretch. Next: round 2 (white box, fresh session) per the plan, or the remaining live items (B1 non-admin, A3, H1) with Wyatt. The full session entry / sign-off is this plus the checkpoint above.

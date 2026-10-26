@@ -3598,3 +3598,10 @@ Open:
 Next session: round 1, black box, in a fresh session.
 
     Phase 07b attacker, pass 1, round 1. Start with the Attacker brief in docs/phases/07b-adversarial-testing.md; its reading order replaces the usual one.
+
+## 2026-10-26 (later) · Phase 07b pass 1 · Session 3: round 1, black box (attacker), interim note
+
+Branch `redteam-1` (local). Written mid-session at Wyatt's instruction for safety stops; the full session entry follows at the end of the session.
+
+- Committed so far: `af6f5c4` (checkout, status and IP-cap attacks; RT-01 to RT-05) and `23fcdce` (bridge/sync without the key; RT-06, RT-07). Findings in `docs/redteam-findings.md`.
+- **Safety stops:** two responses were stopped by a safety classifier. The first came right after `23fcdce`, at the end of group C, before any later group's work began; nothing was lost. The second came while writing the **B2 suite** (admin row actions, `plugin/tests/redteam/admin.test.ts`). Per Wyatt (2026-10-26): commit what's done, note the group here, and move on to the next group without retrying. The partial B2 file was deleted, not committed. **B2 is not run this round**; its plan rows (F04, T07, T13 through the admin page) stay open for round 2 or the retest, and Wyatt decides how.

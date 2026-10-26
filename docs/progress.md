@@ -3605,3 +3605,30 @@ Branch `redteam-1` (local). Written mid-session at Wyatt's instruction for safet
 
 - Committed so far: `af6f5c4` (checkout, status and IP-cap attacks; RT-01 to RT-05) and `23fcdce` (bridge/sync without the key; RT-06, RT-07). Findings in `docs/redteam-findings.md`.
 - **Safety stops:** two responses were stopped by a safety classifier. The first came right after `23fcdce`, at the end of group C, before any later group's work began; nothing was lost. The second came while writing the **B2 suite** (admin row actions, `plugin/tests/redteam/admin.test.ts`). Per Wyatt (2026-10-26): commit what's done, note the group here, and move on to the next group without retrying. The partial B2 file was deleted, not committed. **B2 is not run this round**; its plan rows (F04, T07, T13 through the admin page) stay open for round 2 or the retest, and Wyatt decides how.
+
+### Round 1 checkpoint (Host and Theme layers done)
+
+Committed, all green (no Coffer code changed):
+
+| Commit | Group(s) | Suite | Findings |
+| --- | --- | --- | --- |
+| `af6f5c4` | A, L2, L3 | `plugin/tests/redteam/checkout.test.ts`, `ipcap.test.ts` | RT-01 to RT-05 |
+| `23fcdce` | C | `plugin/tests/redteam/sync.test.ts` | RT-06, RT-07 |
+| `120c59c` | D (D1–D6 only, Wyatt's limit) | `plugin/tests/redteam/stolen-key.test.ts` | RT-08, RT-09 |
+| `d0a0d7a` | L1, A9/L4, L6, A5 | `theme/tests/redteam.test.ts` | RT-10 |
+| `7bd450f` | L5 | `plugin/tests/redteam/network.test.ts` | RT-11 |
+
+Findings (`docs/redteam-findings.md`): RT-11 High (mixed-network pool, the pre-agreed one); RT-05, RT-07, RT-08 Medium; RT-01–04, RT-06, RT-09, RT-10 Low. All open.
+
+Full suites after the new files: plugin **308 passed, 13 expected fail, 1 skipped**; goods config **92 passed**; theme **73 passed, 1 expected fail, 1 skipped**; typecheck and bundle (58.3 KB) clean. The 13 + 1 expected-fail are the RT it.fails, one per landed attack (RT-06 covers three: unknown fields, duplicate keys, out-of-range numbers).
+
+**Not yet run in round 1** (all need the running dev site, and some need Wyatt), left for the live stretch or a follow-up:
+- **B1** — call `admin` anonymously, as a logged-in non-admin, and without `X-EmDash-Request`. Needs Wyatt to create one lowest-role non-admin user through the dev sign-in (he agreed); remove it or let `setup-test-reset.mjs` remove it at the end.
+- **B2** — admin row-action abuse. Skipped after a safety stop (see the interim note above); not retried. Open for round 2 or the retest.
+- **A3 render** — Wyatt views hostile tip notes on the admin page through the tunnel (his check; the checklist is handed over when the notes are seeded).
+- **Live:** C4 (proxy-added Origin/Authorization on a signed sync), A6/F06 (spoofed Host/X-Forwarded-Host), C5 (a ~60 s drip body vs. the 30 s wall), the live half of L2 (EmDash's real IP-header handling), A8/C6 on the Node runner.
+- **Canary:** G1, G2 (`scripts/redteam/canary-site.mjs on`, start the site, `canary.mjs`, then off).
+- **Heavy:** H2 (checkout/status flood, to name a rate-limit number) and H1/L7 (large backlog, watch-scan cap). `free -m` first, one at a time, `pre-redteam-1b` is the roll-back point.
+- **K** payments stay for round 2 (plan).
+
+No safety stop since the B2 one. This checkpoint is a durable point before the live stretch; the full session entry follows at the session's end.

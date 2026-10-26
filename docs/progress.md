@@ -3558,10 +3558,10 @@ Tests (all run 2026-10-26):
 - **Spin, 3 s:** the only status request, sent as the spin started, took 3039 ms. That suggests other routes wait behind a spinning one; the 60 s run (G2) measures it.
 
 Open:
-- **Not pushed:** `redteam-1` stays local until the fixes and the retest are done (Wyatt, 2026-10-26). Don't push it before then; Wyatt merges and pushes after the retest. He took a Proxmox snapshot of the dev box at the end of this session, with setup done, in place of a push.
+- **Not pushed:** `redteam-1` stays local until the fixes and the retest are done (Wyatt, 2026-10-26). Don't push it before then; Wyatt merges and pushes after the retest. He took the Proxmox snapshot `pre-redteam-1b` of the dev box at the end of this session, with setup done, in place of a push.
 - **Wyatt, before round 1:**
   - Feather's buyer wallet needs at least eight separate unlocked amounts.
-  - The `pre-redteam-1` Proxmox snapshot (floods and fuzzing come in the attack rounds).
+  - ~~The `pre-redteam-1` Proxmox snapshot~~: done as `pre-redteam-1b` (2026-10-26, after setup). Roll back to it if a flood or fuzzing run leaves the box in a bad state.
 - **Left for the attacker or fix sessions, not built here:**
   - fuzz targets (none yet in syncclient, walletrpc or noderpc)
   - T27's certificate tests (the TLS helpers are ready)

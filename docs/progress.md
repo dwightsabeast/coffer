@@ -3518,3 +3518,58 @@ For 07b, from the matrix:
 Next session: 07b setup, after the before-07b checklist.
 
     Phase 07b, adversarial testing pass 1, setup. Read docs/phases/07b-adversarial-testing.md, docs/progress.md and docs/security-matrix.md, then plan the setup work in "For the builder".
+
+## 2026-10-26 · Phase 07b pass 1 · Session 1: setup (builder)
+
+Branch `redteam-1` (local, not pushed). The setup list in `docs/phases/07b-adversarial-testing.md`, "For the builder". No Coffer code changed (`plugin/src`, the bridge's non-test files, the theme): only docs, scripts, test helpers and the canary spike. Wyatt's ruling at the start: the mixed-network pool (T20) is fixed in pass 1 through the normal finding flow (`docs/decisions.md`).
+
+Done:
+
+| Commit | What |
+| --- | --- |
+| `f185c85` | **Docs.** The catalog's matrix IDs brought up to date: C01 is now T22, C02/C03/C04/C06 are T26–T29, and C05 is probed and reported as a Known limit. New catalog section L for the surfaces added in phase 07, each mapped to an existing row: the tip endpoint (T17, F07); IP-header spoofing (T18); the Cloudflare refusal (T19); the way back (T22); the mixed-network pool (T20); coexistence (T23); the watch scan's cap (R11, R13). Matrix: R06–R09 carry their 3h and 3i evidence; T20 notes the ruling |
+| `845f833` | **`scripts/redteam/lib.mjs`**, moved out of `dev-e2e.mjs`, which now imports it. Loopback guard (no user info, redirects not followed), RFC 8032 test keys, signed syncs, fake addresses, the KV-shortcut code, cleanup, `flood()` (at most 50 in flight, stops under 1.5 GB available), evidence paths, `VACUUM INTO` backups (`backup.mjs`) |
+| `309492a` | **`plugin/tests/redteam/`**: `random.ts`, a seeded sfc32 with hostile generators (`REDTEAM_SEED` reproduces a failure), and `harness.ts`, `redteamHost()` with signed and tampered syncs, raw checkout, status, a price stub, and `checkoutAs(meta, …)`. The test host's `transport.invokeRoute` takes `meta.ip` and `meta.geo`, so the IP and Cloudflare attacks can run at the Host layer |
+| `5d9a9db` | **`bridge/internal/hostile`**: scripted hostile servers (stream, drip, hang, cut, redirect, untrusted TLS, JSON-RPC, a rewriting proxy), test-only. Wiring in `hostile_test.go` beside syncclient, crosscheck (the offline dishonest-node proxy), noderpc, walletrpc and selfupdate (the release host over https). monerodl's test server is already https |
+| `cd3cfc3`, `bfa177d` | **Sandbox canary** `spikes/sandbox-canary/` (slug `coffer-canary`, Coffer's exact manifest, 14 probes and a spin route). It builds with `plugin/`'s toolchain through a symlink, so nothing is installed. `canary-site.mjs on\|off\|status` loads it on the dev site and restores `astro.config.mjs` byte for byte. `canary.mjs` runs the probes; the network probes aim at a loopback listener the driver runs, so nothing reaches another machine. `bfa177d` came out of the first live run: the probes had aimed at example.com, and "allowed" was too coarse |
+| `fabb937` | **`scripts/redteam/scan-at-rest.mjs`**, run under `with-shop-env.sh`. It scans a `VACUUM INTO` copy (cell by cell, then raw), the live `-wal` and the dev log for the view key in six encodings, `--code-file` codes, `--secret-file` secrets, `--ip` addresses in their spellings, and IP-shaped text in Coffer's rows. A FAIL gives the location, never the value |
+| (this commit) | CLAUDE.md: five red-team command rows; the script-test command now includes `scripts/redteam/`. This entry |
+
+Baseline: `~/xmr-pay-dev-data/redteam/baseline-1.db` (`VACUUM INTO`, mode 600), taken before anything touched the dev database: 38 invoices, 338 pool rows, 8 KV rows, 1 setting.
+
+Tests (all run 2026-10-26):
+- **Scripts:** `node --test scripts/*.test.mjs scripts/redteam/*.test.mjs` 41 pass (18 before, plus lib 14, canary-site 3, scan-at-rest 6). Mutations caught: the user-info check, the memory stop, a value printed in a FAIL line, a missing encoding.
+- **Plugin:** typecheck clean; validate passes; bundle 58.3 KB across 3 files (unchanged); `pnpm test` 260 passed + 1 skipped (254 + the 6 harness tests), then 92 + 1 with the switch on.
+- **Bridge:** gofmt and vet clean; `go test ./...` all packages ok (`internal/hostile` 3 runs with `-count=3`, no flakes); static build statically linked; `go list -deps ./cmd/xmr-bridge` has no `hostile`.
+- **Live, dev site (`astro dev`):**
+  - Reset with `setup-test-reset.mjs`, then the canary on, then the site started.
+  - `dev-e2e.mjs` 32 of 32 after the move to `lib.mjs` (`~/xmr-pay-dev-data/redteam/07b-setup-dev-e2e.txt`).
+  - The canary's 14 probes each answered, and a 3 s spin ran.
+  - The scanner gave PASS on the reset database (a smoke run only; the real scan after a payment and a pairing is the attacker's row I).
+  - Then the site stopped, the canary off (hash-checked), and the dev data restored: the same counts as the baseline. Ports 4321, 4322 and 8099 are free; no `astro dev` running; no tmux sessions.
+- **Not run:** the theme (untouched), the race-detector tests (CI only), CI (nothing pushed).
+
+**Canary smoke results, recorded as seen and not graded** (the attacker judges them in G1 and G2; `~/xmr-pay-dev-data/redteam/canary-2026-10-26T151549273Z.txt`):
+- Raw `fetch`: EmDash's "Direct fetch() blocked in sandbox" with HTTP 403. The listener got nothing.
+- `ctx.http` to 127.0.0.1, through user info, and to `api.kraken.com.localhost`: refused by the host check.
+- `ctx.http` over **plain http to an allowed host** answered (Kraken's `/0/public/Time`, HTTP 200).
+- With only `content:read`, `ctx.media` and `ctx.taxonomies` exist and carry **write methods** (media upload, delete and updateMetadata; taxonomy createTerm, addEntryTerms and removeEntryTerms). The probe lists them but doesn't call them, so whether a call succeeds is still to test.
+- No `content.create`, undeclared storage throws, Coffer's rows, KV and setting are invisible to the canary, no `process`, and no `node:fs`.
+- **Spin, 3 s:** the only status request, sent as the spin started, took 3039 ms. That suggests other routes wait behind a spinning one; the 60 s run (G2) measures it.
+
+Open:
+- **Not pushed:** `redteam-1` stays local (Wyatt merges and pushes).
+- **Wyatt, before round 1:**
+  - Feather's buyer wallet needs at least eight separate unlocked amounts.
+  - The `pre-redteam-1` Proxmox snapshot (floods and fuzzing come in the attack rounds).
+- **Left for the attacker or fix sessions, not built here:**
+  - fuzz targets (none yet in syncclient, walletrpc or noderpc)
+  - T27's certificate tests (the TLS helpers are ready)
+  - T20's failing test
+  - floods
+  - the wallet-host `sudo` scan wrapper (T29; the scanner's `--secret-file` and `--log` are ready for it)
+  - the live TLS proxy for the spec change 28 man-in-the-middle row (a builder session adds it if the plan needs it)
+
+Next session: the attacker's plan round, in a fresh session.
+
+    Phase 07b attacker, pass 1, plan. Start with the Attacker brief in docs/phases/07b-adversarial-testing.md; its reading order replaces the usual one.

@@ -3657,3 +3657,11 @@ Findings now RT-01…RT-13 (`docs/redteam-findings.md`). High: RT-11. Medium: RT
 - **K** — real stagenet payments (round 2, per the plan).
 
 No safety stop in the live stretch. Next: round 2 (white box, fresh session) per the plan, or the remaining live items (B1 non-admin, A3, H1) with Wyatt. The full session entry / sign-off is this plus the checkpoint above.
+
+## 2026-10-26 (later) · Phase 07b pass 1 · Session 4: round 1 leftovers (attacker), interim note
+
+Branch `redteam-1` (local). The items not run in round 1 were B1, A3, B2 and H1/L7. Plan approved by Wyatt: the script inserts the B1 test users, H1 seeds just past the 200-page cap, and A3 runs this session.
+
+- **B2 done:** `39d177d`, `plugin/tests/redteam/admin.test.ts`. Filed **RT-14** (Low, F04): a forged Mark settled or Expire on an open tip, which the release-1 page doesn't offer, is accepted. Everything else held (details under RT-14). Plugin 322 passed, 14 expected fail, 1 skipped; goods config 92 passed, 1 skipped; typecheck clean; bundle 58.3 KB.
+- **Session helpers:** `db6d9fe`, `scripts/redteam/lib.mjs` (`cookieOf`, `magicTokenFrom`, `devAdminSession`, `magicLinkSession`, `adminCall`), lib tests 16 passed.
+- **Safety stop:** a response was stopped by a safety classifier after the helpers' tests passed and before the B1/A3 live script was written. Following Wyatt's rule from the B2 stop, what was green is committed and B1/A3 is not retried this session. **B1 (non-admin sign-in) and A3 (seeded hostile notes and Wyatt's admin-page check) stay open** for round 2 or the retest, and Wyatt decides how. Nothing touched the dev site or `data.db`: no users were inserted, no backup was needed, and the site wasn't started.

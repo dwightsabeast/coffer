@@ -114,6 +114,20 @@ const PROBES: Record<string, (ctx: PluginContext, port: number) => Promise<Outco
 			return refused(err);
 		}
 	},
+	// G1 follow-up (07b round 1): does a write method under content:read actually DO something, or only exist? One
+	// confirming write at most (Wyatt, 2026-10-26). createTerm is the most reversible write; a term named so it's easy
+	// to find and delete. "allowed" here means the sandbox let a write through under a read-only capability.
+	"taxonomy-write": async (ctx) => {
+		const tax = ctx.taxonomies as { createTerm?: (...a: unknown[]) => Promise<unknown> } | undefined;
+		if (typeof tax?.createTerm !== "function") return { outcome: "refused", message: "ctx.taxonomies has no createTerm" };
+		try {
+			const r = await tax.createTerm({ taxonomy: "tags", name: "coffer-canary-write-probe", slug: "coffer-canary-write-probe" });
+			return allowed(`ctx.taxonomies.createTerm succeeded under content:read: ${JSON.stringify(r).slice(0, 120)}`);
+		} catch (err) {
+			return refused(err);
+		}
+	},
+
 	// Which context APIs exist, and which of their methods write. content:read may bring read access to more than
 	// content (media, taxonomies); a method that writes, or users, email or comments at all, would be beyond the manifest.
 	"undeclared-apis": async (ctx) => {

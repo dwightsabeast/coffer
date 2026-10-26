@@ -19,6 +19,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open |
 | RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open |
 | RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | open |
+| RT-12 | Medium | T01, R11 | 1, 1 | One expensive plugin request blocks all others on the Node runner for the full 30 s wall | open |
 
 ---
 
@@ -150,3 +151,17 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Also checked, holds:** an address whose network byte isn't any Monero subaddress byte is still dropped (the existing guard).
 - **Evidence:** vitest output, round 1.
 - **Status:** open; fix in pass 1 per the ruling.
+
+## RT-12 — One expensive plugin request blocks all others on the Node runner for the full 30 s wall
+
+- **Rows:** T01, R11. **Severity:** Medium (Wyatt rules; likely a Known/Accepted limit with a docs line). **Pass 1, round 1.** Group G2, the sandbox canary on the dev site (`spikes/sandbox-canary`, probe `spin`; `scripts/redteam/canary.mjs --spin 60`; evidence `~/xmr-pay-dev-data/redteam/canary-2026-10-26T185517885Z.txt`).
+- **What I did:** a canary route span the CPU for 60 s while a Coffer `status` request was sent alongside it.
+- **What happened:** the spin was stopped at **30045 ms** (the 30 s wall limit is enforced — good), but the concurrent `status` request did not answer until **30033 ms**, i.e. it was blocked for the whole wall period and only completed once the spin was killed. So requests into the plugin sandbox are served one at a time: one expensive request makes the plugin's routes unresponsive to everyone for up to 30 s.
+- **What the spec says:** "What the sandbox does and does not guarantee": "on the Node runner only the 30-second wall limit is enforced, not CPU or memory." The 30 s cap holds. The spec does not state that one in-flight request blocks all others site-wide for that period.
+- **Reach:** to spin on purpose needs a second, hostile plugin installed (Coffer ships no spin route and every Coffer route measured finishes well under 30 s — see H1). The measured fact that matters for Coffer is the serialization: a single slow Coffer request (a large sync, a big admin page) delays concurrent checkouts and status polls by its own duration, up to 30 s. This sets the real ceiling for the H2 flood number and the install-doc rate-limit guidance, and is the mechanism behind the pool-exhaustion outage the spec already states. It's within the sandbox's stated "no CPU cap on Node" limit, so it's likely a Known limit to name in the docs rather than a code change; Wyatt rules.
+- **Also confirmed at G1 (no finding):** network isolation holds — a raw `fetch()` is blocked (403), and `ctx.http` to another host, through user-info, or to an `api.kraken.com.localhost` suffix is refused by the host check; `process`, `node:fs`, `ctx.content.create`, another plugin's storage/KV/settings are all refused. The exposed `ctx.media`/`ctx.taxonomies` **write** methods are gated at the call: `createTerm` under `content:read` returned `Missing capability: taxonomies:write`, so no write landed (one-write limit respected, nothing to report upstream for the write case).
+- **Status:** open.
+
+## Observation, group G (for Wyatt, possible upstream report)
+
+- **Plain HTTP to an allowed host is accepted** (canary `http-plain-allowed-host`): `ctx.http.fetch("http://api.kraken.com/0/public/Time")` returned HTTP 200. EmDash's `allowedHosts` check is by host, not scheme, so a compromised plugin could reach an allowed host over plain http (MITM-able). Coffer's own code always builds `https://` URLs for the two price APIs, so Coffer as shipped isn't exploitable here; the gap is in EmDash's sandbox enforcement (the T01 "network limited to declared hosts" mitigation doesn't pin the scheme). Per the brief, this is an EmDash matter for Wyatt to report upstream, not a Coffer code change; recorded, not filed as a Coffer finding.

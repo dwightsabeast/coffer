@@ -3573,3 +3573,28 @@ Open:
 Next session: the attacker's plan round, in a fresh session.
 
     Phase 07b attacker, pass 1, plan. Start with the Attacker brief in docs/phases/07b-adversarial-testing.md; its reading order replaces the usual one.
+
+## 2026-10-26 (later) · Phase 07b pass 1 · Session 2: plan (attacker)
+
+Branch `redteam-1` (local, not pushed). Fresh attacker session. No Coffer code read for the attack design yet (that waits for round 2 white box); the plan is built from `docs/spec.md`, `docs/security-matrix.md` and the catalog. After Wyatt's approval I read spec changes 33 and 34 and confirmed the theme exposes no public tip surface (`PayPage.astro`, `TipButton.astro` only; per-entry totals live in `admin.ts`, admin-only).
+
+Done:
+- **`docs/redteam-plan.md`** — pass 1 section. Every pass-1 matrix row (T01–T31, P01–P04, R01–R13, F01–F07, C05 as probe-and-report) mapped to concrete attacks in catalog groups A–L, each with layer, steps and a break condition. Coverage checklist maps every row to its attacks. Rounds: round 1 black box (A, B, C, D-via-route, G, H, L, plugin-side F); round 2 white box re-aims E/F/G/J from the source.
+- **`docs/security-matrix.md`** — two new rows added (Wyatt approved): **T30** (per-entry tip totals count only settled tips; Planned, covered by attack A11) and **T31** (forged-tip total inflation bounded; Planned, covered by D6). A proposed public-display row was dropped: spec change 34 deferred and no public tip surface exists, so A12 checks that absence under T08/P03.
+
+Wyatt's decisions (2026-10-26), folded into the plan:
+- E5 (live TLS MITM): Go `httptest` approximation this pass; T27 covered by one self-signed-server test per client; the live MITM row deferred to phase 09, recorded as deferred not a pass.
+- `govulncheck` (T28): run ad hoc, outside the repo's `go.mod`, pinned ≥7 days old; no CI change this session.
+- Fixed-amount tips: TipButton sends set amounts, so R04 underpay (settles at floor) and overpay run live in pass 1 (spec change 33) — attacks K6, K7.
+- Heavy runs: keep caps (≤50 in flight, stop <1.5 GB, one at a time); fuzzing 10 min/target; large backlog once to the 20,000-row cap; stop and tell Wyatt before rolling back to `pre-redteam-1b` if the box degrades.
+- G1: at most one confirming sandbox write on the dev site; if it lands, write it up for Wyatt to report to EmDash privately and don't probe further.
+
+Tests: none run this session (planning only; no code changed).
+
+Open:
+- **Not pushed:** `redteam-1` stays local until the fixes and retest are done (Wyatt, 2026-10-26).
+- Wyatt, before round 1: Feather's buyer wallet needs at least eight separate unlocked amounts (for group K). `pre-redteam-1b` snapshot is the roll-back point.
+
+Next session: round 1, black box, in a fresh session.
+
+    Phase 07b attacker, pass 1, round 1. Start with the Attacker brief in docs/phases/07b-adversarial-testing.md; its reading order replaces the usual one.

@@ -51,7 +51,7 @@ Every security claim Coffer makes gets an ID, a pass condition and at least one 
 
 ## Threats (T)
 
-16 threats come from the spec's security model, 9 from spec changes since, and 4 from the candidates (spec change 43). 17 are Covered, 10 Partial and 1 Planned (T28); T18 is the one Gap.
+16 threats come from the spec's security model, 9 from spec changes since, and 4 from the candidates (spec change 43). 17 are Covered, 10 Partial and 1 Planned (T28); T18 is the one Gap. **Added 2026-10-26** (07b pass 1 planning, Wyatt approved): T30 and T31, both Planned, covering tip-total integrity; their tests are written in 07b (attacks A11 and D6).
 
 | ID | Threat | Must hold (pass conditions) | Layer | Pass | Coverage | Tests found (37b046b; corrected at eb63872) |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -84,6 +84,8 @@ Every security claim Coffer makes gets an ID, a pass condition and at least one 
 | T27 | Bridge TLS checks (was C03; spec change 43) | The bridge refuses an untrusted or self-signed certificate from the site and from the release and download hosts; no build can skip the check; plain http is refused for downloads | Go | 1+2 | Partial: plain http is tested; the certificate refusal test is planned (07b): the sync client and the downloader each against an `httptest` TLS server whose certificate isn't trusted | Go `TestPlainHTTPRefused`; no `InsecureSkipVerify` in the bridge (outside `bridge/oracle/`) |
 | T28 | Dependency drift (was C04; spec change 43) | CI runs `govulncheck` on the bridge and `pnpm audit` on the plugin, and fails when a dependency is added outside the tiers; lockfiles are frozen; the 7-day release-age rule stays on | CI | 1+2 | Planned: `govulncheck` needs the dependency ask; `pnpm audit`'s scope and level are still to set | CI installs with `--frozen-lockfile`; strict 7-day release age in each `pnpm-workspace.yaml` |
 | T29 | Secrets in logs and shell history (was C06; spec change 43) | Bridge logs, the systemd journal and saved install transcripts never hold the view key, the wallet-rpc login or the pairing code; a pairing code left in shell history is limited by single use and the 15-minute expiry (T13), and the report says so | Go, Manual | 1 | Partial: the journal and transcript scan is in 07b | Go `TestNeverPrinted`, `TestWalletErrorsDontLeakSecrets`, `TestInstallLog` (the install log holds no answer or code) |
+| T30 | Per-entry tip totals count only settled tips (new, 07b pass 1) | A per-entry tip total (admin page) counts a tip only when it is `settled`; expired, reversed and below-floor tips never count (tips are never late or underpaid, spec change 33); no total is produced for a nonexistent, draft, trashed or private entry; totals are admin-only, never public | Host | 1 | Planned: 07b attack A11 writes the tests | None yet; `totals()` and the per-entry sum in `admin.ts` |
+| T31 | Forged-tip total inflation is bounded (new, 07b pass 1) | With a stolen bridge key, a per-entry tip total can be inflated only through forged *settled* tips (the tips analogue of "free goods"), with no wider reach; the public report states the exact blast radius | Host | 1 | Planned: 07b attack D6 writes the test | None yet; extends T03's stolen-key limit |
 
 ## Privacy claims (P)
 

@@ -20,6 +20,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open |
 | RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | open |
 | RT-12 | Medium | T01, R11 | 1, 1 | One expensive plugin request blocks all others on the Node runner for the full 30 s wall | open |
+| RT-13 | Low | F01 | 1, 1 | A slow request body isn't bounded by the 30 s wall; a connection can be held open past it | open |
 
 ---
 
@@ -165,3 +166,13 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 ## Observation, group G (for Wyatt, possible upstream report)
 
 - **Plain HTTP to an allowed host is accepted** (canary `http-plain-allowed-host`): `ctx.http.fetch("http://api.kraken.com/0/public/Time")` returned HTTP 200. EmDash's `allowedHosts` check is by host, not scheme, so a compromised plugin could reach an allowed host over plain http (MITM-able). Coffer's own code always builds `https://` URLs for the two price APIs, so Coffer as shipped isn't exploitable here; the gap is in EmDash's sandbox enforcement (the T01 "network limited to declared hosts" mitigation doesn't pin the scheme). Per the brief, this is an EmDash matter for Wyatt to report upstream, not a Coffer code change; recorded, not filed as a Coffer finding.
+
+## RT-13 — A slow request body isn't bounded by the 30 s wall; a connection can be held open past it
+
+- **Rows:** F01. **Severity:** Low. **Pass 1, round 1.** Group C5, live on the dev site (`scripts/redteam/round1-live.mjs`, "C5: the drip request ends at or before the 30 s wall").
+- **What I did:** POSTed to `bridge/sync` with a request body that dripped one byte a second from a `ReadableStream` (duplex upload), while polling `status` alongside it.
+- **What happened:** the request stayed open for the full ~41 s the test dripped (the 41 s is the test's own cap; the server imposed no limit before that), then the handler ran and returned `BAD_SIGNATURE`. So the 30 s plugin wall limit does not bound the time spent reading a slow request body: a client can hold a connection open well past 30 s. Important mitigation: the site stayed fully responsive throughout — `status` answered in at most 13 ms over eight polls during the drip — so a single slow body does **not** block other requests (unlike the CPU spin of RT-12, which serializes behind the event loop).
+- **What the spec says:** the 30 s wall is the plugin handler's limit ("wall-time limit of 30000ms"), measured once the handler runs; EmDash reads the body before invoking the handler, so upload time isn't covered. `bridge/sync` enforces the 256 KiB `maxBytes` cap (a body one byte over gets 413), but there is no time bound on the upload.
+- **Reach:** a slowloris — many slow-drip connections could tie up sockets or memory on the site's host. One connection is harmless and the event loop isn't blocked. This is normally handled at the reverse proxy or platform layer (Cloudflare, nginx), which the install docs already lean on for the checkout rate limit; the docs should name slow-connection limits in the same place. Not specific to Coffer's code (any EmDash public route reads its body the same way), so largely platform/proxy territory. Recorded as Low.
+- **Also live, passed (no finding):** A6/F06 — a spoofed `Host`, `X-Forwarded-Host` and `X-Forwarded-Proto` on `checkout` and `status` are never reflected in any URL the plugin builds (no `evil.example` in the responses). Live L2 — eight tips from one spoofed `X-Forwarded-For`/`CF-Connecting-IP` all succeeded and **no** `state:buckets` row was written, so on a Node site with no trusted-proxy config the per-client cap never engages and a visitor's headers can't create or poison a bucket (only the site-wide open-invoice cap applies, exactly as the spec states). C4 (proxy-added `Origin`/`Authorization` on a signed sync) is covered live by `dev-e2e.mjs`: a cross-origin `Origin` gets 403 `CSRF_REJECTED` and an invalid `Authorization: Bearer` gets 401, before the plugin runs, paired or not.
+- **Status:** open.

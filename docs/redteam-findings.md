@@ -17,6 +17,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | open |
 | RT-08 | Medium | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open |
 | RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open |
+| RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open |
 
 ---
 
@@ -126,3 +127,13 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **D4 — watch-list manipulation is bounded.** Huge and far-apart indexes (up to 2^32−1) in a forged sync don't crash the route, don't lose the real invoice (it still settles from its own index), and the next sync still returns a bounded watch list.
 - **D5 — a forged sync can't change an invoice's terms.** Terms smuggled into a snapshot, a snapshot entry or a transfer (`required: 0`, a new `expectedAtomic`, `minAtomic`, `fiat`, `rate`) left the invoice's locked `required`, expected amount, floor, fiat and rate unchanged. Snapshots carry only transfers.
 - **D6 — forged-tip total inflation is bounded (T31).** With the key, a per-entry total can be inflated only through tips that already exist, by the amounts the attacker writes into the snapshot (three real tips forged to 9 XMR each read as 27 XMR on the admin page). It can't invent tips for an entry nobody tipped (a forged settled snapshot for a nonexistent index creates no invoice), nor touch another entry's total. The report states this reach.
+
+## RT-10 — The way-back validator matches its refused prefixes case-sensitively
+
+- **Rows:** T22. **Severity:** Low. **Pass 1, round 1.** Theme (`theme/tests/redteam.test.ts`, "[T22] [RT-10] A9: the refused prefixes are matched case-insensitively …").
+- **What I did:** called `safeReturn` (spec change 39's shared validator) with `/PAY/coffer/tok`, `/Pay/Coffer/x`, `/_EMDASH/admin`, `/_Emdash/admin`.
+- **What happened:** each is returned unchanged. The refused list (`/pay/coffer`, `/_emdash`) is matched with `startsWith` on the exact lower-case text, so any other casing passes. Lower-case `/pay/coffer…`, `/_emdash…`, their percent-encoded forms (`/pay%2Fcoffer`, `/%5f%65mdash`) and dot-segment forms (`/x/../_emdash`) are all refused.
+- **What the spec says:** spec change 39 and decisions: the validator refuses "no `/pay/coffer/` or `/_emdash/`". T22: "refuses … the pay pages and the admin".
+- **Reach:** not currently exploitable. Astro and EmDash route paths case-sensitively, so `/PAY/coffer/tok` and `/_EMDASH/admin` resolve to 404, not to the pay page or the admin. A redirect or a back-link to them lands a visitor on a 404 on the same origin, not in a loop and not on the admin. It is an incomplete promised check: the validator means to refuse those areas and does so only for one casing. The fix is a case-insensitive prefix match. Every genuinely dangerous vector held: off-site (`//evil`, `https://evil`, backslashes, `javascript:`, `data:`), CRLF and control characters, over-length, and encoded slashes stay a single same-origin path segment (spec change 39's intended behaviour).
+- **Evidence:** vitest output, round 1.
+- **Status:** open.

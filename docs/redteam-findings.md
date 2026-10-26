@@ -15,6 +15,8 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | open |
 | RT-06 | Low | F01 | 1, 1 | The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature | open |
 | RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | open |
+| RT-08 | Medium | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open |
+| RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open |
 
 ---
 
@@ -96,3 +98,31 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 
 - **The freshness window's future edge has a second of slack** (T04). The `x-xmr-ts` header is whole seconds and the server reads its clock a few hundred milliseconds after the sender, so a timestamp 301 s ahead was accepted once in round 1 (it landed 300.x s ahead); +301 s and beyond were refused in every later probe, as were −301 s and beyond. The exact edges are tested with a fixed clock in `protocol.test.ts`. The suite now checks ±299 s accepted and ±302 s refused.
 - **A refused sync doesn't count as hearing from the bridge** (T03, R13). Unsigned, wrong-key and stale syncs left KV, including `state:bridge`, byte for byte unchanged, so they can't hide the silent-host alert.
+
+## RT-08 — A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit
+
+- **Rows:** T03, P02. **Severity:** Medium (Wyatt rules). **Pass 1, round 1.** Group D (stolen bridge key; `plugin/tests/redteam/stolen-key.test.ts`, "[T03][P02] [RT-08] D2: an address a forged sync adds to the pool is never handed to a tipper to pay").
+- **What I did:** holding the paired key, a forged sync added one pool address the attacker chose (index 2). The one honest address (index 1) was then claimed by a checkout, and the next tipper's checkout was handed index 2.
+- **What happened:** the second tipper's invoice address was the attacker's. So with the signing key, an attacker doesn't only forge a received tip (D1); they can make a real tipper's payment go to an address the shop's wallet isn't watching.
+- **What the spec says:** Security model, "Forged payment events (signing key stolen)": "The result is free goods, not lost funds." The bridge's job includes supplying pool addresses (pool top-up), so a stolen key supplying addresses is within the mechanism — but the stated consequence (free goods / a fake tip shown received) doesn't name "new tips routed to the attacker", and that needs no control of the pay page.
+- **Reach:** needs the bridge signing key (the stolen-key position, a stated design limit). Within that, it reaches real tipper money, not only a fake record. The pay-page-control caveat in the spec's wallet-host table (an attacker who controls the site "can show their own address on the pay page") covers a site break-in, not a stolen bridge key on an intact site. This is a report-completeness finding against the T03 wording: the public report must state that a stolen bridge key can route new tips to the attacker, not only mark invoices paid. Scope matches the plan's D2 break condition exactly; no probing beyond D2 (Wyatt, 2026-10-26).
+- **Evidence:** vitest output, round 1.
+- **Status:** open. For Wyatt: whether this is a wording fix to the report (the mechanism is the stated stolen-key limit) or a change (e.g. the plugin pinning pool addresses it can verify belong to the shop wallet — but the plugin holds no wallet material, so it can't verify an address; this likely stays a documented limit).
+
+## RT-09 — A forged sync adds a pool row duplicating an address already held
+
+- **Rows:** P02. **Severity:** Low. **Pass 1, round 1.** Group D ("[P02] [RT-09] D2b: a forged sync can't add a pool address that duplicates one already held").
+- **What I did:** holding the key, a forged sync added a free pool row (index 50) whose address equals the one already in use on the open invoice at index 1.
+- **What happened:** the pool then held the same address on two rows (the claimed index 1 and the free index 50).
+- **What the spec says:** "Pre-created address pool, one subaddress per invoice, never reused" (decisions); P02: "a duplicate insert fails on the unique `subaddress` index" — that index is on `invoices`, not on `pool`, so the pool itself accepts the duplicate.
+- **Reach:** needs the key. No two invoices can still share an address: the unique index on `invoices` holds, so if index 50 is later claimed the insert fails and checkout tries the next free address (the companion D2b test confirms P02 holds at the invoice level). The harm is a corrupted pool row and a wasted address, not a shared payment. Matches the plan's D2 "a duplicate/reused index corrupting the pool is itself a finding".
+- **Evidence:** vitest output, round 1.
+- **Status:** open.
+
+## Observations, group D (stated limits confirmed, no finding)
+
+- **D1 — forging a settled tip works, and that is the stated limit.** A forged snapshot settles an open tip. For a tip this fulfils nothing: no order, download or email; it records a received amount and counts toward the admin-only per-entry total. That is the tips analogue of "free goods" the spec names.
+- **D3 — the lifecycle holds under a forged key.** Dropping a settled tip's transfers moves it to `review (reversed)`, a real lifecycle state, with no counted amount left. A forged "paid in time" snapshot can reopen an expired tip (the stated limit) but never pushes it to a state the lifecycle forbids, and tips never reach `review (late)` (spec change 33).
+- **D4 — watch-list manipulation is bounded.** Huge and far-apart indexes (up to 2^32−1) in a forged sync don't crash the route, don't lose the real invoice (it still settles from its own index), and the next sync still returns a bounded watch list.
+- **D5 — a forged sync can't change an invoice's terms.** Terms smuggled into a snapshot, a snapshot entry or a transfer (`required: 0`, a new `expectedAtomic`, `minAtomic`, `fiat`, `rate`) left the invoice's locked `required`, expected amount, floor, fiat and rate unchanged. Snapshots carry only transfers.
+- **D6 — forged-tip total inflation is bounded (T31).** With the key, a per-entry total can be inflated only through tips that already exist, by the amounts the attacker writes into the snapshot (three real tips forged to 9 XMR each read as 27 XMR on the admin page). It can't invent tips for an entry nobody tipped (a forged settled snapshot for a nonexistent index creates no invoice), nor touch another entry's total. The report states this reach.

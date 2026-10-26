@@ -21,6 +21,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | open |
 | RT-12 | Medium | T01, R11 | 1, 1 | One expensive plugin request blocks all others on the Node runner for the full 30 s wall | open |
 | RT-13 | Low | F01 | 1, 1 | A slow request body isn't bounded by the 30 s wall; a connection can be held open past it | open |
+| RT-14 | Low | F04 | 1, 1 | The admin handler settles or expires an open tip the release-1 page offers no action for | open |
 
 ---
 
@@ -180,3 +181,23 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 ## Observation, group H2 (no finding)
 
 - **The dev site sustained a capped status flood without an outage.** Up to 50 concurrent and 300 requests in a burst, `status` for an unknown token was served at roughly 250–320 requests/second with no memory pressure (`MemAvailable` stayed above 4 GB) and the site never stopped answering. A precise "rate it falls over" wasn't reached inside the brief's 50-concurrent cap. This is consistent with RT-12: the real protection is a rate limit at the proxy, which the install docs already call for. (The quick flood script's success-count classification was buggy; the throughput and no-outage result are what's recorded, not a pass/fail count. A clean H2, and H1's large-backlog sync timing, are left for a run with Wyatt.)
+
+## RT-14 — The admin handler settles or expires an open tip the release-1 page offers no action for
+
+- **Rows:** F04. **Severity:** Low (admin-only). **Pass 1, round 1.** Group B2, Host layer: `plugin/tests/redteam/admin.test.ts`, "[F04] [RT-14] B2: a forged Mark settled or Expire on an open tip, which the page doesn't offer, is refused" (`it.fails`).
+- **What I did:** on a release-1 build I opened a tip through `checkout` (status `new`, not in review). The admin page shows no button or menu for it. I then sent the review queue's own action, `invoice_action`, with `settle:<id>` for one fresh open tip and `expire:<id>` for another.
+- **What happened:** both got a success toast. The first tip was stored as `settled` and the second as `expired`, both final, even though nobody paid the settled one and the page offered neither action. In the same suite the handler correctly refuses actions the page doesn't offer in other states: a settled tip can't be expired, re-settled or raised, and a decided invoice can't be acted on again.
+- **What the spec says:** F04 says row actions on unknown invoices, or with out-of-range values, are refused. Release 1 shows tips no per-invoice actions outside the review queue (spec change 22 keeps the product-only "All invoices" table and its menu out of release 1), so a tip action outside review is a value the page never hands out. The handler seems to follow the goods build's menu rules (Mark settled and Expire on an open invoice) whatever the build.
+- **Reach:** only a signed-in admin can send it. B1 checks that no one else gets through. The effect stays in the admin's own records: a tip nobody paid shown as settled (the tip totals add only what was received, so they show 0 XMR for it), or an open tip closed before its time. No money moves, and no one outside the admin is affected. Recorded so the release-1 handler matches what the release-1 page offers.
+- **Also in B2 (passed, no finding):**
+  - About 45 forged, look-alike, oversized (1 MB) and wrong-typed invoice values were refused, and so were 14 action IDs, including `__proto__`, `constructor`, `toString` and `then`. In every case the review item didn't change.
+  - Four settle and expire actions raced on one review item: exactly one won, and the stored state is the winner's.
+  - Forged `raise` values carrying numbers (0, −1, `1e3`, `NaN`, 20 digits) never lowered `required`.
+  - Saving a faster speed didn't lower `required` on an open tip (T07). Out-of-range settings values were refused.
+  - Extra settings fields (`bridgePublicKey`, `required`, `minAtomic`, `poolTarget`, `__proto__`) didn't set anything.
+  - After 200 Connect presses in a row there was still one pairing record, and only the newest code paired. When 20 presses came at once, at most one code paired (T13).
+  - Hostile review-paging cursors still render a page.
+  - Pressing Get a test address 30 times claims at most one address.
+  - Text after `|` in an action value acts only on the named invoice: it's the goods build's page position, not a second ID.
+  - Observation (T30): when an admin marks a reversed tip settled, the tip totals stay at 0 XMR, because its payment is no longer reported.
+- **Status:** open.

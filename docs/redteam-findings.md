@@ -23,6 +23,9 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-13 | Low | F01 | 1, 1 | A slow request body isn't bounded by the 30 s wall; a connection can be held open past it | open |
 | RT-14 | Low | F04 | 1, 1 | The admin handler settles or expires an open tip the release-1 page offers no action for | open |
 | RT-15 | Medium | R11, R13 | 1, 1 | At a spam-cap-sized backlog each sync's watch scan takes ~28 s, within ~2 s of the 30 s wall | open |
+| RT-16 | Low | F04 | 1, 1 | Coffer's sidebar link and dashboard widget show to roles that can't use them | open |
+| RT-17 | Low | F04 | 1, 1 | A non-admin's refusal shows raw JSON in the "Plugin Error" banner | open |
+| RT-18 | Low | T08 | 1, 1 | A tip note's stacked combining marks spill above and below its line on the admin page | open |
 
 ---
 
@@ -213,4 +216,55 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Caveats / likely cause:** measured in `astro dev` (dev mode, unoptimized) on the 8 GB dev box with this script's Node process running alongside; the built copy (workerd, port 4322) should be measured before the production number is trusted — left for round 2 or a run with Wyatt. The cost is likely dominated by building and bounds-checking a ~20,000-entry `watch` response (EmDash's `validateResponseBounds` counts every node) as much as by the storage paging; worth the builder's attention when sizing a fix.
 - **Not truly exercised:** the past-cap probe (the highest index) landed *inside* the 20,001-entry watch, so the "a payment to an invoice past the cap waits for the backlog to drain" path wasn't produced — the 102 dropped candidates were others. What's proven is the cap bounds the watch, the Health warning fires, and the per-sync cost. A follow-up could force the probe past the cap to confirm the late-payment behaviour there.
 - **Also in this run (passed, no finding):** L7 — during a 28.6 s sync the site kept answering: 35 of 40 capped checkouts (≤20 in flight) got an address, the slowest in 2.1 s (the 5 refusals are the site-wide 40-open cap, expected), so the async storage paging doesn't block the event loop the way the synchronous CPU spin of RT-12 did.
+- **Status:** open.
+
+## Round 1, Manual layer: A3 and B1 (Wyatt, 2026-10-29 UTC)
+
+Round 1's scripted A3 and B1 runs were stopped by a safety classifier and not retried (`docs/progress.md`, 2026-10-26). Wyatt ran both by hand on the dev site (`astro dev`, EmDash 1.3.1) and recorded the results in a local note; this is that evidence, at the Manual layer.
+
+**A3 — hostile tip notes on the admin page (T08): PASS.** Tips to the Welcome post through the tip button, then viewed as admin under Monero payments → Tips. Each note rendered as plain text:
+
+| Time (UTC) | Note | Result |
+| --- | --- | --- |
+| 01:00 | `<script>alert(1)</script>` | Plain text, no popup |
+| 01:09 | `<img src=x onerror=alert(1)>` | Plain text, no popup |
+| 01:11 | A long run of emoji | One line, layout intact; some glyphs are boxes (font fallback) |
+| 01:12 | Zalgo text (stacked combining marks) | Plain text; the marks spill above and below the note's line → **RT-18** |
+| 01:22 | `javascript:alert(1)` | Plain text, not a link |
+| 01:24 | A right-to-left override (U+202E) followed by text | Reversed in the tip form's text box, in normal order in the Tips list: the override had no effect (round 1's Host test shows the note cleaner removes bidi characters) |
+
+These seven tip invoices (01:00 to 01:24; the 01:22 and 01:24 ones were still confirming when the note was written) and the pool addresses they used stay in the dev database as A3's evidence.
+
+**B1 — a signed-in non-admin calling `admin` (F04): PASS.** Wyatt invited a test user with the Subscriber role and signed in with a passkey in a private window.
+- Opening Plugins → Monero payments: EmDash's "Plugin Error" banner, `403 FORBIDDEN` "Insufficient permissions". No Coffer data was shown.
+- The dashboard showed Coffer's widget with no data in it; nothing past that was reachable.
+- The test user and its passkey were removed afterwards.
+
+The anonymous and missing-`X-EmDash-Request` cases are covered live by `dev-e2e.mjs` (401 and 403, before the plugin runs; round 1 live stretch).
+
+## RT-16 — Coffer's sidebar link and dashboard widget show to roles that can't use them
+
+- **Rows:** F04. **Severity:** Low. **Pass 1, round 1, Manual layer** (Wyatt, B1 above).
+- **What happened:** signed in as a Subscriber, the sidebar still lists Plugins → Monero payments, and opening it gives the 403 banner (RT-17). The dashboard shows Coffer's "Monero Payments" widget, with no data in it.
+- **What should happen:** F04's refusal holds (no data reached the Subscriber), but the admin shouldn't offer a page or a widget a role can't open: it reads as broken, and it tells every signed-in user that the site takes Monero.
+- **Likely cause:** EmDash's manifest has no per-role field for admin pages or widgets (`admin.pages` takes `path`, `label`, `icon` and `group`; widgets take `id`, `title` and `size`; checked in EmDash's docs), so the sidebar and dashboard come from EmDash's admin shell. Round 2 confirms in the installed `emdash` package. If confirmed, it's for Wyatt to report upstream, not a Coffer fix.
+- **Evidence:** Wyatt's manual note, 2026-10-29 UTC (local, `~/xmr-pay-dev-data/notes/`).
+- **Status:** open.
+
+## RT-17 — A non-admin's refusal shows raw JSON in the "Plugin Error" banner
+
+- **Rows:** F04. **Severity:** Low. **Pass 1, round 1, Manual layer** (Wyatt, B1 above).
+- **What happened:** the Subscriber's refusal appears as EmDash's "Plugin Error" banner with the raw JSON error (`403 FORBIDDEN`, "Insufficient permissions").
+- **What should happen:** a plain sentence that the page is for administrators. The refusal itself is correct.
+- **Likely cause:** EmDash refuses the private `admin` route before Coffer's handler runs, and EmDash renders the banner, so Coffer never sees the request. Round 2 confirms in the installed `emdash` package; if confirmed, upstream.
+- **Evidence:** Wyatt's manual note, 2026-10-29 UTC.
+- **Status:** open.
+
+## RT-18 — A tip note's stacked combining marks spill above and below its line on the admin page
+
+- **Rows:** T08. **Severity:** Low. **Pass 1, round 1, Manual layer** (Wyatt, A3 above).
+- **What happened:** a Zalgo note (letters carrying long stacks of combining marks) is stored and shown as plain text, but the marks draw above and below the note's line and over the rows next to it on Monero payments → Tips.
+- **What should happen:** T08: notes "render escaped in Block Kit", which they do; the spec's "plain text only, length-limited" note shouldn't be able to deface the page around it. No markup or script results.
+- **Fix options (fix session decides):** Coffer's note cleaner could cap combining marks per base character (the note is already limited to 140 characters and stripped of control and format characters); Wyatt suggested clipping the note's line, which Block Kit may not allow.
+- **Evidence:** Wyatt's manual note, 2026-10-29 UTC.
 - **Status:** open.

@@ -71,6 +71,7 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **What the spec says:** API contracts, "Address claims and limits": the bounded `updateIf` loop "returns `NO_ADDRESS_AVAILABLE` when the loop runs out". The loop is bounded by design, but the code reads as "there is no address" and the tip button then says "Tips can't be taken right now".
 - **Reach:** a burst of real tippers, or an attacker's burst landing beside them; the attacker gains nothing beyond the open-invoice cap they could fill anyway. The test host's interleaving may differ from the Node runner's; the live A8 run on the dev site measures the real figure.
 - **Evidence:** vitest output, round 1; the live run's figures will be added here.
+- **Live, round 2 (Node runner, 2026-10-29):** not reproduced. 30 tips at once with 30 free addresses all got one; 40 at once with 30 free got exactly 30, with 10 `NO_ADDRESS_AVAILABLE` and none left free. No address reused, no orphaned claim (`scripts/redteam/round2-live.mjs a8`, evidence `~/xmr-pay-dev-data/redteam/round2-a8-2026-10-29T025312088Z.txt`). The Node runner serves plugin requests one at a time (RT-12), so the claim loop never races there; the early refusals are the test host's interleaving. The finding stands for a runner that does run requests concurrently (Cloudflare's, release 1.x). Severity unchanged; the fix session decides whether it closes as not reproducible on release 1's platform.
 - **Status:** open.
 
 ## RT-05 — An IPv6 visitor dodges the per-client cap by changing address inside their /64
@@ -101,6 +102,7 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **What the spec says:** the code is "single-use" (Security model, pairing row; T13: "a second use fails"); the plugin "stores the key and burns the code". The attack catalog: "exactly one may win".
 - **Reach:** whoever holds a live code (from a screenshot, a shared terminal, shell history; T29) and sends their pair request at the same moment as the real bridge. One-at-a-time, the attacker's pairing either fails or makes the real bridge's pairing fail loudly. In the race, the real bridge is told it paired and the attacker's key is the one kept. That's the stolen-key position (T03: forged settled tips, attacker pool addresses, D2). It shows only later, as the real bridge's syncs being refused. Without a code there's no way in: every guessed, near-miss, expired, used or malformed code was refused, and none burned the real code; a pair body signed by a key other than the one it names was refused, as were all-zero and identity-point keys, short or non-base64 keys, and pair bodies over 4 KiB; 60 seeded hostile bodies sent while a code was active never crashed the route or paired. The dev-site run (the real Node runner) is in the live group.
 - **Evidence:** vitest output, round 1.
+- **Live, round 2 (Node runner, 2026-10-29):** reproduced in 3 of 3 rounds (`scripts/redteam/round2-live.mjs c6`, evidence `~/xmr-pay-dev-data/redteam/round2-c6-2026-10-29T025321523Z.txt`): both simultaneous pair requests got `ok`, the second key was stored each time, and the first key's next sync got `BAD_SIGNATURE`.
 - **Status:** open.
 
 ## Observations, round 1 (no finding)
@@ -268,3 +270,35 @@ The anonymous and missing-`X-EmDash-Request` cases are covered live by `dev-e2e.
 - **Fix options (fix session decides):** Coffer's note cleaner could cap combining marks per base character (the note is already limited to 140 characters and stripped of control and format characters); Wyatt suggested clipping the note's line, which Block Kit may not allow.
 - **Evidence:** Wyatt's manual note, 2026-10-29 UTC.
 - **Status:** open.
+
+---
+
+# Pass 1 (phase 07b), round 2 (white box)
+
+Fresh attacker session, 2026-10-28 (local) / 2026-10-29 UTC. Order (Wyatt): the live block with the real stagenet payments, then `coffer-test`, then the plugin and bridge source. The dev site's baseline for this round is the backup `~/xmr-pay-dev-data/redteam/round2-k.db` (45 invoices, 345 pool rows, 8 KV rows, the bridge key); the setup session's 38/338 is out of date (Wyatt's A3 tips).
+
+## Real stagenet payments (group K, A13), 2026-10-29 UTC: all as the spec says
+
+Dev site in `astro dev` (EmDash 1.3.1), the dev box's installed bridge, stagenet. Wyatt sent every payment from his Feather buyer wallet; times are his, converted from MDT. Invoices made with `scripts/dev-invoices.mjs`; the watcher's log is `~/xmr-pay-dev-data/3h-watch.txt`. Each tip needed 2 confirmations.
+
+| Attack | Rows | Invoice | What was done | Result |
+| --- | --- | --- | --- | --- |
+| K1 | R01 | #296 | Open tip, paid 0.001 at 02:02 | Seen 02:02:42, settled, counted once. PASS |
+| K2 | R02 | #297 | Open tip, never paid | Expired at 02:22:21 (window 02:22:10, on evidence: the bridge's height and clock past the deadline); never settles. PASS |
+| K3 | R03 | #298 | Open tip, paid 0.001 at 02:28, after it expired at 02:22 | Reopened (`reopened: true`) to confirming, then settled: a tip is never late (spec change 33). PASS |
+| K4 | R03 | #287 | 0.0002 at 02:25 to a tip that expired on 2026-10-26 with nothing ever reported, whose address had been reported empty for about 3 days past its window | No change to the invoice (no transfer, same `seq`): its address left the watch under spec change 33's 24-hour untouched rule. Stated limit: the money is in the shop wallet, Coffer doesn't record it. PASS (Accepted limit) |
+| K5 | R01, T07 | #303, #304 | One transaction (`c01bb2fd61ab…`) paying both, 0.001 each, at 02:30 | Both settled, each counted once, sharing the txid. PASS. (A first attempt, #299 and #300, went as two transactions in one block; both settled.) |
+| K6 | R04 | #301 | Fixed amount 0.002, paid 0.0015 at 02:03 | Settled with 0.0015 received; never `underpaid` (spec change 33). PASS |
+| K7 | R04 | #302 | Fixed amount 0.001, paid 0.0015 at 02:18 | Settled with 0.0015 received (the status route reports `receivedAtomic` 0.0015; tips record no overpayment field). PASS |
+| A13 | R06, R12, T05 | #305 | Wyatt stopped `xmr-bridge`; after 340 s of silence a tip was made (accepted, at the last height heard), paid 0.001 at 02:47; the bridge started again | Seen 02:48:47, settled 02:51:06 at 2 confirmations, one transfer, counted once. PASS |
+
+## I1 — data at rest after the payments and a pairing code: PASS
+
+`scripts/with-shop-env.sh node scripts/redteam/scan-at-rest.mjs` over a `VACUUM INTO` copy, the live `-wal` and 8,447 lines of the dev site's log, with four pairing codes as needles (an unused one issued for the run through `dev-e2e.mjs --issue-code`, and the codes from the 3i and 3j real pairings and the Cloudflare spike). The view key in six encodings, all four codes, and IP-shaped text in Coffer's 419 rows and settings: none found (`~/xmr-pay-dev-data/redteam/scan-at-rest-2026-10-29T025141034Z.txt`). Rows P01, T02, T13, P03.
+
+## Live A8, C6 and J1 on the Node runner
+
+`scripts/redteam/round2-live.mjs` (commit `394169b`), each run on a cleared site, then `data.db` restored from the post-payment backup (`round2-post-k.db`) and compared row for row; the dev box's bridge synced again with its own key afterwards.
+- **A8 (T05, P02):** see RT-04's live note. No reuse, no orphaned claim.
+- **C6 (T13):** RT-07 reproduced live, 3 of 3.
+- **J1 (R05): PASS.** A signed sync settling 35 invoices (32 transfers each, 222,769 bytes) was cut by SIGKILL on the dev site 153 ms in: 21 invoices were saved, 14 not, and no invoice held a partial transfer list. After a restart the same body (same `seq`), freshly signed as the bridge's retry would be, settled the other 14; each payment counted once, and a second retry changed nothing (`round2-j1-2026-10-29T025356584Z.txt`).

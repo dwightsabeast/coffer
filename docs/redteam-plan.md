@@ -234,7 +234,7 @@ Each writes an address+amount file; Wyatt sends one per line and notes the time.
 - **K2 — No payment, expires.** Row R02.
 - **K3 — Pay after expiry inside 24 h.** Row R03.
 - **K4 — Pay an expired address after its watch ends.** Row R03.
-- **K5 — One tx paying two invoices (Feather pay-to-many).** Rows R01, T07 — both settle, each counted once, shared txid.
+- **K5 — One tx paying two invoices (two "address, amount" lines in Feather's Pay to field).** Rows R01, T07 — both settle, each counted once, shared txid.
 - **K6 — Underpay a fixed-amount tip (settles at the floor).** Row R04. Release 1's TipButton sends set amounts (3/5/10 in site currency, or custom), so a fixed-amount tip exists (spec change 33). A short payment **above the floor settles at the floor** — a fixed-amount tip is never `underpaid` and never `late`. Confirm live.
 - **K7 — Overpay a fixed-amount tip.** Row R04. Settles; the Paid card shows the amount received (spec change 33). Confirm live.
 - (Wyatt, 2026-10-26: R04's underpay/overpay run live in pass 1 for tips.)
@@ -308,7 +308,7 @@ Two new rows, numbered in the matrix's normal style (next free T IDs). Added to 
 | P02 | A7, A8, D2, L5 | fresh subaddress / no reuse |
 | P03 | A12, I1, L2 | no IP stored |
 | P04 | I3 | 30-day purge |
-| R01 | K1, K5 | normal + pay-to-many |
+| R01 | K1, K5 | normal + one transaction to two invoices |
 | R02 | K2 | expiry |
 | R03 | K3, K4 | late / after-watch |
 | R04 | K6, K7 | fixed-amount tip underpay/overpay, live pass 1 (spec change 33) |

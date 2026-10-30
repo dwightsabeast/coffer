@@ -3833,3 +3833,19 @@ Not done from the old plan's Step 3 list, for the next session or pass 2:
 - **J1, bridge side:** covered by `TestPendingSurvivesFailureAndRestart`.
 
 Next step: Step 5 (RT-15's built-copy re-measure), then Step 6 (`pnpm audit`, `govulncheck`: name the exact version to Wyatt first), then Step 7 (close the round).
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: Step 5 (built-copy re-measure) done
+
+- **RT-26 and RT-27 ruled Medium (Wyatt).**
+- **RT-15 on the built copy** (production build on loopback port 4322, 20,100 seeded settled tips plus a past-cap probe):
+  - **Timing:** every sync took 27.0–27.5 s, the same as dev mode's ~28 s, so the ~2.5 s margin under the 30 s wall is real.
+  - **L7:** 40 of 40 checkouts got an address during a 27.3 s sync.
+  - **New detail:** the cap drops the newest invoices first, because an unordered scan reads oldest first (`created_at`, `id`). The expired probe, written last, stayed unwatched through 40 drain syncs. Recorded in RT-15 with a fix direction.
+  - **Evidence:** `~/xmr-pay-dev-data/redteam/h1-2026-10-30T213904728Z.txt`.
+- **Script:** `scripts/redteam/backlog-live.mjs` gained `seed --past-cap` and `run --built`. Script tests: 43 pass.
+- **Restore:**
+  - `data.db` restored from `~/xmr-pay-dev-data/redteam/round2-step5.db`: 419 Coffer rows, 0 different; the dev box's bridge key `2c00d25866f4` back.
+  - The built copy was stopped; ports 4321 and 4322 are free.
+  - The dev site's `dist` was rebuilt from the placeholder plugin build.
+
+Next step: Step 6. `pnpm audit` in `plugin/`, `theme/` and `contract/`, plus the lockfile check against the tiers. For `govulncheck`, I name the exact version to Wyatt before running it.

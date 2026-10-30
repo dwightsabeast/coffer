@@ -33,8 +33,8 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open |
 | RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | open |
 | RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open |
-| RT-26 | Medium (proposed; Wyatt rules) | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open |
-| RT-27 | Medium (proposed; Wyatt rules) | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | open |
+| RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open |
+| RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | open |
 
 ---
 
@@ -229,6 +229,19 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Caveats / likely cause:** measured in `astro dev` (dev mode, unoptimized) on the 8 GB dev box with this script's Node process running alongside; the built copy (workerd, port 4322) should be measured before the production number is trusted — left for round 2 or a run with Wyatt. The cost is likely dominated by building and bounds-checking a ~20,000-entry `watch` response (EmDash's `validateResponseBounds` counts every node) as much as by the storage paging; worth the builder's attention when sizing a fix.
 - **Not truly exercised:** the past-cap probe (the highest index) landed *inside* the 20,001-entry watch, so the "a payment to an invoice past the cap waits for the backlog to drain" path wasn't produced — the 102 dropped candidates were others. What's proven is the cap bounds the watch, the Health warning fires, and the per-sync cost. A follow-up could force the probe past the cap to confirm the late-payment behaviour there.
 - **Also in this run (passed, no finding):** L7 — during a 28.6 s sync the site kept answering: 35 of 40 capped checkouts (≤20 in flight) got an address, the slowest in 2.1 s (the 5 refusals are the site-wide 40-open cap, expected), so the async storage paging doesn't block the event loop the way the synchronous CPU spin of RT-12 did.
+- **Round 2, the built copy (2026-10-30, Step 5):** the same run against the production build (Node, `node ./dist/server/entry.mjs` on loopback port 4322), with the probe made a *past-cap* case (`seed --count 20100 --past-cap`: an expired tip inside its late window, written last). Evidence: `~/xmr-pay-dev-data/redteam/h1-2026-10-30T213904728Z.txt`.
+  - **Timing, no better than dev mode:**
+    - pairing sync 27.4 s;
+    - first backlog sync 27.1 s;
+    - 40 drain syncs at 27.0–27.5 s (slowest 27,540 ms).
+
+    The margin under the 30 s wall is still about 2.5 s, so the round 1 caveat ("measured in dev mode") no longer softens this finding.
+  - **L7 holds:** during a 27.3 s sync, 40 of 40 checkouts got an address, the slowest in 2.0 s.
+  - **The cap drops the newest invoices first.**
+    - **Why:** the watch scans query with no order, and EmDash's plugin storage then reads oldest first, by `(created_at, id)` (`emdash/dist/context-ErV7UdQY.mjs:555–600`). So a truncated scan keeps the oldest 20,000 rows and drops the most recent.
+    - **What the probe showed:** the expired tip written last was not in the 19,983-entry watch, and stayed out through all 40 drain syncs (the watch shrank to 15,983 as the seeded tips were reported 10 deep). The cap counts rows *scanned*, and those rows stay in the tips' 8-day lookback.
+    - **Consequence:** in a real flood, the invoices made after the flood are the ones whose late payments go unreported. A tip's watch (7 days plus 24 hours) can end before the flood's rows age out of the lookback (8 days), so such a tip may never be checked. The Health warning still names this ("more recent invoices existed than Coffer reads in one sync"); the built copy has no dev sign-in, so the warning wasn't read this time.
+  - **For the fix session:** ordering the scans newest first, or scanning open and recently final invoices before the long tip lookback, would keep the cap from dropping exactly the invoices most likely to be paid late.
 - **Status:** open.
 
 ## Round 1, Manual layer: A3 and B1 (Wyatt, 2026-10-29 UTC)
@@ -490,7 +503,7 @@ The spec's Privacy list says nothing about remote nodes. Spec change 13 says the
 
 ## RT-26 — A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future
 
-- **Rows:** T14, R09. **Severity:** Medium, proposed (Wyatt rules). It needs no key, only a remote node that lies, and its effect outlasts switching to an honest node. **Pass 1, round 2, Step 3 (white box).**
+- **Rows:** T14, R09. **Severity:** Medium (Wyatt ruled, 2026-10-30). It needs no key, only a remote node that lies, and its effect outlasts switching to an honest node. **Pass 1, round 2, Step 3 (white box).**
 - **Tests:**
   - Go `internal/bridgeloop/redteam_test.go`, "[T14][R09] [RT-26] …" (`t.Skip("RT-26 open")`; without the skip it reports a height 1,000,000 blocks ahead, 15 s after the last).
   - Plugin `tests/redteam/whitebox.test.ts`, "E4, plugin side" (passing: the consequence).
@@ -511,7 +524,7 @@ The spec's Privacy list says nothing about remote nodes. Spec change 13 says the
 
 ## RT-27 — The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses
 
-- **Rows:** T15, F08. **Severity:** Medium, proposed (Wyatt rules): it reaches across the machine boundary the design relies on. **Pass 1, round 2, Step 3 (white box), plan item E1.** Go `internal/bridgeloop/redteam_test.go`, the two "[T15][F08] [RT-27] E1: …" tests (`t.Skip("RT-27 open")`).
+- **Rows:** T15, F08. **Severity:** Medium (Wyatt ruled, 2026-10-30): it reaches across the machine boundary the design relies on. **Pass 1, round 2, Step 3 (white box), plan item E1.** Go `internal/bridgeloop/redteam_test.go`, the two "[T15][F08] [RT-27] E1: …" tests (`t.Skip("RT-27 open")`).
 - **What I did:** gave the bridge loop a site reply with `poolTop` 2^32−1 (the most `syncclient` accepts), and separately one with `poolTarget` 1,000,000,000.
 - **What happened:**
   - **`poolTop`:** the wallet didn't have that index, so the loop started a catch-up to it and created subaddresses 100 per call until the test's cap stopped it at 19,901. Without a cap it would go on toward 4.29 billion, growing the wallet file and wallet-rpc's memory until the wallet host runs out.

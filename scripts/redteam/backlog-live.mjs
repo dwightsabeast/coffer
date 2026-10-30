@@ -4,8 +4,12 @@
 //
 //   node scripts/redteam/backlog-live.mjs seed [--count 20100]   with the site stopped: clone settled tips + one open
 //                                                                 probe, all watch candidates, into _plugin_storage
+//                                             [--past-cap]       the probe is an expired tip in its late window instead,
+//                                                                 so it isn't in the open query and the cap can drop it
+//                                                                 (an unordered scan reads oldest rows first: round 2)
 //   node scripts/redteam/backlog-live.mjs run                     with the site running: pair, time syncs, check the
 //                                                                 cap and its Health warning, drain, settle the probe
+//                                            [--built]           the built copy: no dev sign-in, so the Health read is skipped
 //
 // Loopback only. The run step pairs a fresh in-memory key through the KV shortcut and reads the admin Health line
 // through EmDash's own dev sign-in (dev mode). It never calls cleanupCofferRows (that wipes the baseline fixtures);
@@ -41,13 +45,15 @@ const value = (name, fallback) => {
 	return i === -1 ? fallback : args[i + 1];
 };
 if (cmd !== "seed" && cmd !== "run") {
-	console.error("usage: node scripts/redteam/backlog-live.mjs seed [--count 20100] | run");
+	console.error("usage: node scripts/redteam/backlog-live.mjs seed [--count 20100] [--past-cap] | run [--site <loopback URL>] [--built]");
 	process.exit(2);
 }
 
 const site = loopbackUrl(value("--site", DEFAULT_SITE));
 const route = (name) => routeOn(site, name);
 const COUNT = Number(value("--count", "20100"));
+const PAST_CAP = args.includes("--past-cap");
+const BUILT = args.includes("--built");
 // A height well above the real stagenet height (2236600 at the baseline), so the seed can't be confused with real
 // payments. Seeded transfers sit a few blocks below it, so settled tips start shallow and stay watch candidates.
 const H = 2_300_000;
@@ -114,6 +120,7 @@ if (cmd === "seed") {
 	}
 	// One open (unfinished) tip, a watch candidate too, used as the past-cap probe: nobody has paid it yet.
 	function openProbe() {
+		const late = PAST_CAP ? { status: "expired", createdAt: now - 40 * 60_000, expiresAt: now - 10 * 60_000, seq: now - 5 * 60_000, finalAt: now - 5 * 60_000 } : {};
 		const index = BASE_INDEX + COUNT; // the very last index, so it sorts past the others
 		const id = "inv_rt_h1_probe";
 		const subaddress = fakeAddress(index);
@@ -140,6 +147,7 @@ if (cmd === "seed") {
 			transfers: [],
 			uriDescription: "Tip",
 			via: "checkout",
+			...late,
 		};
 		insert.run(PLUGIN, "invoices", id, JSON.stringify(inv), stamp, stamp);
 		insert.run(PLUGIN, "pool", String(index), JSON.stringify({ addrIndex: index, address: subaddress, status: "claimed", invoiceId: id }), stamp, stamp);
@@ -152,7 +160,7 @@ if (cmd === "seed") {
 	const probe = openProbe();
 	db.exec("COMMIT");
 	const total = db.prepare("SELECT COUNT(*) c FROM _plugin_storage WHERE plugin_id = ? AND collection = 'invoices'").get(PLUGIN).c;
-	log(`seeded ${COUNT} settled tips + 1 open probe (index ${probe.index}); invoices now ${total}`);
+	log(`seeded ${COUNT} settled tips + 1 ${PAST_CAP ? "expired (past-cap)" : "open"} probe (index ${probe.index}); invoices now ${total}`);
 	log(`probe id ${probe.id} at index ${probe.index}`);
 	db.close();
 	process.exit(0);
@@ -207,12 +215,13 @@ try {
 		// The cap bounds the watch at ~CAP_ROWS: it must be truncated (fewer than every candidate) and sit at the cap,
 		// not run away to the full candidate count. Observed: 20001 from 20103 candidates — 102 dropped.
 		check("R11/R13: the watch is truncated at ~the 200-page cap, not the whole backlog", w1.length < candidates && w1.length <= CAP_ROWS + 100, `watch ${w1.length}, candidates ${candidates}, cap ${CAP_ROWS}`);
-		log(`past-cap probe (index ${probeIndex}, the highest) inside the capped watch: ${w1.includes(probeIndex)} — note the dropped candidates were others, so a true past-cap payment wasn't the probe here`);
+		log(`probe (index ${probeIndex}, the newest row, status ${probeRow()?.status}) inside the capped watch: ${w1.includes(probeIndex)}${probeRow()?.status === "expired" ? " (expired: only the capped scans can find it, so false means the cap dropped it)" : " (open: found by the open-invoice query whatever the cap)"}`);
 	}
 
 	// --- Health warning for the cap, read through the dev admin sign-in (a plain page read) ---
 	let capWarned = null;
-	try {
+	if (BUILT) log("admin Health read not run: the built copy has no dev sign-in (round 1's dev-mode run showed the warning)");
+	else try {
 		const cookie = await devAdminSession(site);
 		const page = await adminCall(site, { type: "page_load", page: "/payments" }, { cookie, "x-emdash-request": "1" });
 		const text = JSON.stringify(page.data ?? page.json ?? {});
@@ -222,7 +231,7 @@ try {
 	} catch (e) {
 		log(`admin Health read skipped: ${String(e).slice(0, 120)}`);
 	}
-	check("R13: the admin page warns when the watch cap is reached (spec change 35, condition 2)", capWarned === true, capWarned === null ? "could not read the admin page" : `warning present: ${capWarned}`);
+	if (!BUILT) check("R13: the admin page warns when the watch cap is reached (spec change 35, condition 2)", capWarned === true, capWarned === null ? "could not read the admin page" : `warning present: ${capWarned}`);
 
 	// --- Drain and the past-cap probe: observed, not asserted. The cap is on rows SCANNED, not watch candidates, so
 	// maturing a settled tip (reporting it 12 deep) may or may not free a slot. Whatever happens is the evidence R11/R13

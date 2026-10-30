@@ -28,6 +28,9 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-18 | Low | T08 | 1, 1 | A tip note's stacked combining marks spill above and below its line on the admin page | open |
 | RT-19 | Low | T13 (setup) | 1, 2 | The installer checks the pairing code last, so an expired code fails only after the keys are typed and wallet-rpc is downloaded | open |
 | RT-20 | Medium (proposed; Wyatt rules) | T17 | 1, 2 | Behind a proxy that ends https, the tip endpoint refuses every visitor's tip as cross-site | open |
+| RT-21 | Low | T15 | 1, 2 | With the stagenet-only flag, a mainnet shop is refused only after its view key has been asked for | open |
+| RT-22 | Low | T15 (setup) | 1, 2 | Ctrl-C at an installer prompt is ignored; after it, the install goes on and then fails with a misleading node error | open |
+| RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open |
 
 ---
 
@@ -346,7 +349,8 @@ Wyatt ran `~/xmr-pay-dev-data/07b-i2.sh` (outside the repo) on the dev box on 20
   - No `Origin`: passes.
   - `Origin: https://evil.example`: 403, the control.
 
-  So any https page's post that reaches the site as plain http is refused, whatever `X-Forwarded-Proto` says. What the tunnel actually sent wasn't captured: the built copy doesn't log headers, and a capture needs root on the dev box. Wyatt's Firefox request headers, browser side, are to follow.
+  So any https page's post that reaches the site as plain http is refused, whatever `X-Forwarded-Proto` says. What the tunnel actually sent wasn't captured: the built copy doesn't log headers, and a capture needs root on the dev box.
+- **The browser's side (Wyatt, Firefox 158, HTTP/3 through Cloudflare, answered 403):** `Origin: https://dev.wyattdilley.com`, `Referer: https://dev.wyattdilley.com/posts/welcome`, `Host: dev.wyattdilley.com`, `Sec-Fetch-Site: same-origin`, `Content-Type: application/x-www-form-urlencoded`. The browser itself called the post same-origin. Only the protocol of the URL the site sees differs, which matches probe 1.
 - **Reach:** release 1's tip button fails for every visitor on a Node site behind nginx, Caddy, a Cloudflare tunnel or any proxy that ends TLS and forwards http, unless the operator happens to configure Astro's `security.allowedDomains`. Asking them to would break the admin budget's "no required settings". No money or data is at risk; tips just can't be made. It wasn't caught before because 7c and 7e tested the button on `astro dev` over loopback http, where the page and the endpoint share a protocol.
 - **Fix ideas for the fix session (Wyatt decides):**
   - also accept an `Origin` equal to EmDash's configured public origin, as EmDash's own check does;
@@ -358,3 +362,85 @@ Wyatt ran `~/xmr-pay-dev-data/07b-i2.sh` (outside the repo) on the dev box on 20
 ## Observation, round 2: Cloudflare's injected analytics beacon is blocked on Coffer's pages (T09, T23)
 
 On the refused tip page above, Firefox's console showed Cloudflare's automatic Web Analytics injecting its beacon (a script from `static.cloudflareinsights.com` plus an inline script). Coffer's CSP blocked both, so no third-party script runs on a pay page even when the host's proxy injects one. That is T09's "no third-party assets" and T23's locked-down CSP working as meant. For the docs: the installation guide could warn that Cloudflare's automatic Web Analytics injects into every page, including pay pages, and that Coffer blocks it there (the console shows CSP errors, which are expected). An admin who wants analytics on the rest of the site doesn't need to change anything. Reported by Wyatt, 2026-10-30.
+
+## Install layer: F1 and F4 on `coffer-test` (Wyatt, 2026-10-30 UTC)
+
+**Code under test:** `main` at `e8e195a26eee011e7b796889caefce932e6601e0`. The dev release was built from `redteam-1` at `2d7a29d85bd4935888d433a6349b17396f832337`, which differs from `main` in `bridge/` only by test files and `internal/hostile` (in no binary's `go list -deps`). The two builds were byte-identical with a fixed version string. Release `0.0.202610301609-dev.2d7a29d`, signed with the dev key; `xmr-bridge` linux/amd64 `85699662dc482a58e607cbfd5bb687eef3968e1b6bad2d1fc2ff46a28dee7dc4`; `monero-wallet-rpc` as installed `06f36de37bda72ff377c11700ba622fef435d27510c883e9c83a27ba3c46ba1f`. Container `coffer-test` from its `blank` snapshot. The site was the dev site's built copy behind the Cloudflare tunnel (`dev.wyattdilley.com`, Access on all but the plugin routes), reset to a fresh-install state and restored afterwards. Node: run B's remote node `https://stagenet.xmr.kernal.eu:38089`, so the cross-check is on. Shop wallet: phase 05's tester wallet from Feather; its keys never reached the dev box.
+
+**Runs that don't count:**
+- **First install:** the code expired before pairing (RT-19). F1 then ran against a half-installed machine and its 30-minute watch saw nothing. Void.
+- **Second install:** reused the expired code's file by mistake (RT-19). Void.
+- **The third install paired** at about 18:36 UTC.
+- **The first F1 on it** (18:53) is valid except its watch: Ctrl-C (pressed to copy in the console) ran the script's cleanup trap, which deleted the peer samples while the loop went on. The fixed watch, `07b-f1w.sh`, ends cleanly on Ctrl-C and samples every 2 s.
+- **The first F4's part (a)** gave `sh` an empty script (`</dev/null` on the pipe's reader), so it tested nothing. It was re-run with `setsid`.
+- **Script errors, all mine:** the void F1 watch, the empty F4(a) and the trap. Recorded so the evidence's gaps are explained.
+
+**F1 (T10): PASS.**
+- **Listeners:** wallet-rpc listens on `127.0.0.1` only and answers `401` without its login. The bridge has no listener.
+- **wallet-rpc's command line:** flag names only (values never appear in the output); its login file was gone after start-up.
+- **Files:** `config`, `bridge.key` and every wallet file are mode 600, owned by `xmr-bridge`. `install.log` is mode 600, owned by root. The admin copy `/usr/local/bin/xmr-bridge` is owned by root and matches the release.
+- **The unit's sandboxing:** `User=xmr-bridge`, empty `CapabilityBoundingSet`, `ProtectSystem=strict`, `ReadWritePaths=/var/lib/xmr-bridge`, `NoNewPrivileges`, `PrivateTmp`, `PrivateDevices`, `MemoryDenyWriteExecute` and `RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX`.
+- **Peers** (`07b-f1w.sh`, 19:28:38–19:44:25 UTC, 471 samples). The test tip, sent from Feather between 19:39:47 and 19:42:08, was mined in block 2,240,130 (txid `bc5f3e59…`) and settled on the site at 19:43:49 with its 2 confirmations.
+
+  | Peer | Process | Why |
+  | --- | --- | --- |
+  | The site (Cloudflare, `:443`) | `xmr-bridge` | sync loop |
+  | The configured node (kernal, `:38089`) | `monero-wallet-rpc`, `xmr-bridge` | the wallet's refresh; the bridge's height and block-hash calls |
+  | `127.0.0.1` (wallet-rpc's port) | `xmr-bridge` (both ends listed) | the bridge driving wallet-rpc |
+  | Second nodes: boldsuck, node.monerodevs, sethforprivacy, xmr-tw | `xmr-bridge` | the cross-check, only from 19:42:24, right after the tip was mined. Four different nodes in two minutes, all on the built-in list (`crosscheck.go:47–54`), never the configured node |
+  | `www.getmonero.org:443` | `xmr-bridge` | the update check's `hashes.txt`. The dev build checks every minute (`release_dev.go`), under Go's 90 s idle timeout, so the connection stayed open throughout. A release build checks daily |
+  | The release server (LAN) | `xmr-bridge` | the same update check (`release.json` and `.sig`, once a minute in its log). It isn't in the samples: Python's `http.server` closes each connection at once |
+
+  `downloads.getmonero.org` was never seen. Nothing unexplained. The plan's table listed five built-in second nodes; there are six (`xmr-lux.boldsuck.org`), which is a counting error in the plan, not a finding.
+
+**F4 (T16, T15): PASS**, run again at 19:45 UTC on the installed, working host:
+- **(a)** `install.sh` from a folder holding a one-byte-changed binary: refused at the checksum, "nothing was installed", exit 1. The release server shows the container fetched the tampered binary first.
+- **(b)** `xmr-bridge install --allow-same-machine` with a made-up mainnet address: the view key was asked for before the refusal (RT-21). Ctrl-C at that prompt didn't end the installer (RT-22). The driver killed it after 60 s, with nothing typed. Same result as the 19:08 run.
+- **(c)** The hashes of both bridge copies, wallet-rpc, the config, the unit, `admin-binary.sha256` and `install.log`, plus `MainPID`, `NRestarts`, `ActiveState` and `SubState`: all SAME after (a) and (b).
+- **(d)** Still syncing.
+
+**F4c, Ctrl-C the way a person does it** (blank container, 19:55 UTC, the made-up key pair from `installer/fakes_test.go`, dummy code):
+- **A:** Ctrl-C at the view-key prompt, then Enter at every prompt. After three empty answers: "giving up … Nothing was changed on this machine".
+- **B:** Ctrl-C, then Enter, then the view key and run B's node. The node was refused three times as "doesn't answer as a Monero node", although it served the installed bridge from the same container minutes earlier.
+
+Both left the machine blank (files, unit and service user checked). RT-22.
+
+## RT-21 — With the stagenet-only flag, a mainnet shop is refused only after its view key has been asked for
+
+- **Rows:** T15. **Severity:** Low. **Pass 1, round 2, Install layer** (F4 b, twice on 2026-10-30). Go test to follow in Step 3.
+- **What happened:** with `--allow-same-machine` and a mainnet address, the installer asked for the private view key. The refusal ("is for development on stagenet only") comes after the key is checked.
+- **Why:** `install.go` asks for the address (line 193) and the view key (line 212) before the flag's network check (lines 230–232). The network is known as soon as the address is parsed.
+- **Reach:** the flag is for development. Nothing is written before the refusal, and `config.Validate` refuses the combination again. But an admin who tries the flag with a real mainnet shop types their view key for nothing: the same lesson as run A attempt 1's same-machine check, which now comes before the prompts.
+- **Fix idea:** check the flag's network right after the address.
+- **Status:** open.
+
+## RT-22 — Ctrl-C at an installer prompt is ignored; after it, the install goes on and then fails with a misleading node error
+
+- **Rows:** T15 (setup). **Severity:** Low (Wyatt's rule: above Low only if the install then changes the machine; it didn't). **Pass 1, round 2, Install layer** (F4 b twice; F4c A and B). Go test to follow in Step 3.
+- **What happened:** Ctrl-C at the hidden view-key prompt did nothing visible; the installer kept waiting. After Enter it carried on as if nothing had been pressed: empty answers were refused as malformed. With real answers, it reached the node prompt and refused a working node three times as "doesn't answer as a Monero node". Then it stopped with "Nothing was changed on this machine", which was true: the machine stayed blank.
+- **Why:** `main.go:36` turns SIGINT into a cancelled context (`signal.NotifyContext`) instead of ending the process. The prompts read `/dev/tty` with a blocking read that never looks at that context (`tty.go:55`), and only echo is turned off, so Ctrl-C still raises SIGINT. Every network step before the machine changes (`install.go:268`) uses the cancelled context and fails. That is what saves the machine, and it's also why a good node is reported as not answering.
+- **Reach:** an admin who presses Ctrl-C to cancel sees nothing happen. If they then press Enter or carry on, they get a wrong diagnosis of their node. Nothing changes and no key is stored. Closing the terminal ends the installer (SIGHUP isn't caught).
+- **Fix ideas:** end the installer on the first Ctrl-C at a prompt (restoring echo first), or check the context after each answer and say "cancelled".
+- **Status:** open.
+
+## RT-23 — `Node check: ok` shows when nothing was checked, and keeps showing an old result
+
+- **Rows:** R13, T14. **Severity:** Low (misleading admin text). **Pass 1, round 2** (F1 watch, 2026-10-30).
+- **What happened:** in `xmr-bridge status`:
+  - **While the site watched nothing** (19:28–19:35 UTC), `Node check:` repeated "ok (checked with xmr-lux.boldsuck.org:38081)" from a check made before the earlier tip left the watch list.
+  - **While a tip was watched but unmined** (19:35:40–19:42:12), it said "ok" with no node, although nothing had been checked.
+  - **Only after the tip was mined** did it name a node again.
+- **Why:** with no mined transfer, `Check` returns `OK` with the detail "no mined payments to check" (`crosscheck.go:144`). `status` prints the state and the node, never the detail (`pairstatus.go:166`). With nothing watched, `snapshots` returns before the cross-check (`bridgeloop.go:596`), so the last result stays in place (`:607`).
+- **Reach:** an admin reading "ok" can't tell a passed check from no check, or how old a result is. A real mismatch still shows: it's set on the sync that finds it. Whether the site's admin page shows the same (`checks.node` reaches it in the sync body) is checked in Step 3.
+- **Fix idea:** a separate "nothing to check" state, and the time of the last check.
+- **Status:** open.
+
+## Observation, round 2: what the cross-check's second nodes learn (P05)
+
+The cross-check's second node is picked at random on every sync (`crosscheck.go:204–206`), so with a payment mined and still watched (about 20 minutes, until 10 deep), every 10–15 s one of the five built-in second nodes gets a `get_info` from the wallet host. F1 saw four of them in two minutes.
+- **Every node picked** learns the wallet host's IP address and the timing. Because polling starts when a payment is mined, the timing also hints at which block holds it.
+- **One node per payment** gets `get_block` at the payment's height, and learns that height. The result is cached in memory per txid and height, so a bridge restart asks again, perhaps another node.
+- **Never sent:** a txid, an address, an amount or a key. The block's transaction list is checked on the wallet host.
+- **Over time**, the second nodes between them can link the wallet host's IP to the blocks of the shop's payments.
+
+The spec's Privacy list says nothing about remote nodes. Spec change 13 says the second node "learns a height, not a txid", which holds, but doesn't mention the per-sync `get_info` or the spread across nodes. Matrix row P05 records this. Whether the spec should state it is Wyatt's call. A Go test of exactly what a second node is sent follows in Step 3.

@@ -3741,3 +3741,39 @@ Branch `redteam-1` (local). Plan: `/home/dev/.claude/plans/phase-07b-attacker-pa
 - **I2 recorded: PASS** (Wyatt ran it 2026-10-30 15:03 UTC; 0 failures, positive control found, journal 40,941 lines). `docs/redteam-findings.md`; matrix T29 (Covered for pass 1) and T02. Setup-friction row: the script had no execute bit.
 - **For pass 2, fix `07b-i2.sh` before reusing it:** report an unreadable source as "not checked" instead of hiding `grep`'s error; search transcripts in subfolders (`05-setup/` and others); check each transcript once (`3g-reinstall-output.txt` was listed twice).
 - **Step 4 checks done in planning (read-only):** run A's node is caught up (PASS, 2,239,997), but F1 uses run B's remote node so the cross-check runs (a LAN node counts as the shop's own and switches it off). The dev site's `data.db` matches `round2-post-k.db` (55 invoices, 355 pool rows), which holds the dev box bridge's key (same fingerprint in every round 2 backup; last accepted sync 2026-10-29 02:55:22 UTC). `~/xmr-pay-dev-data/redteam/tools/counts.mjs` looked for the key in KV rows, where it never is; it's in `options` (`plugin:coffer:settings:bridgePublicKey`).
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: Step 4 (`coffer-test`, F1 and F4) done
+
+Branch `redteam-1` (local). Plan: `/home/dev/.claude/plans/phase-07b-attacker-pass-shiny-cerf.md`.
+
+- **Code under test:** `main` `e8e195a`. The dev release `0.0.202610301609-dev.2d7a29d` was built from `2d7a29d`, byte-identical to `main`'s build with a fixed version (only test files differ in `bridge/`). Hashes are in `docs/redteam-findings.md`, "Install layer: F1 and F4".
+- **F1 (T10): PASS.** Listeners, wallet-rpc's 401, flags, file modes and unit sandboxing as expected. Every outbound peer is explained; second nodes appeared only after the test tip was mined. Matrix T10 is Covered for pass 1.
+- **F4 (T16, T15): PASS.**
+  - A tampered binary was refused at the checksum, and the working install stayed byte-for-byte the same.
+  - F4c on a blank container: Ctrl-C at the view-key prompt left the machine unchanged, both with Enter only and with the person carrying on.
+- **New findings:**
+  - RT-19 (Low): the pairing code is checked last.
+  - RT-20 (**Medium, proposed: Wyatt rules**): behind a proxy that ends https, the tip endpoint refuses every tip as cross-site. Expected-fail theme test.
+  - RT-21 (Low): the dev flag's mainnet refusal comes after the view-key prompt.
+  - RT-22 (Low): Ctrl-C at an installer prompt is ignored, then a misleading node error.
+  - RT-23 (Low): `Node check: ok` with nothing checked, or stale.
+- **Observations:**
+  - What the cross-check's second nodes learn (new matrix row P05).
+  - Cloudflare's injected analytics beacon blocked by Coffer's CSP (T09/T23 working; the install docs could mention it).
+- **Lost or void runs, my script errors:** the first F1 watch (cleanup trap on Ctrl-C) and the first F4(a) (empty script). Both were re-run. Two installs failed on the pairing code (RT-19). Two setup-friction rows added.
+- **Restore:**
+  - The route is down and `coffer-test` rolled back to blank (Wyatt), before the built copy stopped.
+  - The site was restored from `baseline/data.db.before-setup-test-20261030T160842897Z`: 419 Coffer rows, 0 different; 55 invoices, 355 pool rows; the dev box's bridge key `2c00d25866f4`.
+  - The plugin was rebuilt with the placeholder.
+  - The dev box's bridge synced at 20:08:49 UTC.
+  - Site stopped. No tmux sessions; ports 4321, 4322, 8099 and the temporary forwarder's 4399 are free.
+  - The test state before the restore is kept in `~/xmr-pay-dev-data/redteam/round2-f1-after.db`.
+
+Tests run: theme `pnpm test` (73 passed, 2 expected fail, 1 skipped) and `pnpm run typecheck` (clean). No plugin or bridge code changed.
+
+Open, for the next steps:
+1. **Step 3 adds Go tests** for RT-21 (prompt order), RT-22 (Ctrl-C with the context cancelled), RT-23 (the status text), and P05 (exactly what a second node is sent). Step 3 also checks whether the site's admin page shows RT-23's stale "ok".
+2. **Wyatt rules on RT-20's severity.**
+3. **Steps 2, 3, 5, 6, 7 as planned**, including the far-future `seq` finding and the chain-height lead.
+
+Next step: Step 2 (plugin white box), site stopped.

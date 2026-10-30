@@ -33,6 +33,8 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open |
 | RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | open |
 | RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open |
+| RT-26 | Medium (proposed; Wyatt rules) | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open |
+| RT-27 | Medium (proposed; Wyatt rules) | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | open |
 
 ---
 
@@ -478,10 +480,66 @@ The spec's Privacy list says nothing about remote nodes. Spec change 13 says the
   - **The spec:** says "after an invoice is final" (Housekeeping) and doesn't define whether an undecided review is final.
   - **The code's comment** on `finalAt` reads it as "left the open states".
   
-  Wyatt decides which reading is meant. If the matrix's is, the purge clock should start at the admin's decision for invoices in review.
+  **Ruled (Wyatt, 2026-10-30): the matrix's reading.** For an invoice in review, the 30-day clock starts at the admin's decision. The fix starts `finalAt` when review is decided, not when it began.
 - **Reach:**
   - **Release 1:** a tip's note is purged while the tip waits in review. Tips reach review only through a reorg or a reversed payment.
   - **With products:** an underpaid order's refund address could be purged before the admin refunds it.
   
   Purging early is the privacy-safe direction. No money moves.
 - **Status:** open.
+
+## RT-26 — A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future
+
+- **Rows:** T14, R09. **Severity:** Medium, proposed (Wyatt rules). It needs no key, only a remote node that lies, and its effect outlasts switching to an honest node. **Pass 1, round 2, Step 3 (white box).**
+- **Tests:**
+  - Go `internal/bridgeloop/redteam_test.go`, "[T14][R09] [RT-26] …" (`t.Skip("RT-26 open")`; without the skip it reports a height 1,000,000 blocks ahead, 15 s after the last).
+  - Plugin `tests/redteam/whitebox.test.ts`, "E4, plugin side" (passing: the consequence).
+- **How a node does it:**
+  - **The bridge reports wallet-rpc's `get_height` unchecked** (`bridgeloop.go`, `SyncOnce`).
+  - **wallet-rpc's height is the length of the chain its node served.** `get_height` returns `get_blockchain_current_height()`, which is `m_blockchain.size()` (`monero-v0.18.5.1/src/wallet/wallet_rpc_server.cpp:943`, `wallet/wallet2.h:1230`).
+  - **`wallet2` checks a block's structure, not its proof of work.** It appends any block a node serves to `m_blockchain` (`wallet2.cpp:3023–3056`, `process_new_blockchain_entry`; no difficulty or proof-of-work check anywhere in the refresh path).
+  - **So a node that serves made-up blocks raises the height at will.** The cross-check compares only block hashes at payment heights (`crosscheck.go:141–181`), and the wallet check compares the wallet with the same node.
+- **What it does on the site:**
+  - **The height sticks.** The plugin keeps the highest height it has ever been sent (`plugin/src/sync/handle.ts`, `Math.max`, spec change 16). It stays even after the admin switches to an honest node and the wallet's fake blocks are reorganized away.
+  - **Every later invoice gets a future `createdHeight` and `expiresHeight`.** For release-2 orders, a payment mined at any real height then counts as on time.
+  - **A re-pair's suggested restore height is in the future** (`handle.ts:166`). The installer uses it as given (`install.go:342–343`); the sync client refuses only a negative one. So the new wallet scans from a block that doesn't exist yet and misses every payment: run A attempt 2's failure, now caused remotely.
+- **Fix ideas (Wyatt decides):**
+  - check the reported height against the cross-check's second nodes;
+  - cap how far it may move per sync, by elapsed time;
+  - in the installer, never take a suggested restore height above the node's own height (and, on the plugin side, never suggest one above a cross-checked height).
+- **Status:** open.
+
+## RT-27 — The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses
+
+- **Rows:** T15, F08. **Severity:** Medium, proposed (Wyatt rules): it reaches across the machine boundary the design relies on. **Pass 1, round 2, Step 3 (white box), plan item E1.** Go `internal/bridgeloop/redteam_test.go`, the two "[T15][F08] [RT-27] E1: …" tests (`t.Skip("RT-27 open")`).
+- **What I did:** gave the bridge loop a site reply with `poolTop` 2^32−1 (the most `syncclient` accepts), and separately one with `poolTarget` 1,000,000,000.
+- **What happened:**
+  - **`poolTop`:** the wallet didn't have that index, so the loop started a catch-up to it and created subaddresses 100 per call until the test's cap stopped it at 19,901. Without a cap it would go on toward 4.29 billion, growing the wallet file and wallet-rpc's memory until the wallet host runs out.
+  - **`poolTarget`:** every sync created 100 more (3,000 in 30 syncs), with no end.
+- **Why:**
+  - `syncclient` bounds `poolTop` only by 2^32−1 and `poolTarget` only by ≥ 0 (`syncclient.go:249`).
+  - `catchUp` creates up to any target (`bridgeloop.go:497–531`).
+  - The top-up's only bound is 100 per sync.
+- **Who can send it:** only whatever answers as the site. That means the plugin (a bug), a broken-in site server (T15), or, if TLS were broken, a man in the middle. The E3 tests show untrusted certificates are refused.
+- **Reach:**
+  - **The wallet host** (a separate machine, perhaps also running the admin's own `monerod`) can be driven out of disk or memory.
+  - **Payments stop being reported.** No money is lost.
+  - **T15's stated limit doesn't cover it:** the separate wallet host is meant to be what a site break-in can't reach.
+- **Fix ideas:**
+  - refuse a catch-up target far above the wallet's highest index (spec change 15 expects a reinstall's gap, not billions);
+  - cap `poolTarget` at the spec's fixed pool size (with headroom);
+  - say so in `status` when refusing.
+- **Status:** open.
+
+## Step 3 (bridge white box): what else was checked, no finding
+
+- **RT-21, RT-22, RT-23 Go tests** are committed with `t.Skip("RT-nn open")`. Each was run without its skip once and failed for its finding's reason:
+  - RT-21: the view-key prompt came before the refusal.
+  - RT-22: in the fake, which ignores the cancelled context, the install carried on after Ctrl-C.
+  - RT-23: the old `mismatch` was sent again with nothing watched, and status printed a bare "ok".
+- **P05 (passing):** a second node gets only `get_info` and `get_block`, by the payment's height, once per payment. No txid, amount or index is sent (`internal/crosscheck/redteam_test.go`).
+- **T27 (passing, now Covered):** the sync client, the updater and the Monero downloader each refuse an untrusted certificate (E3). The site sees no request, and the installed bridge is unchanged.
+- **E2 (passing):** a 100 MB reply, a drip, a hang and a cut reply from the site are each an error within the caller's deadline. Round 1's `TestErrors` already covers 401, 403, a redirect, HTML and invalid values.
+- **Release update schedule (passing):** a release build waits 10 minutes, then checks every 24 h ± 1 h, and waits 48 h before installing (`cmd/xmr-bridge/release_release_test.go`). F1 saw the dev build's one-minute checks.
+- **Observation, `moneroaddr` doesn't check the address checksum**, by design (`moneroaddr.go:1–3`: wallet-rpc does). A stagenet address with its last character changed parses as a valid stagenet primary address. At the install prompt, a typo there is caught only if it changes the view key's bytes (the key match). Otherwise wallet-rpc refuses it when the wallet is created, which comes after pairing, so the code is already used. That's the same lesson as RT-19, for the fix session to weigh.
+- **Fuzzing (2026-10-30, `GOMAXPROCS=2`, `-parallel=2`, 10 minutes each, one at a time):** `FuzzParseReply` (the site's reply) ran 9,799,866 times and `FuzzParse` (`moneroaddr`) 46,843,150 times. No crasher, nothing added to `testdata/fuzz/`.

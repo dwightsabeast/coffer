@@ -3805,3 +3805,31 @@ Tests:
 - **Plugin checks:** `typecheck` clean, `validate` valid, bundle 58.3 KB, validation passed.
 
 Next step: Step 3 (bridge white box). It includes the RT-21, RT-22, RT-23 and P05 Go tests, the chain-height question (can a dishonest remote node push the reported height; read `wallet2`'s refresh in `~/work/monero-v0.18.5.1`), and the release build's update constants.
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: Step 3 (bridge white box) done
+
+- **RT-25 ruled (Wyatt):** the matrix's reading. For an invoice in review, the 30-day clock starts at the admin's decision.
+- **RT-26 (Medium proposed, T14/R09):** a dishonest remote node can push the reported chain height without the key.
+  - **How:** wallet-rpc's `get_height` is the length of the chain its node served (`wallet2.h:1230`), and `wallet2` appends blocks without a proof-of-work check (`wallet2.cpp:3023–3056`).
+  - **On the site:** the height sticks (`Math.max`), and a re-pair's suggested restore height, which the installer uses as given, lands in the future.
+  - **Tests:** Go test, skipped until fixed; Step 2's plugin tests show the consequence.
+- **RT-27 (Medium proposed, T15/new F08):** the bridge takes the site's `poolTop` (up to 2^32−1) and `poolTarget` unbounded. One reply starts a catch-up toward 4.29 billion subaddresses, and a billion-sized target makes every sync create 100 more. Go tests, skipped.
+- **Go tests for RT-21, RT-22 and RT-23**, skipped until fixed. Each skipped test (and RT-26's and RT-27's) was run once without its skip and failed for its finding's reason.
+- **Passing tests:**
+  - P05: exactly what a second node is sent.
+  - T27 (now Covered): untrusted certificates refused by the sync client, the updater and the Monero downloader.
+  - F08/E2: 100 MB, drip, hang and cut replies.
+  - T10: the release build's update schedule.
+- **Observation:** `moneroaddr` doesn't check the checksum (by design). A checksum-only typo fails only at wallet creation, after pairing.
+- **Fuzz:** new `FuzzParseReply` (9,799,866 runs) and `FuzzParse` (46,843,150 runs), 10 minutes each. No crasher.
+- **Matrix:** new row F08 (bridge reading the site's replies). T27 is Covered. Notes on T10, T14, T15, R09, R13 and P05.
+
+Tests: bridge gofmt clean, `go vet ./...` clean, `go test ./...` all packages ok; `go list -deps ./cmd/xmr-bridge` has no `hostile`.
+
+Not done from the old plan's Step 3 list, for the next session or pass 2:
+- **E4/E5 beyond what exists:** both nodes lying, both unreachable, a reordered block. Round 1's `TestLiarHarness` and the cross-check tests cover one liar.
+- **E6/E7:** covered by `TestGetTransfersRefusesBadValues`.
+- **F2/F3:** covered by the selfupdate and monerodl tests (T16, T26), apart from T26's still-open wallet-rpc downgrade case.
+- **J1, bridge side:** covered by `TestPendingSurvivesFailureAndRestart`.
+
+Next step: Step 5 (RT-15's built-copy re-measure), then Step 6 (`pnpm audit`, `govulncheck`: name the exact version to Wyatt first), then Step 7 (close the round).

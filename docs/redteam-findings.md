@@ -27,10 +27,12 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-17 | Low | F04 | 1, 1 | A non-admin's refusal shows raw JSON in the "Plugin Error" banner | open |
 | RT-18 | Low | T08 | 1, 1 | A tip note's stacked combining marks spill above and below its line on the admin page | open |
 | RT-19 | Low | T13 (setup) | 1, 2 | The installer checks the pairing code last, so an expired code fails only after the keys are typed and wallet-rpc is downloaded | open |
-| RT-20 | Medium (proposed; Wyatt rules) | T17 | 1, 2 | Behind a proxy that ends https, the tip endpoint refuses every visitor's tip as cross-site | open |
+| RT-20 | Medium | T17 | 1, 2 | Behind a proxy that ends https, the tip endpoint refuses every visitor's tip as cross-site | open; **blocks release 1** |
 | RT-21 | Low | T15 | 1, 2 | With the stagenet-only flag, a mainnet shop is refused only after its view key has been asked for | open |
 | RT-22 | Low | T15 (setup) | 1, 2 | Ctrl-C at an installer prompt is ignored; after it, the install goes on and then fails with a misleading node error | open |
 | RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open |
+| RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | open |
+| RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open |
 
 ---
 
@@ -56,6 +58,7 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **What the spec says:** T06: "a malformed, zero, extreme or failed price response refuses checkout (a fiat tip falls back to an open tip)". A reply for another pair doesn't answer the question asked.
 - **Reach:** only Kraken itself (a fixed, allowed host) can send this; a tip's amount only fills the payment link and a tip settles at the floor (spec change 33), so for tips the cost is a wrong suggested amount. It matters more for orders in release 2. Every other poisoned reply tried (zero, negative, `NaN`, `Infinity`, `1e308`, hex, 30 digits, `0.0000001`, HTML, empty, 500, an error list, no result) became an open tip, and CoinGecko's fallback refused the same set.
 - **Evidence:** vitest output, round 1 ("wrong pair" was the only case of 21 that converted).
+- **Root cause (round 2, white box):** `parseKraken` takes the result's only entry, whatever its key (`plugin/src/rates.ts:42–43`). The fix is to read the entry for the pair asked for (`XXMRZUSD`/`XXMRZEUR`, or the request's `XMRUSD`/`XMREUR` spelling) and refuse anything else.
 - **Status:** open.
 
 ## RT-03 — A tip note with a lone surrogate is stored as is
@@ -108,6 +111,7 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Reach:** whoever holds a live code (from a screenshot, a shared terminal, shell history; T29) and sends their pair request at the same moment as the real bridge. One-at-a-time, the attacker's pairing either fails or makes the real bridge's pairing fail loudly. In the race, the real bridge is told it paired and the attacker's key is the one kept. That's the stolen-key position (T03: forged settled tips, attacker pool addresses, D2). It shows only later, as the real bridge's syncs being refused. Without a code there's no way in: every guessed, near-miss, expired, used or malformed code was refused, and none burned the real code; a pair body signed by a key other than the one it names was refused, as were all-zero and identity-point keys, short or non-base64 keys, and pair bodies over 4 KiB; 60 seeded hostile bodies sent while a code was active never crashed the route or paired. The dev-site run (the real Node runner) is in the live group.
 - **Evidence:** vitest output, round 1.
 - **Live, round 2 (Node runner, 2026-10-29):** reproduced in 3 of 3 rounds (`scripts/redteam/round2-live.mjs c6`, evidence `~/xmr-pay-dev-data/redteam/round2-c6-2026-10-29T025321523Z.txt`): both simultaneous pair requests got `ok`, the second key was stored each time, and the first key's next sync got `BAD_SIGNATURE`.
+- **Root cause (round 2, white box):** the pairing branch checks the code (`pairingCodeMatches`), then stores the key and marks the code used in two separate writes (`plugin/src/sync/handle.ts:102–107`). Nothing makes check-and-burn one step, so two requests that both check before either burns both win. On the Node runner, the live run shows the two requests do overlap, despite RT-12's one-at-a-time pattern for long requests. The fix needs a burn that only one request can win, for example a conditional write if the storage API offers one, or a per-code lock held across the check and the write.
 - **Status:** open.
 
 ## Observations, round 1 (no finding)
@@ -254,7 +258,7 @@ The anonymous and missing-`X-EmDash-Request` cases are covered live by `dev-e2e.
 - **Rows:** F04. **Severity:** Low. **Pass 1, round 1, Manual layer** (Wyatt, B1 above).
 - **What happened:** signed in as a Subscriber, the sidebar still lists Plugins → Monero payments, and opening it gives the 403 banner (RT-17). The dashboard shows Coffer's "Monero Payments" widget, with no data in it.
 - **What should happen:** F04's refusal holds (no data reached the Subscriber), but the admin shouldn't offer a page or a widget a role can't open: it reads as broken, and it tells every signed-in user that the site takes Monero.
-- **Likely cause:** EmDash's manifest has no per-role field for admin pages or widgets (`admin.pages` takes `path`, `label`, `icon` and `group`; widgets take `id`, `title` and `size`; checked in EmDash's docs), so the sidebar and dashboard come from EmDash's admin shell. Round 2 confirms in the installed `emdash` package. If confirmed, it's for Wyatt to report upstream, not a Coffer fix.
+- **Cause, confirmed (round 2):** EmDash 1.3.1's types have no role or permission field: an admin page is `path`, `label`, `icon`, `group`, and a widget is `id`, `size`, `title` (`emdash/dist/types-mQGTpP-4.d.mts:1476–1494`). EmDash's admin shell decides who sees them, so it's for Wyatt to report upstream, not a Coffer fix.
 - **Evidence:** Wyatt's manual note, 2026-10-29 UTC (local, `~/xmr-pay-dev-data/notes/`).
 - **Status:** open.
 
@@ -263,7 +267,7 @@ The anonymous and missing-`X-EmDash-Request` cases are covered live by `dev-e2e.
 - **Rows:** F04. **Severity:** Low. **Pass 1, round 1, Manual layer** (Wyatt, B1 above).
 - **What happened:** the Subscriber's refusal appears as EmDash's "Plugin Error" banner with the raw JSON error (`403 FORBIDDEN`, "Insufficient permissions").
 - **What should happen:** a plain sentence that the page is for administrators. The refusal itself is correct.
-- **Likely cause:** EmDash refuses the private `admin` route before Coffer's handler runs, and EmDash renders the banner, so Coffer never sees the request. Round 2 confirms in the installed `emdash` package; if confirmed, upstream.
+- **Cause, confirmed (round 2):** EmDash refuses the private `admin` route (`apiError("FORBIDDEN", "Insufficient permissions", 403)`, `emdash/dist/authorize-CoDsRRp5.mjs`) before Coffer's handler runs. EmDash's admin UI then shows any non-OK reply as "Plugin responded with {status}: {raw body}" inside its "Plugin Error" banner (`@emdash-cms/admin` 1.3.1, `dist/index.js:60977–60987`). Coffer never sees the request, so this is upstream, for Wyatt to report.
 - **Evidence:** Wyatt's manual note, 2026-10-29 UTC.
 - **Status:** open.
 
@@ -339,7 +343,7 @@ Wyatt ran `~/xmr-pay-dev-data/07b-i2.sh` (outside the repo) on the dev box on 20
 
 ## RT-20 — Behind a proxy that ends https, the tip endpoint refuses every visitor's tip as cross-site
 
-- **Rows:** T17. **Severity:** Medium, proposed. The severity table has no row for an outage nobody causes on purpose. This one stops every tip on a common way of hosting a Node site, so it's at least as bad as Medium's "checkout outage". Wyatt rules. **Pass 1, round 2**, found live by Wyatt on 2026-10-30 during F1 on `coffer-test`. Theme (`theme/tests/redteam.test.ts`, "[T17] [RT-20] a post from the site's own https page reaches checkout when the site itself sees plain http").
+- **Rows:** T17. **Severity:** Medium (Wyatt ruled, 2026-10-30). The severity table has no row for an outage nobody causes on purpose; this one stops every tip on a common way of hosting a Node site, at least as bad as Medium's "checkout outage". **Blocks release 1** (Wyatt): tips are release 1's only feature, and most Node sites sit behind a proxy that ends https. **Pass 1, round 2**, found live by Wyatt on 2026-10-30 during F1 on `coffer-test`. Theme (`theme/tests/redteam.test.ts`, "[T17] [RT-20] a post from the site's own https page reaches checkout when the site itself sees plain http").
 - **What happened:** Wyatt pressed the tip button on `https://dev.wyattdilley.com/posts/welcome`, and the endpoint answered 403, "This tip didn't come from this site's own page." The site is the built copy (Node, `node ./dist/server/entry.mjs`) behind a Cloudflare tunnel. The browser speaks https to Cloudflare, and the tunnel forwards plain http to the dev box.
 - **Why:** `crossSite` (`theme/src/tip.ts:49–57`) refuses an `Origin` whose host *or protocol* differs from the request's own URL. On Node, Astro takes that URL's protocol from the socket, which is plain http, and ignores `X-Forwarded-Proto` unless the site sets `security.allowedDomains` (Astro 7.3.5, `astro/dist/core/app/node.js` `createRequest`, `validate-headers.js:40–60`). So the visitor's `https://` Origin never matches. EmDash's own CSRF check on plugin routes avoids this: it also accepts the configured public origin, `siteUrl` (`emdash/dist/astro/middleware/auth.mjs:47–58`). That's why the admin pages and the plugin routes work through the same tunnel. Coffer's endpoint calls checkout in-process and drops the `Origin` (`tip.ts:39`), so its own check is the only one, and it lacks that fallback.
 - **Probes against the built copy (dev box, 2026-10-30, malformed forms so nothing was created):**
@@ -352,11 +356,11 @@ Wyatt ran `~/xmr-pay-dev-data/07b-i2.sh` (outside the repo) on the dev box on 20
   So any https page's post that reaches the site as plain http is refused, whatever `X-Forwarded-Proto` says. What the tunnel actually sent wasn't captured: the built copy doesn't log headers, and a capture needs root on the dev box.
 - **The browser's side (Wyatt, Firefox 158, HTTP/3 through Cloudflare, answered 403):** `Origin: https://dev.wyattdilley.com`, `Referer: https://dev.wyattdilley.com/posts/welcome`, `Host: dev.wyattdilley.com`, `Sec-Fetch-Site: same-origin`, `Content-Type: application/x-www-form-urlencoded`. The browser itself called the post same-origin. Only the protocol of the URL the site sees differs, which matches probe 1.
 - **Reach:** release 1's tip button fails for every visitor on a Node site behind nginx, Caddy, a Cloudflare tunnel or any proxy that ends TLS and forwards http, unless the operator happens to configure Astro's `security.allowedDomains`. Asking them to would break the admin budget's "no required settings". No money or data is at risk; tips just can't be made. It wasn't caught before because 7c and 7e tested the button on `astro dev` over loopback http, where the page and the endpoint share a protocol.
-- **Fix ideas for the fix session (Wyatt decides):**
-  - also accept an `Origin` equal to EmDash's configured public origin, as EmDash's own check does;
-  - or decide by `Sec-Fetch-Site` when the browser sends it (`same-origin` passes), and keep the `Origin` comparison only for browsers that don't.
-  
-  Either way the T17 refusals stay: another host, `null`, and `cross-site`.
+- **Fix (Wyatt's choice for the fix phase):** also accept an `Origin` equal to EmDash's configured public origin (`siteUrl`), the way EmDash's own CSRF check does, keeping every existing refusal (another host, `null`, `Sec-Fetch-Site: cross-site`).
+  - **Tests:** the expected-fail test above is the https-Origin-over-plain-http case. The fix session gives its fixture the configured `siteUrl`, however the fix reads it, and keeps a twin with no `siteUrl` configured, where the request is still refused.
+  - **Live check (phase 09):** the tip button through a real proxy that ends https.
+  - **Not chosen:** deciding by `Sec-Fetch-Site`.
+- **A post with no `Origin` passes, and that is intended** (`tip.ts:47`, as on EmDash's own route). A browser's cross-site POST always carries an `Origin` or `Sec-Fetch-Site: cross-site`, so only non-browser clients send none, and they could call the public checkout route directly anyway. They meet the same caps as there (T05, T18): per client only where the site passes client IPs; otherwise the site-wide open-invoice cap, the spec's stated limit. On a Node site with no trusted-proxy setup, round 1's live L2 run made no per-client bucket at all.
 - **Status:** open.
 
 ## Observation, round 2: Cloudflare's injected analytics beacon is blocked on Coffer's pages (T09, T23)
@@ -444,3 +448,40 @@ The cross-check's second node is picked at random on every sync (`crosscheck.go:
 - **Over time**, the second nodes between them can link the wallet host's IP to the blocks of the shop's payments.
 
 The spec's Privacy list says nothing about remote nodes. Spec change 13 says the second node "learns a height, not a txid", which holds, but doesn't mention the per-sync `get_info` or the spread across nodes. Matrix row P05 records this. Whether the spec should state it is Wyatt's call. A Go test of exactly what a second node is sent follows in Step 3.
+
+## RT-24 — One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored
+
+- **Rows:** T04. **Severity:** Low, defense in depth (Wyatt, 2026-10-30). Doing this on purpose needs the bridge key; a bridge bug could do it by accident with the same result. **Pass 1, round 2, Step 2 (white box).** Plugin (`plugin/tests/redteam/whitebox.test.ts`, the two "[T04] [RT-24] …" tests).
+- **What I did:** with the paired test key, sent one snapshot for an open tip with `seq` ten years ahead, then the real payment with the bridge's real clock. Separately, sent one far-future snapshot for an untouched expired tip inside its 24-hour late window.
+- **What happened:**
+  - **The open tip:** the honest snapshot was ignored and the tip stayed `new`, payment uncounted. Expiry is stored only when a snapshot applies, so it stays open in storage and on the watch list indefinitely. From its deadline on, the pay page shows it expired: `status` evaluates for display only and saves nothing (`status.ts:48`).
+  - **The expired tip:** it left the watch list at once, so a payment made later would never be reported.
+- **Why:**
+  - **The protocol:** `parseSyncBody` checks only that `seq` is a positive safe integer (`plugin/src/sync/protocol.ts:175`).
+  - **The merge:** `mergeSnapshot` ignores any snapshot not newer than the invoice's `seq` (`merge.ts:16`).
+  - **The watch:** an untouched expired tip leaves the watch once its `seq` passes `expiresAt` plus 24 hours (`core/watch.ts`).
+- **How it could happen without an attacker:**
+  - **The source of `seq`:** the bridge's clock in milliseconds, kept increasing (`bridgeloop.go:696–705`). The signed `x-xmr-ts` comes from the same clock in seconds.
+  - **A clock error alone:** can put `seq` at most about 5 minutes ahead. Further, and the freshness check refuses the whole sync.
+  - **So it takes a bug:** in how `seq` is made (a unit slip such as micro- for milliseconds, an overflow, a value carried across restarts), or a sync signed by the key, before anything can freeze an invoice for years.
+- **Fix idea (defense in depth):** refuse a sync whose `seq` is more than the freshness window away from `x-xmr-ts` × 1000. Both come from the bridge's clock, so an honest bridge always passes. That bounds the damage of any such bug to the 5-minute window.
+- **Status:** open.
+
+## RT-25 — An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides
+
+- **Rows:** P04. **Severity:** Low. **Pass 1, round 2, Step 2 (white box).** Plugin (`plugin/tests/redteam/whitebox.test.ts`, "[P04] [RT-25] I3: …").
+- **What I did:** stored a tip in `review` (reversed) with a buyer note, 31 days after it entered review and with no admin decision, then ran the housekeeping cron.
+- **What happened:** the note was purged, and the invoice is still in review.
+- **Why:** `finalAt` is set the first time an invoice leaves the open states (`core/invoice.ts:348`), and entering `review` counts. An admin decision keeps the earlier value (`admin.ts:840`, `next.finalAt ??= now`). `purgeBatch` purges 30 days after `finalAt` (`housekeeping.ts:28`).
+- **What the contract says:**
+  - **The matrix's P04:** buyer data goes 30 days after the invoice is "settled, expired or decided".
+  - **The spec:** says "after an invoice is final" (Housekeeping) and doesn't define whether an undecided review is final.
+  - **The code's comment** on `finalAt` reads it as "left the open states".
+  
+  Wyatt decides which reading is meant. If the matrix's is, the purge clock should start at the admin's decision for invoices in review.
+- **Reach:**
+  - **Release 1:** a tip's note is purged while the tip waits in review. Tips reach review only through a reorg or a reversed payment.
+  - **With products:** an underpaid order's refund address could be purged before the admin refunds it.
+  
+  Purging early is the privacy-safe direction. No money moves.
+- **Status:** open.

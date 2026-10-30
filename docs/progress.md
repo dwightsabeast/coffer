@@ -3777,3 +3777,31 @@ Open, for the next steps:
 3. **Steps 2, 3, 5, 6, 7 as planned**, including the far-future `seq` finding and the chain-height lead.
 
 Next step: Step 2 (plugin white box), site stopped.
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: Step 2 (plugin white box) done
+
+- **RT-20 ruled (Wyatt):** Medium, **blocks release 1**.
+  - **Fix for the fix phase:** also accept EmDash's configured public origin (`siteUrl`), the way EmDash's own CSRF check does, keeping every existing refusal. The expected-fail theme test is the https-Origin-over-plain-http case; its fixture gets `siteUrl`, plus a twin with none configured that is still refused.
+  - **Phase 09 item:** check the tip button live through a real proxy that ends https.
+  - **T17 now says a post with no `Origin` passing is intended.** It's non-browser clients, held by the same caps as the checkout route. Correction to the premise: on a Node site with no trusted-proxy setup there is no per-client bucket (round 1, live L2), so only the site-wide cap applies.
+- **New tests**, `plugin/tests/redteam/whitebox.test.ts`:
+  - **RT-24 (Low, T04):** a far-future `seq` freezes an invoice and drops an untouched expired tip from the watch. 2 expected fails.
+  - **E4, plugin side (T14/R09):** a high reported height sticks and moves later invoices' heights and a re-pair's suggested restore height into the future. 3 passing tests recording this, as evidence for Step 3.
+  - **J4 (R10):** a confirming tip whose payment vanishes goes back to `new`, raises no alert and expires normally. Matrix R10's wording was corrected to the spec: `reversed` is for settled invoices.
+  - **J3 (R05, T07):** an admin expire racing a settling sync kept the admin's decision in all 42 test-host rounds, either request first. It's a guard, not a proof: the Node runner interleaves requests (RT-07).
+  - **RT-25 (Low, P04):** an undecided review loses its buyer data 30 days after review began. Expected fail.
+- **Root causes added:**
+  - **RT-02:** `rates.ts:42–43` takes Kraken's only entry, whatever its key.
+  - **RT-07:** check and burn are two writes (`handle.ts:102–107`).
+  - **RT-16 and RT-17, confirmed upstream in EmDash 1.3.1:** no role field on admin pages and widgets; the admin UI prints the raw refusal in its "Plugin Error" banner.
+  - **RT-06 and RT-14** already had theirs.
+- **J2:** covered by round 1's C2 tests. The missing Health line for clock skew is C05 (deferred). I3's base case is the existing admin-tips purge test.
+
+Tests:
+- **Plugin `pnpm test`:**
+  - **First run:** 3 failures, all in `tests/redteam/checkout.test.ts`. The T19 L3 checkout tests hit the 30 s wall-time limit, with the known "no such table" cold-start errors in the log. The L3 test passes alone in under 1 s.
+  - **Second full run:** green. Default config: 327 passed, 17 expected fail, 1 skipped. Goods config: 92 passed, 1 skipped.
+  - Recorded as a flake, not fixed.
+- **Plugin checks:** `typecheck` clean, `validate` valid, bundle 58.3 KB, validation passed.
+
+Next step: Step 3 (bridge white box). It includes the RT-21, RT-22, RT-23 and P05 Go tests, the chain-height question (can a dishonest remote node push the reported height; read `wallet2`'s refresh in `~/work/monero-v0.18.5.1`), and the release build's update constants.

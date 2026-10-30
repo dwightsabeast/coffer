@@ -302,3 +302,17 @@ Dev site in `astro dev` (EmDash 1.3.1), the dev box's installed bridge, stagenet
 - **A8 (T05, P02):** see RT-04's live note. No reuse, no orphaned claim.
 - **C6 (T13):** RT-07 reproduced live, 3 of 3.
 - **J1 (R05): PASS.** A signed sync settling 35 invoices (32 transfers each, 222,769 bytes) was cut by SIGKILL on the dev site 153 ms in: 21 invoices were saved, 14 not, and no invoice held a partial transfer list. After a restart the same body (same `seq`), freshly signed as the bridge's retry would be, settled the other 14; each payment counted once, and a second retry changed nothing (`round2-j1-2026-10-29T025356584Z.txt`).
+
+## I2 — secrets in the wallet host's logs and transcripts (dev box install): PASS
+
+Wyatt ran `~/xmr-pay-dev-data/07b-i2.sh` (outside the repo) on the dev box on 2026-10-30 at 15:03 UTC, through `scripts/with-shop-env.sh`, with `sudo` inside for the root-only sources. The view key came only from the environment and the wallet-rpc login's shape from its known prefix; each needle reached `grep` on stdin, so the output holds only PASS/FAIL lines and counts. Rows T29, T02.
+- **Control:** the shop address was found in `/etc/xmr-bridge/config` (1 line), so the search works on these files.
+- **Searched:** the `xmr-bridge` journal (40,941 lines), `/etc/xmr-bridge/config`, `admin-binary.sha256`, `/var/lib/xmr-bridge/log/install.log` and `wallet-rpc.log`, and 9 saved install and uninstall transcripts in `~/xmr-pay-dev-data/`. Needles: the view key in hex, base64 and base64url, the login's `xmr-bridge:` + 43-character shape, and `rpc-login`. **0 matches in every source; 0 failures.** wallet-rpc's login file is gone after start-up (`supervise.go` deletes it).
+- **Limits of this run (Wyatt's review):**
+  - The script hides `grep`'s errors, so an unreadable source would print PASS "of 0" instead of "not checked". None did here: every source reported a non-zero line count.
+  - It skips transcripts in subfolders such as `05-setup/`.
+  - `3g-reinstall-output.txt` is checked twice.
+  - The transcripts are 1–2 lines each, so the journal and the bridge's own logs carry the result.
+  - A bare wallet-rpc password without its user name isn't matched; Go `TestNeverPrinted` covers that path.
+  
+  The three script fixes are on pass 2's list (`docs/progress.md`).

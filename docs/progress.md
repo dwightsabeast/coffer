@@ -3733,3 +3733,11 @@ Open, for the next session:
 Next session's first step: ask Wyatt for the I2 result (or run it with him), then Step 4's two questions (tunnel route; CT 107 running), and carry on from the plan.
 
     Phase 07b attacker, pass 1, round 2 (continued). Read the "Session 5 … handoff" entry at the end of docs/progress.md and the plan at /home/dev/.claude/plans/phase-07b-attacker-pass-shimmering-kahn.md, then carry on from Step 4.
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: round 2 continued (attacker), interim note
+
+Branch `redteam-1` (local). Plan: `/home/dev/.claude/plans/phase-07b-attacker-pass-shiny-cerf.md` (Step 4 `coffer-test`, then Steps 2, 3, 5, 6, 7 of the Session 5 plan, with Wyatt's changes).
+
+- **I2 recorded: PASS** (Wyatt ran it 2026-10-30 15:03 UTC; 0 failures, positive control found, journal 40,941 lines). `docs/redteam-findings.md`; matrix T29 (Covered for pass 1) and T02. Setup-friction row: the script had no execute bit.
+- **For pass 2, fix `07b-i2.sh` before reusing it:** report an unreadable source as "not checked" instead of hiding `grep`'s error; search transcripts in subfolders (`05-setup/` and others); check each transcript once (`3g-reinstall-output.txt` was listed twice).
+- **Step 4 checks done in planning (read-only):** run A's node is caught up (PASS, 2,239,997), but F1 uses run B's remote node so the cross-check runs (a LAN node counts as the shop's own and switches it off). The dev site's `data.db` matches `round2-post-k.db` (55 invoices, 355 pool rows), which holds the dev box bridge's key (same fingerprint in every round 2 backup; last accepted sync 2026-10-29 02:55:22 UTC). `~/xmr-pay-dev-data/redteam/tools/counts.mjs` looked for the key in KV rows, where it never is; it's in `options` (`plugin:coffer:settings:bridgePublicKey`).

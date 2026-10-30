@@ -144,3 +144,23 @@ describe("L6/A5: coexistence and pay-page headers", () => {
 		expect(h["X-Robots-Tag"]).toMatch(/noindex/);
 	});
 });
+
+describe("Round 2 (07b pass 1): the tip endpoint behind an https proxy", () => {
+	// Found live on 2026-10-30 (RT-20): behind a proxy that ends https (here a Cloudflare tunnel) the site serves plain
+	// http, so the endpoint's url is http:// while the visitor's browser sends its https:// Origin. EmDash's own CSRF
+	// check also accepts the configured public origin (siteUrl); Coffer's check compares with url alone. The fix session
+	// may need to give this fixture the site's configured URL, however the fix reads it.
+	it.fails("[T17] [RT-20] a post from the site's own https page reaches checkout when the site itself sees plain http", async () => {
+		const calls: Call[] = [];
+		const form = new FormData();
+		form.set("amount", "any");
+		const request = new Request("http://shop.example/pay/coffer/tip", {
+			method: "POST",
+			body: form,
+			headers: { origin: "https://shop.example", "sec-fetch-site": "same-origin", "x-forwarded-proto": "https" },
+		});
+		const res = (await tipEndpoint()({ request, url: new URL(request.url), locals: locals(ok, calls) } as never)) as Response;
+		expect(res.status).toBe(303);
+		expect(calls).toHaveLength(1);
+	});
+});

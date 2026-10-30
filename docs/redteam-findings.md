@@ -26,6 +26,8 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-16 | Low | F04 | 1, 1 | Coffer's sidebar link and dashboard widget show to roles that can't use them | open |
 | RT-17 | Low | F04 | 1, 1 | A non-admin's refusal shows raw JSON in the "Plugin Error" banner | open |
 | RT-18 | Low | T08 | 1, 1 | A tip note's stacked combining marks spill above and below its line on the admin page | open |
+| RT-19 | Low | T13 (setup) | 1, 2 | The installer checks the pairing code last, so an expired code fails only after the keys are typed and wallet-rpc is downloaded | open |
+| RT-20 | Medium (proposed; Wyatt rules) | T17 | 1, 2 | Behind a proxy that ends https, the tip endpoint refuses every visitor's tip as cross-site | open |
 
 ---
 
@@ -316,3 +318,43 @@ Wyatt ran `~/xmr-pay-dev-data/07b-i2.sh` (outside the repo) on the dev box on 20
   - A bare wallet-rpc password without its user name isn't matched; Go `TestNeverPrinted` covers that path.
   
   The three script fixes are on pass 2's list (`docs/progress.md`).
+
+## RT-19 — The installer checks the pairing code last, so an expired code fails only after the keys are typed and wallet-rpc is downloaded
+
+- **Rows:** T13 (the expiry itself held: an expired code was refused). The finding is about the admin budget, not a security claim. **Severity:** Low. **Pass 1, round 2, Install layer** (Wyatt on `coffer-test`, 2026-10-30).
+- **What happened:** the first F1 install on `coffer-test` used a code issued at 16:29:40 UTC, valid until 16:44:40. Wyatt did the Feather checks and answered the prompts. The installer took the address, the view key and the node, wrote its files, downloaded and checked wallet-rpc, and only then stopped at pairing with `NOT_PAIRED` ("used or expired, or mistyped"). On the site the code was still stored unused, past its expiry, and no bridge key had been saved.
+- **Why:** `install.go` checks only the code's format before the prompts (`codeRE`, line 175). Its validity is first tested by `st.Pair` (line 327), after the keys, the node, the machine changes (lines 269–313) and the 85 MB download (line 316).
+- **What should happen:** an admin with a stale code finds out before typing keys. Phase 05's run A attempt 1 taught the same lesson for the same-machine check, now done before the key prompts (`install.go:177–179`). The 15-minute clock starts when the admin presses Connect, not when they reach the wallet host, so preparing the wallet app first can use it up.
+- **Recovery today:** the message says to press Connect wallet host for a new code and run the installer again. A re-run asks for the address and view key again; the download is skipped (`installed.json`). So it costs the admin a second round of typing their keys and time against the 15-minute budget, no lost money.
+- **Fix ideas for the fix session (each touches the spec, so Wyatt decides):**
+  - check the code with the site before the prompts without using it up. This needs a non-consuming check, a change to how `bridge/sync`'s pairing case behaves;
+  - pair first, right after the format check, using the bridge key the installer generates anyway. The site would then show a host that is still starting (spec change 29) until the wallet exists;
+  - or keep the order and make the failure cheaper: say up front that the code lasts 15 minutes from the button press.
+- **Evidence:** Wyatt's report, 2026-10-30. The site's `state:pairing` row (unused, `expiresAt` 16:44:40 UTC) was read read-only on the dev box. `coffer-test`'s `install.log`, copied off before the rollback: the install started at 16:42:06 UTC, 12 min 26 s after the code was issued, leaving it 2 min 34 s; the log then shows the address, view-key and node prompts (each `[answered]`, never the answer), the download and signature check, "Pairing with…" and the `NOT_PAIRED` stop. It has one timestamp, at the start, so it doesn't say when pairing ran. The void F1 run that followed found the binaries, `installed.json`, wallet-rpc and the config in place but no systemd unit and the service inactive.
+- **A second attempt, same cause (2026-10-30):** after the rollback, the expired code's file was used again by mistake. The install again ran through the prompts and the download, then stopped with `PAIRING_REJECTED` instead of `NOT_PAIRED`. The difference is whether *any* code was active when the request arrived, not anything about the code sent (`plugin/src/sync/handle.ts:90–117`): the plugin reads a `pair` field only while a code is active. The first attempt reached pairing after its own code had expired, with no code active and no key stored, so the request fell through to the stored-key check and got `NOT_PAIRED`. The second reached pairing after a new code had been issued (18:25:55 UTC), so the plugin compared the old code with the new one's hash and answered `PAIRING_REJECTED`. The bridge gives both the same message (`bridge/internal/pairing/pairing.go:44–46`). This attempt's `install.log` was lost when `coffer-test` was rolled back before it was copied off, and the built copy logs no plugin requests, so its timing rests on the site side alone: from 16:44:40 to 18:25:55 no code was active, so a `PAIRING_REJECTED` (rather than `NOT_PAIRED`) means the request arrived after 18:25:55. The rejected request wrote nothing: there is no attempt counter or cooldown, the new code stayed unused with its expiry unchanged, and no key was stored (checked read-only on the dev box). Side note for the fix session: the comment on `pairingCodeMatches` (`plugin/src/sync/pairing.ts:33`) says wrong, expired and used codes all fail as `PAIRING_REJECTED`. That holds for the function, but at the route an expired or used code gets `NOT_PAIRED` or `BAD_SIGNATURE`, so an unsigned caller can tell whether a code is active right now. With a 128-bit code that tells them nothing useful, and the spec only says a `pair` with no active code is rejected (spec.md, `bridge/sync`), so it's an observation, not a finding.
+- **Status:** open.
+
+## RT-20 — Behind a proxy that ends https, the tip endpoint refuses every visitor's tip as cross-site
+
+- **Rows:** T17. **Severity:** Medium, proposed. The severity table has no row for an outage nobody causes on purpose. This one stops every tip on a common way of hosting a Node site, so it's at least as bad as Medium's "checkout outage". Wyatt rules. **Pass 1, round 2**, found live by Wyatt on 2026-10-30 during F1 on `coffer-test`. Theme (`theme/tests/redteam.test.ts`, "[T17] [RT-20] a post from the site's own https page reaches checkout when the site itself sees plain http").
+- **What happened:** Wyatt pressed the tip button on `https://dev.wyattdilley.com/posts/welcome`, and the endpoint answered 403, "This tip didn't come from this site's own page." The site is the built copy (Node, `node ./dist/server/entry.mjs`) behind a Cloudflare tunnel. The browser speaks https to Cloudflare, and the tunnel forwards plain http to the dev box.
+- **Why:** `crossSite` (`theme/src/tip.ts:49–57`) refuses an `Origin` whose host *or protocol* differs from the request's own URL. On Node, Astro takes that URL's protocol from the socket, which is plain http, and ignores `X-Forwarded-Proto` unless the site sets `security.allowedDomains` (Astro 7.3.5, `astro/dist/core/app/node.js` `createRequest`, `validate-headers.js:40–60`). So the visitor's `https://` Origin never matches. EmDash's own CSRF check on plugin routes avoids this: it also accepts the configured public origin, `siteUrl` (`emdash/dist/astro/middleware/auth.mjs:47–58`). That's why the admin pages and the plugin routes work through the same tunnel. Coffer's endpoint calls checkout in-process and drops the `Origin` (`tip.ts:39`), so its own check is the only one, and it lacks that fallback.
+- **Probes against the built copy (dev box, 2026-10-30, malformed forms so nothing was created):**
+  - `Host: dev.wyattdilley.com`, `Origin: https://dev.wyattdilley.com`, `X-Forwarded-Proto: https`, `Sec-Fetch-Site: same-origin`: **403**.
+  - `Origin: http://dev.wyattdilley.com`: passes to the form check (400).
+  - `Origin: http://localhost:4322`: 403. So the host is taken from `Host`, and only the protocol differs.
+  - No `Origin`: passes.
+  - `Origin: https://evil.example`: 403, the control.
+
+  So any https page's post that reaches the site as plain http is refused, whatever `X-Forwarded-Proto` says. What the tunnel actually sent wasn't captured: the built copy doesn't log headers, and a capture needs root on the dev box. Wyatt's Firefox request headers, browser side, are to follow.
+- **Reach:** release 1's tip button fails for every visitor on a Node site behind nginx, Caddy, a Cloudflare tunnel or any proxy that ends TLS and forwards http, unless the operator happens to configure Astro's `security.allowedDomains`. Asking them to would break the admin budget's "no required settings". No money or data is at risk; tips just can't be made. It wasn't caught before because 7c and 7e tested the button on `astro dev` over loopback http, where the page and the endpoint share a protocol.
+- **Fix ideas for the fix session (Wyatt decides):**
+  - also accept an `Origin` equal to EmDash's configured public origin, as EmDash's own check does;
+  - or decide by `Sec-Fetch-Site` when the browser sends it (`same-origin` passes), and keep the `Origin` comparison only for browsers that don't.
+  
+  Either way the T17 refusals stay: another host, `null`, and `cross-site`.
+- **Status:** open.
+
+## Observation, round 2: Cloudflare's injected analytics beacon is blocked on Coffer's pages (T09, T23)
+
+On the refused tip page above, Firefox's console showed Cloudflare's automatic Web Analytics injecting its beacon (a script from `static.cloudflareinsights.com` plus an inline script). Coffer's CSP blocked both, so no third-party script runs on a pay page even when the host's proxy injects one. That is T09's "no third-party assets" and T23's locked-down CSP working as meant. For the docs: the installation guide could warn that Cloudflare's automatic Web Analytics injects into every page, including pay pages, and that Coffer blocks it there (the console shows CSP errors, which are expected). An admin who wants analytics on the rest of the site doesn't need to change anything. Reported by Wyatt, 2026-10-30.

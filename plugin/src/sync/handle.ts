@@ -58,8 +58,15 @@ export interface SyncStore {
 	poolAdd(row: { addrIndex: number; address: string; keyId: string }): Promise<void>;
 	getNetwork(): Promise<NetworkRecord | null>;
 	setNetwork(record: NetworkRecord): Promise<void>;
+	clearNetwork(): Promise<void>;
+	/**
+	 * Spec change 45: removes every unused pool row (free, or "dropped" by an earlier attempt), never a claimed one,
+	 * even one a checkout claims while this runs.
+	 */
+	poolDropUnused(): Promise<void>;
 	poolFreeCount(): Promise<number>;
-	/** The highest subaddress index in the pool (free or claimed), 0 when empty. Every invoice's index is a pool row. */
+	/** The highest subaddress index in the pool (free or claimed; a leftover "dropped" row doesn't count), 0 when empty.
+	 * Every invoice's index is a pool row. */
 	poolTop(): Promise<number>;
 	/** The invoice that claimed this subaddress index, if any. */
 	invoiceForIndex(index: number): Promise<Invoice | null>;
@@ -119,6 +126,11 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 			const key = decodeBase64(body.value.pair.publicKey, 32);
 			if (!key || !(await verifySignature(key, ts, bytes, signature))) return error("BAD_SIGNATURE");
 			replaced = (await store.getPublicKey()) !== null;
+			// Spec change 45, in this order: drop the unused pool and clear the network, then store the key, then burn the
+			// code. A failure partway leaves the old pairing working and the code usable for a retry, never a new
+			// pairing holding the old pool.
+			await store.poolDropUnused();
+			await store.clearNetwork();
 			await store.setPublicKey(body.value.pair.publicKey);
 			await store.setPairing({ ...pairing, used: true });
 			parsed = body.value;

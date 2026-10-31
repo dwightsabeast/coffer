@@ -58,8 +58,12 @@ export class MemoryStore implements SyncStore {
 	async poolAdd(row: { addrIndex: number; address: string; keyId: string }) { this.pool.set(row.addrIndex, { ...row, status: "free" }); }
 	async getNetwork() { return this.network; }
 	async setNetwork(r: NetworkRecord) { this.network = { ...r }; }
+	async clearNetwork() { this.network = null; }
+	async poolDropUnused() {
+		for (const [i, r] of this.pool) if (r.status === "free" || r.status === "dropped") this.pool.delete(i);
+	}
 	async poolFreeCount() { return [...this.pool.values()].filter((r) => r.status === "free").length; }
-	async poolTop() { return Math.max(0, ...this.pool.keys()); }
+	async poolTop() { return Math.max(0, ...[...this.pool.values()].filter((r) => r.status !== "dropped").map((r) => r.addrIndex)); }
 	async invoiceForIndex(i: number) {
 		const row = this.pool.get(i);
 		return row?.invoiceId ? (this.invoices.get(row.invoiceId) ?? null) : null;

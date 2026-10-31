@@ -358,6 +358,69 @@ describe("one network per pairing (spec change 45)", () => {
 	});
 });
 
+describe("a new pairing starts the pool afresh (spec change 45)", () => {
+	async function pairWith(store: MemoryStore, key: KeyName, now = T0) {
+		const { code, state } = await newPairingCode(now);
+		store.pairing = state;
+		return { code, out: await send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS[key] } }), { key, now }) };
+	}
+
+	it("[T20][T03][R08] [RT-29] pairing drops every unused address and clears the network; claimed rows stay and poolTop falls to the highest", async () => {
+		const store = pairedStore("test1");
+		await send(store, syncBody({ addresses: [1, 2, 3, 4].map((i) => ({ index: i, address: ADDR(i) })) }));
+		store.claim(2, newInvoice({ network: "stagenet", id: "inv_2", token: "t".repeat(22), kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard", subaddress: ADDR(2), addrIndex: 2, now: T0, chainHeight: H0 }));
+		const { out } = await pairWith(store, "test2", T0 + 1000);
+		expect(out.response).toMatchObject({ ok: true, poolFree: 0, poolTop: 2 });
+		expect([...store.pool.keys()]).toEqual([2]);
+		expect(store.network).toBeNull();
+		expect(store.invoices.has("inv_2")).toBe(true);
+	});
+
+	it("[T03][T13][R08] a pairing that fails after the drops: the old key still syncs, the new key is refused, and the code pairs on a retry", async () => {
+		class FailingStore extends MemoryStore {
+			failNext = true;
+			override async setPublicKey(k: string) {
+				if (this.failNext) {
+					this.failNext = false;
+					throw new Error("storage write failed");
+				}
+				await super.setPublicKey(k);
+			}
+		}
+		const store = new FailingStore();
+		store.publicKey = PUBLIC_KEYS.test1;
+		await send(store, syncBody({ addresses: [1, 2].map((i) => ({ index: i, address: ADDR(i) })) }));
+		const { code, state } = await newPairingCode(T0);
+		store.pairing = state;
+		const pairBody = syncBody({ seq: T0 + 1, pair: { code, publicKey: PUBLIC_KEYS.test2 } });
+		await expect(send(store, pairBody, { key: "test2", now: T0 + 1000 })).rejects.toThrow("storage write failed");
+		// The drops happened before the failure; nothing else did.
+		expect(store.pool.size).toBe(0);
+		expect(store.publicKey).toBe(PUBLIC_KEYS.test1);
+		expect(store.pairing?.used).toBe(false);
+		// The old pairing still works and refills; the new key isn't paired.
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 2, addresses: [{ index: 3, address: ADDR(3) }] }), { now: T0 + 2000 }))).toBe("ok");
+		expect([...store.pool.keys()]).toEqual([3]);
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 3 }), { key: "test2", now: T0 + 3000 }))).toBe("BAD_SIGNATURE");
+		// A retry with the same code pairs, and starts the pool afresh again.
+		expect(errorCode(await send(store, pairBody, { key: "test2", now: T0 + 4000 }))).toBe("ok");
+		expect(store.publicKey).toBe(PUBLIC_KEYS.test2);
+		expect(store.pairing?.used).toBe(true);
+		expect(store.pool.size).toBe(0);
+	});
+
+	it("[T20][T03] a pairing body's own addresses set the new pairing's network and carry the new key's ID", async () => {
+		const store = pairedStore("test1");
+		store.network = { network: "stagenet", keyId: KEY_IDS.test1 };
+		const { code, state } = await newPairingCode(T0);
+		store.pairing = state;
+		const MAIN = (i: number) => fakeAddress(TAGS.mainnet[1], i, "M");
+		await send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS.test2 }, addresses: [{ index: 1, address: MAIN(1) }] }), { key: "test2" });
+		expect(store.network).toEqual({ network: "mainnet", keyId: KEY_IDS.test2 });
+		expect(store.pool.get(1)).toMatchObject({ status: "free", keyId: KEY_IDS.test2 });
+	});
+});
+
 describe("heard, not synced (spec change 29)", () => {
 	it("a pairing request: heard, not synced, no checks kept; the height still sets the floor", async () => {
 		const store = new MemoryStore();

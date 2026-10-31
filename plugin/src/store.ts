@@ -16,10 +16,15 @@ import type { PairingState } from "./sync/pairing";
 export const SETTING = { publicKey: "bridgePublicKey", currency: "currency", speed: "speed" } as const;
 export const KV = { pairing: "state:pairing", bridge: "state:bridge", alerts: "state:alerts", purgeCursor: "state:purgeCursor", cronScheduled: "state:cronScheduled", salt: "state:salt", buckets: "state:buckets", paidTop: "state:paidTop", clientIp: "state:clientIp", lastPairing: "state:lastPairing", setupDone: "state:setupDone", watchTruncatedAt: "state:watchTruncatedAt", network: "state:network" } as const;
 
+/**
+ * A pool row goes free -> claimed (checkout), or free -> dropped -> deleted (a new pairing, spec change 45). "dropped"
+ * is left behind only if a pairing fails between marking and deleting: it's never counted as free or claimed, never
+ * handed out, not in poolTop, and the next pairing deletes it.
+ */
 export interface PoolRow {
 	addrIndex: number;
 	address: string;
-	status: "free" | "claimed";
+	status: "free" | "claimed" | "dropped";
 	/** The ID of the bridge key whose sync added the row (spec change 45); rows from before it have none. */
 	keyId?: string;
 	invoiceId?: string;
@@ -27,6 +32,11 @@ export interface PoolRow {
 
 /** Storage pages are at most 100 items. */
 const PAGE = 100;
+/**
+ * The pairing drop's bound: 1,000 pages. Each page's rows are all deleted or claimed, so it ends long before this
+ * unless syncs keep adding rows as fast as it deletes them. Any it leaves carry the old key's ID, which checkout skips.
+ */
+const MAX_DROP_PAGES = 1000;
 /**
  * A scan's safety cap: 200 pages, 20,000 rows. The spam cap allows about 40 invoices every 30 minutes, and tips stay
  * candidates for 8 days, so about 15,400 rows at the most. Reaching it is reported, never silent (spec change 35,
@@ -89,11 +99,32 @@ export class CtxSyncStore implements SyncStore {
 	setNetwork(record: NetworkRecord) {
 		return this.ctx.kv.set(KV.network, record);
 	}
+	async clearNetwork() {
+		await this.ctx.kv.delete(KV.network);
+	}
+	/**
+	 * Mark, then delete. The mark is an updateIf guarded on status "free", the same guard checkout claims with, so of a
+	 * claim and the drop exactly one wins a row. (updateIf leaves a row's revision unchanged, so a compareAndDelete on a
+	 * revision read earlier could delete a row claimed in between.)
+	 */
+	async poolDropUnused() {
+		const col = pool(this.ctx);
+		for (let page = 0; page < MAX_DROP_PAGES; page++) {
+			const r = await col.query({ where: { status: { in: ["free", "dropped"] } }, limit: PAGE });
+			if (r.items.length === 0) return;
+			const gone: string[] = [];
+			for (const { id, data } of r.items) {
+				if (data.status === "dropped") gone.push(id);
+				else if ((await col.updateIf(id, { where: { status: "free" }, set: { status: "dropped" } })).applied) gone.push(id);
+			}
+			if (gone.length > 0) await col.deleteMany(gone);
+		}
+	}
 	poolFreeCount() {
 		return pool(this.ctx).count({ status: "free" });
 	}
 	async poolTop() {
-		const top = await pool(this.ctx).query({ orderBy: { addrIndex: "desc" }, limit: 1 });
+		const top = await pool(this.ctx).query({ where: { status: { in: ["free", "claimed"] } }, orderBy: { addrIndex: "desc" }, limit: 1 });
 		return top.items[0]?.data.addrIndex ?? 0;
 	}
 	async invoiceForIndex(index: number) {

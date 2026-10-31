@@ -6,9 +6,10 @@ import { deletePluginData } from "../../src/store";
 
 function fakeCtx() {
 	const cols: Record<string, Map<string, unknown>> = { pool: new Map(), invoices: new Map() };
-	for (let i = 1; i <= 230; i++) cols.pool.set(String(i), { addrIndex: i });
+	// Every status, a row left "dropped" by a failed pairing included (spec change 45).
+	for (let i = 1; i <= 230; i++) cols.pool.set(String(i), { addrIndex: i, status: ["free", "claimed", "dropped"][i % 3] });
 	for (let i = 1; i <= 7; i++) cols.invoices.set(`inv_${i}`, { id: `inv_${i}` });
-	const kv = new Map<string, unknown>([["state:pairing", {}], ["state:bridge", {}], ["state:alerts", []], ["cache:rate:USD", {}], ["cache:rate:EUR", {}], ["unrelated", 1]]);
+	const kv = new Map<string, unknown>([["state:pairing", {}], ["state:bridge", {}], ["state:alerts", []], ["state:network", { network: "stagenet", keyId: "k" }], ["cache:rate:USD", {}], ["cache:rate:EUR", {}], ["unrelated", 1]]);
 	const settings = new Map<string, unknown>([["bridgePublicKey", "k"], ["currency", "USD"], ["speed", "fast"]]);
 	const collection = (m: Map<string, unknown>) => ({
 		async query({ limit }: { limit: number }) {

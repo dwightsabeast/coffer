@@ -35,6 +35,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open |
 | RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open |
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | open |
+| RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | open |
 
 ---
 
@@ -556,3 +557,89 @@ The spec's Privacy list says nothing about remote nodes. Spec change 13 says the
 - **Release update schedule (passing):** a release build waits 10 minutes, then checks every 24 h ± 1 h, and waits 48 h before installing (`cmd/xmr-bridge/release_release_test.go`). F1 saw the dev build's one-minute checks.
 - **Observation, `moneroaddr` doesn't check the address checksum**, by design (`moneroaddr.go:1–3`: wallet-rpc does). A stagenet address with its last character changed parses as a valid stagenet primary address. At the install prompt, a typo there is caught only if it changes the view key's bytes (the key match). Otherwise wallet-rpc refuses it when the wallet is created, which comes after pairing, so the code is already used. That's the same lesson as RT-19, for the fix session to weigh.
 - **Fuzzing (2026-10-30, `GOMAXPROCS=2`, `-parallel=2`, 10 minutes each, one at a time):** `FuzzParseReply` (the site's reply) ran 9,799,866 times and `FuzzParse` (`moneroaddr`) 46,843,150 times. No crasher, nothing added to `testdata/fuzz/`.
+
+## F5: dependency checks (T28), 2026-10-31 UTC
+
+One-off runs for pass 1, approved by Wyatt on 2026-10-31. Nothing was added to the repo or CI. Evidence: `~/xmr-pay-dev-data/redteam/step6-*.txt` and `step6-audit-*.json`.
+
+**The tool, and how it was checked before it ran:**
+- `golang.org/x/vuln/cmd/govulncheck@v1.9.0`, run with `go run` from an empty scratch folder outside any `go.mod`, with `GOTOOLCHAIN=local`.
+- `go env -changed` printed nothing (every Go setting at its default): `GOPROXY=https://proxy.golang.org,direct`, `GOSUMDB=sum.golang.org`, and `GONOSUMDB`, `GOPRIVATE`, `GONOPROXY`, `GOINSECURE` and `GOFLAGS` blank.
+- The commit, `e672cbe8fbc8c76e28fcb6db0efd9ce354e0dac5`, was first taken from proxy.golang.org's version info on 2026-10-30. It was checked three ways:
+  - `go mod download -json` (verified against sum.golang.org; `Sum h1:12VaqnI9…/sc=`): its `Origin` names that commit for `refs/tags/v1.9.0`.
+  - `git ls-remote https://go.googlesource.com/vuln 'refs/tags/v1.9.0*'`: the tag points at that commit. It's a lightweight tag, so there is no `^{}` line.
+  - Wyatt checked independently on GitHub's golang/vuln mirror: same commit.
+- Vulnerability database: `vuln.go.dev`, "DB updated: 2026-10-27 21:16:18 UTC".
+- **Exit codes:** under `go run`, govulncheck's own exit code shows as the line `exit status N` and `go run` itself exits 1. Results were classified by that line: 0 none, 3 found, anything else a failed run. **No run failed.**
+
+**Which Go each result reflects:**
+- **Source mode:** the dev box's toolchain, go1.27.1 (`/usr/local/go`).
+- **Binary mode:** the version embedded in each binary, go1.27.1 for both dev-release binaries (`go version -m`). The binaries are `-trimpath` but **not stripped** (`file`: "with debug_info, not stripped"), so binary mode had full symbols. The dev box's installed bridge (`/usr/local/bin/xmr-bridge`) is go1.27.1 too.
+- **Release 1:** where its bridge binaries are built isn't decided yet.
+  - `CLAUDE.md` tier 3 says release builds run in CI from a clean checkout. But decision 88 (GitHub Actions, provenance) covers the plugin's EmDash release, and phase 09 says only "A script produces the binaries … pinned Go version".
+  - The only bridge release path that exists, `scripts/build-dev-release.sh`, builds and signs on the dev box with `GOTOOLCHAIN=local`, so with this box's go1.27.1.
+  - CI's `setup-go` pin is `go-version: 1.27.1` too, and CI publishes nothing.
+  - **Either way, today's pins give go1.27.1.** go1.27.3 is the current stable release (`go.dev/dl`).
+  - Which build location is used decides which Go phase 09's binary-mode rerun must check: open for Wyatt.
+
+**Every manifest git tracks:**
+
+| File | Checked | Result |
+| --- | --- | --- |
+| `bridge/go.mod` (no `require`) | govulncheck source mode (a); binary mode (c) on `xmr-bridge-0.0.202610301609-dev.2d7a29d-linux-{amd64,arm64}`, matching `SHA256SUMS` | (a) 10 called, 2 imported but not called, 2 required but not called, all in the standard library. (c) 9 found by symbol in each binary, 2 by package, 2 by module. **RT-28** |
+| `bridge/oracle/go.mod` (CI-only; `go-crypto` v1.5.2, `circl` v1.6.3, `x/crypto` v0.41.0, `x/sys` v0.35.0) | govulncheck (b), also with `-test` (its only code is test files) | 0 called. Nothing in any third-party module; the go1.27.1 standard-library entries only, at package or module level |
+| `plugin/package.json` + `pnpm-lock.yaml` | `pnpm audit --json` (a parsed audit report); lockfile check | 63 advisories (1 critical, 22 high, 31 moderate, 9 low) over 829 packages. Lockfile check passed |
+| `theme/package.json` + `pnpm-lock.yaml` | same | 25 (1 critical, 7 high, 13 moderate, 4 low) over 694. Lockfile check passed |
+| `spikes/xmr-spike/` (lockfile) | `pnpm audit`, record only (Wyatt): a throwaway spike, never shipped | 63 (1 critical, 22 high, 31 moderate, 9 low) over 829 |
+| `spikes/cf-runner/limits/` (lockfile) | `pnpm audit`, record only | 23 (1 critical, 7 high, 11 moderate, 4 low) over 716 |
+| `spikes/sandbox-canary/package.json` | not audited | no dependencies at all, so no lockfile |
+| `contract/` | not audited | no `package.json` yet (phase 08) |
+
+**The standard library's advisories against the shipped bridge.** The bridge is an HTTP client only: it runs no server (F1 saw it listening on nothing), sends no `CONNECT`, parses no multipart, doesn't import `html/template`, and runs on Linux.
+- **Reach the bridge in practice:**
+  - GO-2026-6809: the x509 distrust list for compromised intermediates. Fixed in go1.27.3.
+  - GO-2026-6611: CPU exhaustion from a hostile HTTP/2 peer, client or server side. Fixed in go1.27.2.
+- **Called, but only by an HTTP/2 or HTTP/1 server, a TLS server or a reverse proxy:** GO-2026-6617, 6613, 6612, 6610, 6607, 6605 and 6603.
+  - Their traces run through the test-only `internal/hostile` server, or through govulncheck's interface over-approximation ("`installer.Uninstall` calls `fmt.Fprintf`, which eventually calls `http2.responseWriter.Write`").
+  - In binary mode GO-2026-6612 drops to package level, because the `hostile` server isn't in the binary.
+- **Called, but the flaw is in multipart parsing:** GO-2026-6608. Its trace is the client reading response headers, which `MaxResponseHeaderBytes` bounds.
+- **Not called:** GO-2026-6609 (file serving), 6604 (Windows), 6600 and 6599 (`html/template`).
+
+**npm (dev tooling only).**
+- **Nothing ships:** tier 1 keeps every third-party package out of the plugin bundle, the theme components and the bridge.
+- **Where they sit:** every advisory is under `emdash`, `@emdash-cms/plugin-test`, `@emdash-cms/plugin-cli`, `astro` or `vitest`. The critical one is DOMPurify 3.4.16 (`SAFE_FOR_TEMPLATES` bypass). The highs are undici 7.29.0 and 8.11.2 (DoS; TLS options dropped), seroval, `@modelcontextprotocol/sdk`, sharp (librsvg), zod, body-parser, source-map-js and vite.
+- **Reach on this project:** the test tools run against local, trusted inputs. The dev site and its built copy run EmDash 1.3.1, the same tree every Coffer site runs.
+- **No Coffer finding.** It's an observation for Wyatt, below.
+
+**Lockfile check against the tiers (plugin and theme), passed:**
+- Direct dev dependencies are exact pins within tier 2, and the lockfile's importer specifiers match `package.json`. pnpm 12's lockfile adds a first document holding only its own `packageManager` pin (`pnpm` 12.8.1).
+- Every package has an sha512 `integrity` hash: 829 of 829, and 694 of 694.
+- No tarball, git or directory sources. No `overrides`, `patchedDependencies` or `minimumReleaseAgeExclude` anywhere.
+- `pnpm-workspace.yaml` has `strictDepBuilds: true`, `dangerouslyAllowAllBuilds: false`, `allowBuilds` with only `esbuild` and `workerd`, and `minimumReleaseAge: 10080`.
+
+**Not covered:**
+- CI (T28 stays Planned).
+- The other platforms' builds: there are none; Linux only.
+- What a lockfile refresh within EmDash's own ranges would clear. Several affected packages are open ranges inside EmDash (`sanitize-html ^2.17.1`, `@modelcontextprotocol/sdk ^1.26.0`). That's a dependency change, so it's Wyatt's call.
+
+## RT-28 — The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it
+
+- **Rows:** T28, T27. **Severity:** Low. **Pass 1, round 2.**
+- **What I did:** ran govulncheck v1.9.0 in source mode on `bridge/` and in binary mode on both dev-release binaries (F5 above).
+- **What happened:** 10 called standard-library vulnerabilities in source mode, and 9 by symbol in each binary. Two reach the shipped bridge in practice:
+  - **GO-2026-6809 (CVE-2026-111943):** crypto/x509 now refuses known compromised intermediate certificates, for systems whose trust store hasn't caught up. Without it, a holder of such an intermediate's key, on the path between the wallet host and the site, can pass the bridge's TLS check. They could then read the signed snapshots and answer with replies the bridge trusts (RT-27's unbounded `poolTop` and `poolTarget`).
+    - The two downloads aren't affected: Monero's comes from GPG-signed `hashes.txt`, the bridge's own from the Ed25519 release signature.
+    - Wallet-rpc's own node connection is wallet-rpc's TLS, not Go's.
+  - **GO-2026-6611 (CVE-2026-78669):** a hostile HTTP/2 peer (the site, or whatever answers for it) can make the bridge use excessive CPU.
+- **Where it applies:** the dev releases, the dev box's installed bridge and CI's `setup-go` pin are all go1.27.1. Release 1 will be too, wherever it's built, unless a pin changes (F5, "Which Go each result reflects").
+- **Reach:** no money moves: the bridge is view-only. 6809 needs a compromised intermediate's key plus a position on the path, on a host whose trust store lacks the distrust. 6611 is a slowdown of the wallet host.
+- **Test:** `cmd/xmr-bridge/redteam_test.go`, "[T28] [RT-28] the bridge is built with go1.27.3 or later", `t.Skip("RT-28 open")`. Run once without its skip, it failed: "built with go1.27.1; go1.27.3 or later has the fixes for GO-2026-6809 and GO-2026-6611". It's a floor for today's advisories. Phase 09's govulncheck rerun is still what checks the release.
+- **Fix direction (Wyatt's: a toolchain change):** go1.27.3 or later for the release build, which means the dev box's `/usr/local/go` (needs sudo) and `ci.yml`'s `go-version`, depending on where release 1 is built. Then the test's skip comes off.
+- **Status:** open.
+
+## Observation, F5: EmDash 1.3.1's own dependency tree carries a critical and several high npm advisories
+
+Not Coffer code: tier 1 keeps it out of everything Coffer ships. But it's the tree every Coffer site runs, at the floor Coffer names (`emdash >=1.3.1 <2`). That covers DOMPurify (critical), undici, seroval, `@modelcontextprotocol/sdk`, sharp, sanitize-html, body-parser, hono and others (F5).
+- EmDash 1.4.0 was published on 2026-10-29. It passes the 7-day rule on 2026-11-05.
+- Whether it clears these wasn't checked. Moving to it goes through `docs/emdash-upgrade-checklist.md` and Wyatt.
+- For the report: Coffer's security claims stop at its own code, and the host CMS's dependency hygiene is EmDash's. A possible upstream note.

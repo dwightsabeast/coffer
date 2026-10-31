@@ -5,6 +5,9 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +36,33 @@ func TestRedteamNodeCheckNothingChecked(t *testing.T) {
 		_, out, _ := run(context.Background(), "status", "--config", p)
 		if strings.Contains(out, "Node check: ok\n") {
 			t.Fatalf("says ok with nothing checked: %q", out)
+		}
+	})
+}
+
+// RT-28 (Step 6, F5): govulncheck v1.9.0 finds 10 called standard-library vulnerabilities in go1.27.1, the Go the dev
+// releases, the installed dev bridge and CI's setup-go pin all use. Two reach the shipped bridge in practice:
+// GO-2026-6809 (crypto/x509's distrust list, fixed in go1.27.3) and GO-2026-6611 (HTTP/2 client CPU, fixed in
+// go1.27.2). The test binary is built by the same toolchain as the bridge in the same place (this box, CI), so it
+// checks that toolchain. It's a floor for today's advisories, not a substitute for running govulncheck (T28).
+func TestRedteamToolchainFloor(t *testing.T) {
+	t.Run("[T28] [RT-28] the bridge is built with go1.27.3 or later (known standard-library fixes)", func(t *testing.T) {
+		t.Skip("RT-28 open")
+		v := runtime.Version()
+		m := regexp.MustCompile(`^go(\d+)\.(\d+)(?:\.(\d+))?$`).FindStringSubmatch(v)
+		if m == nil {
+			t.Skipf("not a release toolchain: %s", v)
+		}
+		n := func(s string) int { i, _ := strconv.Atoi(s); return i }
+		got := [3]int{n(m[1]), n(m[2]), n(m[3])}
+		floor := [3]int{1, 27, 3}
+		for i := range got {
+			if got[i] != floor[i] {
+				if got[i] < floor[i] {
+					t.Fatalf("built with %s; go1.27.3 or later has the fixes for GO-2026-6809 and GO-2026-6611", v)
+				}
+				return
+			}
 		}
 	})
 }

@@ -119,7 +119,8 @@ describe("admin page", () => {
 		const res = await host.actions.routes.request("bridge/sync", { method: "POST", rawBody: bytes, headers: await signedHeaders(bytes, now) });
 		expect(((await res.json()) as B).data).toMatchObject({ ok: true });
 		const page = (await host.admin.loadPage("/payments")).blocks as B[];
-		expect(find(page, (x) => x.type === "fields" && x.block_id === "health")?.fields[0]).toEqual({ label: "Wallet host", value: "Paired" });
+		// Paired with no addresses yet: the network comes with the wallet host's first ones (spec change 45).
+		expect(find(page, (x) => x.type === "fields" && x.block_id === "health")?.fields[0]).toEqual({ label: "Wallet host", value: "Paired · network not known yet" });
 		const button = find(page, (x) => x.type === "actions")?.elements[0];
 		expect(button).toEqual({ type: "button", action_id: "connect_wallet_host", label: "Connect a new wallet host", style: "primary" });
 	});

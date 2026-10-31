@@ -34,12 +34,16 @@ interface Setup {
 	price?: boolean;
 	paidTop?: number | null;
 	clientIp?: boolean;
+	/** The stored network record; default on a paired site: stagenet for test1, as its first sync would set (spec change 45). */
+	network?: unknown;
 }
 
 async function setup(o: Setup = {}) {
 	const h = await createPluginRuntimeTestHost();
 	host = h;
 	if (o.paired !== false) await h.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);
+	const network = o.network === undefined ? (o.paired !== false ? { network: "stagenet", keyId: KEY_IDS.test1 } : null) : o.network;
+	if (network !== null) await h.fixtures.plugin.kv("state:network", network);
 	const ago = o.lastSyncAgo === undefined ? 30_000 : o.lastSyncAgo;
 	if (ago !== null || o.heardAgo !== undefined) {
 		const now = Date.now();
@@ -78,10 +82,29 @@ function invoice(id: string, index: number, over: Partial<Invoice> = {}): Invoic
 const paidTransfer = { txid: "ab".repeat(32), amount: "80000000000", amountAtomic: "80000000000", confirmations: 12, height: H0 + 1, timestamp: 1_790_000_100, doubleSpendSeen: false, unlockTime: "0", seenAt: 1, poolTs: 1 };
 
 describe("health panel", () => {
+	it("[T20] the wallet host line shows the network stored for the paired key (spec change 45)", async () => {
+		await setup({ network: { network: "mainnet", keyId: KEY_IDS.test1 } });
+		expect(field(await load(), "Wallet host")).toBe("Paired · mainnet");
+	});
+
+	it("[T20] the network is not known yet with none stored, or with one stored for another key", async () => {
+		for (const network of [null, { network: "stagenet", keyId: KEY_IDS.test2 }]) {
+			await setup({ network });
+			expect(field(await load(), "Wallet host"), JSON.stringify(network)).toBe("Paired · network not known yet");
+			await host?.dispose();
+			host = undefined;
+		}
+	});
+
+	it("not paired: the wallet host line says so, with no network", async () => {
+		await setup({ paired: false, free: 0 });
+		expect(field(await load(), "Wallet host")).toBe("Not paired");
+	});
+
 	it("a healthy site: one line per check, the addresses meter with its hint, no banners", async () => {
 		await setup({ checks: { node: { state: "off" }, wallet: { state: "ok", detail: "wallet and node at block 3000000" } }, free: 48, claimed: [1, 2], paidTop: 2 });
 		const b = await load();
-		expect(field(b, "Wallet host")).toBe("Paired");
+		expect(field(b, "Wallet host")).toBe("Paired · stagenet");
 		expect(field(b, "Last sync")).toBe("less than a minute ago");
 		expect(field(b, "Wallet height")).toBe("3000000, in step with its node");
 		expect(field(b, "Price feed")).toBe("1 XMR = 150.00 USD (api.kraken.com)");

@@ -9,6 +9,7 @@
 import type { PluginContext } from "emdash/plugin";
 
 import { MAX_OPEN_TOTAL, checkoutHeight, claimAndStore, newIds } from "./checkout";
+import type { MoneroNetwork } from "./core/address";
 import { DUST_ATOMIC, GAP_ALERT, GOODS_ENABLED, LATE_WINDOW_MS, MAX_REQUIRED, PRESETS, RECONFIRM_BLOCKS, SILENT_MS, type Speed, TEST_TIP_REQUIRED, UNPAID_RUN_ALERT } from "./core/constants";
 import { type Invoice, counted, isOpen, newInvoice, totals } from "./core/invoice";
 import { atomicToXmr } from "./core/money";
@@ -17,8 +18,8 @@ import { invoiceUri } from "./core/uri";
 import { ensureCron } from "./housekeeping";
 import { CURRENCIES, type Currency, getRate, isCurrency } from "./rates";
 import { KV, SETTING, invoices, pool } from "./store";
-import type { BridgeState } from "./sync/handle";
-import { type PairingState, PAIRING_TTL_MS, isPairingActive, newPairingCode } from "./sync/pairing";
+import type { BridgeState, NetworkRecord } from "./sync/handle";
+import { type PairingState, PAIRING_TTL_MS, isPairingActive, keyId, newPairingCode } from "./sync/pairing";
 import { POOL_TARGET } from "./sync/protocol";
 
 /** The release host arrives in phase 09. ".invalid" never resolves, so a copied command fails instead of running. */
@@ -52,6 +53,8 @@ const utcSeconds = (ms: number) => `${new Date(ms).toISOString().slice(11, 19)} 
 
 interface Health {
 	paired: boolean;
+	/** The network stored for the paired key (spec change 45); null until its wallet host sends its first addresses. */
+	network: MoneroNetwork | null;
 	bridge: BridgeState | null;
 	free: number;
 	/**
@@ -91,7 +94,10 @@ async function paidTop(ctx: PluginContext): Promise<number> {
 }
 
 async function health(ctx: PluginContext, now: number, opts: { checkRate: boolean }): Promise<Health> {
-	const paired = Boolean(await ctx.settings.get<string>(SETTING.publicKey));
+	const key = await ctx.settings.get<string>(SETTING.publicKey);
+	const paired = Boolean(key);
+	const record = key ? await ctx.kv.get<NetworkRecord>(KV.network) : null;
+	const network = key && record?.keyId === keyId(key) ? record.network : null;
 	const bridge = await ctx.kv.get<BridgeState>(KV.bridge);
 	const free = await pool(ctx).count({ status: "free" });
 	// The silent-bridge flag is worked out here, when the admin page or widget loads (spec change 2). Silence counts
@@ -125,7 +131,7 @@ async function health(ctx: PluginContext, now: number, opts: { checkRate: boolea
 	const watchTruncatedAt = truncatedAt !== null && now - truncatedAt < LATE_WINDOW_MS ? truncatedAt : null;
 	const lastSyncAgo = bridge?.lastSyncAt !== undefined ? now - bridge.lastSyncAt : null;
 	const neverSynced = paired && bridge !== null && lastSyncAgo === null;
-	return { paired, bridge, free, silentFor, lastSyncAgo, neverSynced, review, unpaidRun, gap, rate, clientIp, watchTruncatedAt };
+	return { paired, network, bridge, free, silentFor, lastSyncAgo, neverSynced, review, unpaidRun, gap, rate, clientIp, watchTruncatedAt };
 }
 
 const minorText = (m: bigint) => `${m / 100n}.${(m % 100n).toString().padStart(2, "0")}`;
@@ -208,7 +214,7 @@ function healthBlocks(h: Health): Block[] {
 			type: "fields",
 			block_id: "health",
 			fields: [
-				{ label: "Wallet host", value: h.paired ? "Paired" : "Not paired" },
+				{ label: "Wallet host", value: h.paired ? `Paired · ${h.network ?? "network not known yet"}` : "Not paired" },
 				{ label: "Last sync", value: h.lastSyncAgo === null ? "Never" : ago(h.lastSyncAgo) },
 				{ label: "Wallet height", value: walletHeightText(h) },
 				{ label: "Price feed", value: h.rate ? `1 XMR = ${minorText(h.rate.minor)} ${h.rate.currency} (${h.rate.source})` : "Not answering" },

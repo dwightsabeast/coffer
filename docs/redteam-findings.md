@@ -18,7 +18,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-08 | High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open |
 | RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open |
 | RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open |
-| RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | open |
+| RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | fixed 2026-10-31 (spec change 45) |
 | RT-12 | Medium | T01, R11 | 1, 1 | One expensive plugin request blocks all others on the Node runner for the full 30 s wall | open |
 | RT-13 | Low | F01 | 1, 1 | A slow request body isn't bounded by the 30 s wall; a connection can be held open past it | open |
 | RT-14 | Low | F04 | 1, 1 | The admin handler settles or expires an open tip the release-1 page offers no action for | open |
@@ -36,7 +36,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open |
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | open |
 | RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | fixed 2026-10-31 |
-| RT-29 | Medium | T20, T03, R08 | 1, fix planning | A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first | open; fixed for release 1 with RT-11 (spec change 45) |
+| RT-29 | Medium | T20, T03, R08 | 1, fix planning | A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first | fixed 2026-10-31 with RT-11 (spec change 45) |
 
 ---
 
@@ -174,7 +174,9 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Reach:** a later checkout can claim that pool address, so a tipper on a stagenet site is handed a mainnet address (or the reverse). The shop's wallet watches only its own network, so it never sees the payment: the tip is lost to an address the shop can't spend from. On a real install this needs the bridge to send a wrong-network address, which the bridge (one wallet, one network) shouldn't do on its own; combined with RT-08 (a stolen key pushing attacker addresses), it lets the attacker's addresses be any network. Severity High: a tip can be recorded against an address the shop can't see, i.e. paid to nowhere the shop controls. Wyatt rules.
 - **Also checked, holds:** an address whose network byte isn't any Monero subaddress byte is still dropped (the existing guard).
 - **Evidence:** vitest output, round 1.
-- **Status:** open; fix in pass 1 per the ruling.
+- **Status:** **fixed 2026-10-31** (spec change 45, fix session on `redteam-1`).
+  - **The fix:** the site's network is stored with the paired key's ID, set by the first readable address that key's bridge sends. A sync drops an address on another network, and checkout skips a free row on another network (claimed with no invoice). The admin page's Health shows "Paired · stagenet" (or "network not known yet").
+  - **Tests:** the two "[T20][P02] [RT-11] L5" tests are ordinary passing tests now; more in handle ("one network per pairing"), claim and repair.
 
 ## RT-12 — One expensive plugin request blocks all others on the Node runner for the full 30 s wall
 
@@ -310,7 +312,7 @@ Fresh attacker session, 2026-10-28 (local) / 2026-10-29 UTC. Order (Wyatt): the 
 
 **Findings this round:** 10. They are 3 Medium (RT-20, which **blocks release 1**, RT-26 and RT-27, all ruled by Wyatt) and 7 Low (RT-19, RT-21 to RT-25, RT-28).
 
-**After both rounds:** 28 findings, 27 open and RT-28 fixed (2026-10-31). RT-29 (Medium) was found afterwards, in fix planning, and makes 29. The 28: 2 High (RT-11, and RT-08, raised from Medium by Wyatt on 2026-10-31), 7 Medium (RT-05, 07, 12, 15, 20, 26, 27) and 19 Low. The summary table at the top lists all 28.
+**After both rounds:** 28 findings, 27 open and RT-28 fixed (2026-10-31). RT-29 (Medium) was found afterwards, in fix planning, and makes 29. **Fix sessions:** RT-11 and RT-29 fixed on 2026-10-31 (spec change 45), so 29 findings, 26 open. The 28: 2 High (RT-11, and RT-08, raised from Medium by Wyatt on 2026-10-31), 7 Medium (RT-05, 07, 12, 15, 20, 26, 27) and 19 Low. The summary table at the top lists all 28.
 
 **Observations (no finding):**
 - Cloudflare's injected analytics beacon is blocked by Coffer's CSP.
@@ -743,4 +745,8 @@ Not Coffer code: tier 1 keeps it out of everything Coffer ships. But it's the tr
     - **A different wallet starts above the old wallet's highest claimed number** (confirmed from the code). After about 200 old checkouts, expired ones included, its tips are beyond a wallet app's lookahead. The Health warning doesn't see it, because `state:paidTop` is the old wallet's.
   - **Spec change 46 fixes the last two:** the bridge says at pairing whether it's the same wallet. A different wallet gets fresh numbering; the same wallet re-offers its own unused subaddresses.
   - **Until then,** the switch-wallets steps say to raise the wallet app's lookahead.
-- **Status:** open; fixed in the RT-11 fix session.
+- **Status:** **fixed 2026-10-31**, with RT-11 (spec change 45).
+  - **The fix:** in the pairing request, after the code and signature check out, every unused pool row is dropped and the network cleared, then the key stored, then the code burned. The drop marks each free row "dropped" with an `updateIf` guarded on `status: "free"` (checkout's own claim guard), then deletes it, so a racing claim keeps its row. `compareAndDelete` couldn't do that: `updateIf` leaves a row's revision unchanged (EmDash 1.3.1, `context-…mjs:644–667`).
+  - **The window a running sync leaves (Wyatt, 2026-10-31: close it, don't file it):** each pool row carries the ID of the key that added it, and checkout hands out only the paired key's rows. A sync whose key is replaced while it runs is also refused before it writes.
+  - **Tests:** repair (route level), pool-drop (the race), handle (the order, a failure after the drops), claim, uninstall.
+  - **Still open, in spec change 46:** the different-wallet numbering gap and the same-wallet skipped numbers.

@@ -1270,7 +1270,7 @@ Effect on the admin budget: none for the wording. A detection feature from the f
 Effect on the trust contract: none for the wording.
 Wyatt's decision (2026-10-31): RT-08 is High. The fix sessions look for detection (for example the honest bridge checking the site's pool against its own wallet) and fast re-pairing. If nothing holds, it becomes an accepted limit with this wording. Wyatt applies the wording to the live spec. `docs/spec.md` stays a snapshot until then.
 
-## 45. One network per pairing, and a pairing starts the pool afresh (RT-11, RT-29)  (status: accepted, 2026-10-31, with Wyatt's changes below)
+## 45. One network per pairing, and a pairing starts the pool afresh (RT-11, RT-29)  (status: accepted, 2026-10-31, with Wyatt's changes below; built 2026-10-31 on `redteam-1`, live re-pair check pending)
 Found in: 07b pass 1. RT-11 (round 1, group L5: a signed sync adds a wrong-network subaddress to the pool). RT-29 (fix planning, 2026-10-31, from the code: a re-pair keeps the previous wallet host's unused pool addresses).
 Spec says:
 - Spec change 36: "The plugin never learns the network … neither pairing nor sync carries it".
@@ -1337,7 +1337,19 @@ Related, for spec change 46 (RT-08, next; Wyatt, 2026-10-31):
 - A stolen key mustn't be able to lock the honest bridge out with far-future sequence numbers, or the check never runs (RT-24's `seq` reach applies here).
 - A refused sync from the honest bridge itself raises the red Health line.
 - Refused wrong-network addresses are reported in that same line.
+- **A stdin option for `xmr-bridge pair`** (Wyatt, 2026-10-31, T29/C06). Today it takes the code only as `--code` on the command line, where other processes on the wallet host can see it while it runs. It's one-time and expires in 15 minutes, but real admins hit the same thing. Accepted for the dev box's stagenet re-pair only.
 Wyatt's decision (2026-10-31): accepted, with three changes:
 1. Keep item 4.
 2. The order inside the pairing request, plus a test for a pairing that fails after the drops (item 1).
 3. Record the different-wallet gap and fix it in spec change 46, with the doc note until then (Costs checked).
+
+Decided while building (Wyatt, 2026-10-31):
+1. **The stored network carries the key's ID:** `state:network` is `{ network, keyId }`, and a record from another key counts as not known. A key ID is the base64 key's first 16 characters.
+2. **The window a running sync leaves is closed, not filed.** A sync already past its signature check when a re-pairing lands can still write after the drop, and a thief can send syncs in bursts through a re-pair on purpose. Every pool row carries the ID of the key whose sync added it, and checkout skips a row from another pairing (claimed with no invoice), like item 4. Also kept: a sync whose key was replaced while it ran is refused (`BAD_SIGNATURE`) before it writes.
+3. **The drop is mark, then delete, not `compareAndDelete`.**
+   - Found while building: checkout claims with `updateIf`, which doesn't change a row's revision (EmDash 1.3.1). So a `compareAndDelete` on a revision read earlier would delete a row claimed in between, leaving its invoice with no pool row and never watched.
+   - The drop marks each free row `status: "dropped"` with an `updateIf` guarded on `status: "free"`, so exactly one of a claim and the drop wins. Then it deletes the marked rows.
+   - A row left "dropped" by a failed pairing is never counted as free or claimed, never handed out, not in `poolTop` or the gap warning, and deleted by the next pairing. Uninstall deletes it like any row.
+   - It's a new value in an existing field; the trust contract's collections and indexes are unchanged.
+   - `compareAndDelete` is reachable from the sandbox (sandbox-workerd 0.9.5 bridges `storage/compareAndDelete`) but isn't used.
+4. **Admin wording:** "Paired · stagenet" (or mainnet, testnet), "Paired · network not known yet", "Not paired". No bracket.

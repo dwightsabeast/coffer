@@ -1,7 +1,7 @@
 // Test helpers for bridge/sync: an in-memory SyncStore, and signing with the published RFC 8032 test keys through
 // WebCrypto (the same keys as contract/test-vectors/sync-signature.json; never a key of our own).
 import type { Invoice } from "../../src/core/invoice";
-import type { BridgeState, SyncStore } from "../../src/sync/handle";
+import type { BridgeState, NetworkRecord, SyncStore } from "../../src/sync/handle";
 import { type PairingState, keyId } from "../../src/sync/pairing";
 
 const SEEDS = {
@@ -42,7 +42,8 @@ export class MemoryStore implements SyncStore {
 	publicKey: string | null = null;
 	pairing: PairingState | null = null;
 	bridge: BridgeState | null = null;
-	pool = new Map<number, { addrIndex: number; address: string; status: "free" | "claimed"; invoiceId?: string }>();
+	pool = new Map<number, { addrIndex: number; address: string; status: "free" | "claimed" | "dropped"; keyId?: string; invoiceId?: string }>();
+	network: NetworkRecord | null = null;
 	invoices = new Map<string, Invoice>();
 
 	async getPublicKey() { return this.publicKey; }
@@ -54,7 +55,9 @@ export class MemoryStore implements SyncStore {
 	async notePaid(i: number) { this.paidTop = Math.max(this.paidTop ?? 0, i); }
 	async setBridgeState(s: BridgeState) { this.bridge = s; }
 	async poolHas(i: number) { return this.pool.has(i); }
-	async poolAdd(row: { addrIndex: number; address: string }) { this.pool.set(row.addrIndex, { ...row, status: "free" }); }
+	async poolAdd(row: { addrIndex: number; address: string; keyId: string }) { this.pool.set(row.addrIndex, { ...row, status: "free" }); }
+	async getNetwork() { return this.network; }
+	async setNetwork(r: NetworkRecord) { this.network = { ...r }; }
 	async poolFreeCount() { return [...this.pool.values()].filter((r) => r.status === "free").length; }
 	async poolTop() { return Math.max(0, ...this.pool.keys()); }
 	async invoiceForIndex(i: number) {

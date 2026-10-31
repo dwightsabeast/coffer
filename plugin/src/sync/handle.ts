@@ -2,11 +2,12 @@
  * bridge/sync, step by step in the spec's order, against a storage interface (session 2d wires it to ctx.storage and
  * ctx.kv and declares the route). Returns the response body and the lifecycle events for the caller to record.
  */
+import { type MoneroNetwork, subaddressNetwork } from "../core/address";
 import { RESTORE_MARGIN_BLOCKS } from "../core/constants";
 import { type Invoice, type InvoiceEvent, counted } from "../core/invoice";
 import { isWatched } from "../core/watch";
 import { mergeSnapshot } from "./merge";
-import { type PairingState, isPairingActive, pairingCodeMatches } from "./pairing";
+import { type PairingState, isPairingActive, keyId, pairingCodeMatches } from "./pairing";
 import {
 	type BridgeChecks,
 	PAIR_MAX_BYTES,
@@ -32,6 +33,16 @@ export interface BridgeState {
 	checks?: BridgeChecks;
 }
 
+/**
+ * The site's network (spec change 45): set by the first readable address a pairing's bridge sends, and kept with that
+ * key's ID. A record from another key counts as not known, so a sync already running when a re-pairing lands can't fix
+ * the new pairing's network.
+ */
+export interface NetworkRecord {
+	network: MoneroNetwork;
+	keyId: string;
+}
+
 export interface SyncStore {
 	getPublicKey(): Promise<string | null>;
 	setPublicKey(publicKey: string): Promise<void>;
@@ -43,7 +54,10 @@ export interface SyncStore {
 	notePaid(index: number): Promise<void>;
 	/** True if the pool already has this subaddress index (free or claimed). */
 	poolHas(index: number): Promise<boolean>;
-	poolAdd(row: { addrIndex: number; address: string }): Promise<void>;
+	/** Adds a free row tagged with the ID of the key that signed the sync (spec change 45). */
+	poolAdd(row: { addrIndex: number; address: string; keyId: string }): Promise<void>;
+	getNetwork(): Promise<NetworkRecord | null>;
+	setNetwork(record: NetworkRecord): Promise<void>;
 	poolFreeCount(): Promise<number>;
 	/** The highest subaddress index in the pool (free or claimed), 0 when empty. Every invoice's index is a pool row. */
 	poolTop(): Promise<number>;
@@ -91,6 +105,8 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 	// active and the body is small. The signature must verify with the key carried in the body.
 	const pairing = await store.getPairing();
 	let parsed: SyncBody | null = null;
+	/** The key this request's signature verified with. */
+	let signer = "";
 	let paired = false;
 	let replaced = false;
 	if (isPairingActive(pairing, now) && bytes.length <= PAIR_MAX_BYTES) {
@@ -106,6 +122,7 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 			await store.setPublicKey(body.value.pair.publicKey);
 			await store.setPairing({ ...pairing, used: true });
 			parsed = body.value;
+			signer = body.value.pair.publicKey;
 			paired = true;
 		}
 	}
@@ -121,7 +138,11 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 		const body = parseSyncBody(text);
 		if (!body.ok) return error(body.code);
 		if (body.value.pair) return error(pairing === null ? "PAIRING_NOT_ACTIVE" : "PAIRING_REJECTED");
+		// Spec change 45: if a pairing replaced the key while this request ran, it's refused as if signed by the old key.
+		// The tags below cover a pairing that lands after this check.
+		if ((await store.getPublicKey()) !== stored) return error("BAD_SIGNATURE");
 		parsed = body.value;
+		signer = stored as string;
 	}
 
 	// 4. Apply: bridge state, pool top-up, snapshots. The chain height never goes down (spec change 16): a fresh
@@ -142,8 +163,20 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 		outdated: parsed.outdated,
 		...(checks ? { checks } : {}),
 	});
+	// Spec change 45: one network per pairing. With none stored for this key, the first readable address in the body's
+	// order sets it; an address on another network is dropped, like one whose network can't be read.
+	const signerId = keyId(signer);
+	const record = parsed.addresses.length > 0 ? await store.getNetwork() : null;
+	let network = record?.keyId === signerId ? record.network : null;
 	for (const a of parsed.addresses) {
-		if (!(await store.poolHas(a.index))) await store.poolAdd({ addrIndex: a.index, address: a.address });
+		const addressNetwork = subaddressNetwork(a.address);
+		if (addressNetwork === null) continue;
+		if (network === null) {
+			network = addressNetwork;
+			await store.setNetwork({ network, keyId: signerId });
+		}
+		if (addressNetwork !== network) continue;
+		if (!(await store.poolHas(a.index))) await store.poolAdd({ addrIndex: a.index, address: a.address, keyId: signerId });
 	}
 	// The highest index with a counted payment in this sync, noted once.
 	const paid = Math.max(0, ...parsed.snapshots.filter((snap) => snap.transfers.some((t) => counted(t) && t.amount !== "0")).map((snap) => snap.index));

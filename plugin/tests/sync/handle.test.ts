@@ -6,8 +6,8 @@ import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { handleSync } from "../../src/sync/handle";
 import { PAIRING_TTL_MS, keyId, newPairingCode } from "../../src/sync/pairing";
 import { PAIR_MAX_BYTES } from "../../src/sync/protocol";
-import { type KeyName, MemoryStore, PUBLIC_KEYS, bytesOf, signedHeaders } from "./helpers";
-import { fakeSubaddress } from "../addresses";
+import { KEY_IDS, type KeyName, MemoryStore, PUBLIC_KEYS, bytesOf, signedHeaders } from "./helpers";
+import { TAGS, fakeAddress, fakeSubaddress } from "../addresses";
 
 const T0 = 1_790_000_000_000;
 const H0 = 3_000_000;
@@ -296,6 +296,68 @@ describe("ordinary syncs", () => {
 
 // Spec change 29: only a full sync counts as one. A pairing request, or the bridge's "starting" message while
 // wallet-rpc isn't ready, says the wallet host is alive (lastHeardAt) but not that its wallet has synced (lastSyncAt).
+describe("one network per pairing (spec change 45)", () => {
+	const MAIN = (i: number) => fakeAddress(TAGS.mainnet[1], i, "M");
+	const UNREADABLE = (i: number) => fakeAddress(99, i, "U");
+	const indexes = (store: MemoryStore) => [...store.pool.keys()].sort((a, b) => a - b);
+
+	it("[T20][P02] [RT-11] with no stored network, the first address sets it for the key that sent it; another network's address is dropped", async () => {
+		const store = pairedStore();
+		await send(store, syncBody({ addresses: [{ index: 1, address: ADDR(1) }, { index: 2, address: MAIN(2) }, { index: 3, address: ADDR(3) }] }));
+		expect(indexes(store)).toEqual([1, 3]);
+		expect(store.network).toEqual({ network: "stagenet", keyId: KEY_IDS.test1 });
+	});
+
+	it("[T20][P02] [RT-11] a mixed first batch keeps only the first readable address's network, in the body's order", async () => {
+		const store = pairedStore();
+		const addresses = [{ index: 1, address: UNREADABLE(1) }, { index: 2, address: MAIN(2) }, { index: 3, address: ADDR(3) }, { index: 4, address: MAIN(4) }];
+		await send(store, syncBody({ addresses }));
+		expect(indexes(store)).toEqual([2, 4]);
+		expect(store.network).toEqual({ network: "mainnet", keyId: KEY_IDS.test1 });
+	});
+
+	it("[T20][P02] [RT-11] the stored network holds for later syncs: another network's address is dropped and the network stays", async () => {
+		const store = pairedStore();
+		store.network = { network: "stagenet", keyId: KEY_IDS.test1 };
+		await send(store, syncBody({ addresses: [{ index: 5, address: MAIN(5) }] }));
+		expect(indexes(store)).toEqual([]);
+		expect(store.network).toEqual({ network: "stagenet", keyId: KEY_IDS.test1 });
+	});
+
+	it("[T20][T03] a stored network from another key counts as not known: this key's first address sets its own", async () => {
+		const store = pairedStore("test1");
+		store.network = { network: "mainnet", keyId: KEY_IDS.test2 };
+		await send(store, syncBody({ addresses: [{ index: 1, address: ADDR(1) }] }));
+		expect(indexes(store)).toEqual([1]);
+		expect(store.network).toEqual({ network: "stagenet", keyId: KEY_IDS.test1 });
+	});
+
+	it("[T03] each pool row carries the ID of the key that signed the sync", async () => {
+		const store = pairedStore("test2");
+		await send(store, syncBody({ addresses: [{ index: 1, address: ADDR(1) }] }), { key: "test2" });
+		expect(store.pool.get(1)).toEqual({ addrIndex: 1, address: ADDR(1), status: "free", keyId: KEY_IDS.test2 });
+	});
+
+	it("[T03][R08] a sync whose key is replaced by a pairing while it runs is refused, and changes nothing", async () => {
+		// The first read of the key (the signature check) sees test1; a pairing to test2 lands straight after.
+		class RacingStore extends MemoryStore {
+			reads = 0;
+			override async getPublicKey() {
+				const key = this.publicKey;
+				if (++this.reads === 1) this.publicKey = PUBLIC_KEYS.test2;
+				return key;
+			}
+		}
+		const store = new RacingStore();
+		store.publicKey = PUBLIC_KEYS.test1;
+		const out = await send(store, syncBody({ height: H0 + 5, addresses: [{ index: 1, address: ADDR(1) }] }));
+		expect(errorCode(out)).toBe("BAD_SIGNATURE");
+		expect(store.pool.size).toBe(0);
+		expect(store.network).toBeNull();
+		expect(store.bridge).toBeNull();
+	});
+});
+
 describe("heard, not synced (spec change 29)", () => {
 	it("a pairing request: heard, not synced, no checks kept; the height still sets the floor", async () => {
 		const store = new MemoryStore();

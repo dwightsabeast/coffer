@@ -45,7 +45,8 @@ export interface SyncOptions {
 export interface HostOptions {
 	/** Pair with this RFC 8032 key (default test1); null leaves the site unpaired. */
 	paired?: KeyName | null;
-	/** Free pool rows 1..pool (default 0), stagenet subaddresses unless `poolNetwork` says otherwise. */
+	/** Free pool rows 1..pool (default 0), stagenet subaddresses unless `poolNetwork` says otherwise. On a paired site the
+	 * rows carry its key ID and the network is stored with it, as if the bridge's first sync had set it (spec change 45). */
 	pool?: number;
 	poolNetwork?: keyof typeof TAGS;
 	/** The last sync this long ago in ms (default 30 s); null for none. */
@@ -61,6 +62,8 @@ export async function redteamHost(o: HostOptions = {}) {
 	const ago = o.lastSyncAgo === undefined ? 30_000 : o.lastSyncAgo;
 	if (ago !== null) await host.fixtures.plugin.kv("state:bridge", { height: H0, lastSyncAt: Date.now() - ago, version: 1, outdated: false });
 	const tag = TAGS[o.poolNetwork ?? "stagenet"][1];
+	// A seeded pool on a paired site: its network was set by those addresses, as on a real site (spec change 45).
+	if (pairedWith !== null && (o.pool ?? 0) > 0) await host.fixtures.plugin.kv("state:network", { network: o.poolNetwork ?? "stagenet", keyId: KEY_IDS[pairedWith] });
 	for (let i = 1; i <= (o.pool ?? 0); i++) await host.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: fakeAddress(tag, i, "R"), status: "free", ...(pairedWith !== null ? { keyId: KEY_IDS[pairedWith] } : {}) });
 
 	/** A sync body (v 1, the next seq, H0, empty lists unless `body` sets them) or exact bytes, signed and posted. */

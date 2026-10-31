@@ -1,7 +1,7 @@
 /**
  * Where Coffer keeps things (docs/spec.md, Plugin manifest and Security model):
  * - ctx.settings: the bridge's public key, the currency and the confirmation speed (no secret fields).
- * - ctx.kv: pairing state (a hash, never the code), the bridge's last sync, alerts, housekeeping cursors.
+ * - ctx.kv: pairing state (a hash, never the code), the bridge's last sync, alerts, housekeeping cursors, the site's network (spec change 45).
  * - ctx.storage: the address pool and the invoices.
  */
 import type { StorageCollection } from "emdash";
@@ -10,16 +10,18 @@ import type { PluginContext } from "emdash/plugin";
 import { LATE_WINDOW_MS, TIP_WATCH_MS } from "./core/constants";
 import type { Invoice } from "./core/invoice";
 import { CURRENCIES, rateCacheKey } from "./rates";
-import type { BridgeState, SyncStore } from "./sync/handle";
+import type { BridgeState, NetworkRecord, SyncStore } from "./sync/handle";
 import type { PairingState } from "./sync/pairing";
 
 export const SETTING = { publicKey: "bridgePublicKey", currency: "currency", speed: "speed" } as const;
-export const KV = { pairing: "state:pairing", bridge: "state:bridge", alerts: "state:alerts", purgeCursor: "state:purgeCursor", cronScheduled: "state:cronScheduled", salt: "state:salt", buckets: "state:buckets", paidTop: "state:paidTop", clientIp: "state:clientIp", lastPairing: "state:lastPairing", setupDone: "state:setupDone", watchTruncatedAt: "state:watchTruncatedAt" } as const;
+export const KV = { pairing: "state:pairing", bridge: "state:bridge", alerts: "state:alerts", purgeCursor: "state:purgeCursor", cronScheduled: "state:cronScheduled", salt: "state:salt", buckets: "state:buckets", paidTop: "state:paidTop", clientIp: "state:clientIp", lastPairing: "state:lastPairing", setupDone: "state:setupDone", watchTruncatedAt: "state:watchTruncatedAt", network: "state:network" } as const;
 
 export interface PoolRow {
 	addrIndex: number;
 	address: string;
 	status: "free" | "claimed";
+	/** The ID of the bridge key whose sync added the row (spec change 45); rows from before it have none. */
+	keyId?: string;
 	invoiceId?: string;
 }
 
@@ -77,9 +79,15 @@ export class CtxSyncStore implements SyncStore {
 	poolHas(index: number) {
 		return pool(this.ctx).exists(String(index));
 	}
-	async poolAdd(row: { addrIndex: number; address: string }) {
+	async poolAdd(row: { addrIndex: number; address: string; keyId: string }) {
 		// Create only when absent: a concurrent sync must never reset a claimed row to free.
 		await pool(this.ctx).compareAndSet(String(row.addrIndex), null, { ...row, status: "free" });
+	}
+	getNetwork() {
+		return this.ctx.kv.get<NetworkRecord>(KV.network);
+	}
+	setNetwork(record: NetworkRecord) {
+		return this.ctx.kv.set(KV.network, record);
 	}
 	poolFreeCount() {
 		return pool(this.ctx).count({ status: "free" });

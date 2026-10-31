@@ -36,6 +36,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open |
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | open |
 | RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | fixed 2026-10-31 |
+| RT-29 | Medium | T20, T03, R08 | 1, fix planning | A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first | open; fixed for release 1 with RT-11 (spec change 45) |
 
 ---
 
@@ -309,7 +310,7 @@ Fresh attacker session, 2026-10-28 (local) / 2026-10-29 UTC. Order (Wyatt): the 
 
 **Findings this round:** 10. They are 3 Medium (RT-20, which **blocks release 1**, RT-26 and RT-27, all ruled by Wyatt) and 7 Low (RT-19, RT-21 to RT-25, RT-28).
 
-**After both rounds:** 28 findings, 27 open and RT-28 fixed (2026-10-31): 2 High (RT-11, and RT-08, raised from Medium by Wyatt on 2026-10-31), 7 Medium (RT-05, 07, 12, 15, 20, 26, 27) and 19 Low. The summary table at the top lists all 28.
+**After both rounds:** 28 findings, 27 open and RT-28 fixed (2026-10-31). RT-29 (Medium) was found afterwards, in fix planning, and makes 29. The 28: 2 High (RT-11, and RT-08, raised from Medium by Wyatt on 2026-10-31), 7 Medium (RT-05, 07, 12, 15, 20, 26, 27) and 19 Low. The summary table at the top lists all 28.
 
 **Observations (no finding):**
 - Cloudflare's injected analytics beacon is blocked by Coffer's CSP.
@@ -717,3 +718,29 @@ Not Coffer code: tier 1 keeps it out of everything Coffer ships. But it's the tr
   - **1.4.0 doesn't clear it by itself.** `@emdash-cms/admin@1.4.0` keeps the same range, `dompurify ^3.3.2`. Whether a site gets 3.4.17 depends on when its lockfile last resolved, ours included.
 - **Ruling (Wyatt, 2026-10-31):** EmDash 1.4.0 goes through the upgrade checklist after 2026-11-05, in the fix phase before phase 09's final tests.
 - For the report: Coffer's security claims stop at its own code, and the host CMS's dependency hygiene is EmDash's. A possible upstream note.
+
+## RT-29 — A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first
+
+- **Rows:** T20, T03, R08. **Severity:** Medium (Wyatt, 2026-10-31); **fixed for release 1, with RT-11** (spec change 45). **Pass 1, fix planning** (2026-10-31), found while planning RT-11's fix.
+- **What I did:** read the pairing path. There's no test yet; the fix session writes the failing one first.
+- **What the code does:**
+  - Pairing (`plugin/src/sync/handle.ts:96–110`) stores the new key and burns the code, but doesn't touch the pool.
+  - A sync adds an address only if its index isn't in the pool already (`handle.ts:146`).
+  - The bridge tops up from the site's `poolTop` (`bridge/internal/bridgeloop/bridgeloop.go:443–487`).
+  - So after a re-pair, the previous host's unused addresses stay in the pool and are handed out first. The new host's addresses go above them.
+- **What happens to people:**
+  - **Another shop wallet on the same network** (the spec's own advice after a leaked view key): new tips go to the old wallet until its unused addresses (up to 50) run out. The new wallet host doesn't watch them, so those invoices never settle and expire. The money sits in a wallet the admin meant to retire, whose view key may be leaked. This contradicts the spec's "New payments go to the new wallet".
+  - **Another network** (for example stagenet testing, then mainnet): the pool mixes networks with no attacker, the honest path to RT-11. A mainnet tipper is handed a stagenet address, which a mainnet wallet app refuses, so the tip fails.
+  - **After a stolen key (RT-08):** a thief's unused addresses survive the re-pair, so "until you re-pair" isn't true yet.
+- **Fix (spec change 45, Wyatt's ruling of 2026-10-31):**
+  - Every new pairing drops all unused pool addresses, whatever their network, and clears the stored network. The new bridge's first address sets it again.
+  - Claimed addresses and their invoices stay.
+  - **Order:** the drop and the cleared network come before the new key is stored, so a failed pairing leaves the old one working (Wyatt).
+  - **Costs checked:**
+    - The empty pool after a re-pair is at most one immediate sync round trip, beyond what checkout already refuses.
+    - The same wallet reinstalled from keys adds no gap in the address numbers.
+    - A host that keeps its wallet skips up to 50 numbers per re-pair.
+    - **A different wallet starts above the old wallet's highest claimed number** (confirmed from the code). After about 200 old checkouts, expired ones included, its tips are beyond a wallet app's lookahead. The Health warning doesn't see it, because `state:paidTop` is the old wallet's.
+  - **Spec change 46 fixes the last two:** the bridge says at pairing whether it's the same wallet. A different wallet gets fresh numbering; the same wallet re-offers its own unused subaddresses.
+  - **Until then,** the switch-wallets steps say to raise the wallet app's lookahead.
+- **Status:** open; fixed in the RT-11 fix session.

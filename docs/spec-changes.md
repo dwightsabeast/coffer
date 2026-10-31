@@ -1269,3 +1269,75 @@ Proposal (Wyatt's draft, for the spec's row, matrix T03 and the public report): 
 Effect on the admin budget: none for the wording. A detection feature from the fix sessions might add a Health line, which would come back here first.
 Effect on the trust contract: none for the wording.
 Wyatt's decision (2026-10-31): RT-08 is High. The fix sessions look for detection (for example the honest bridge checking the site's pool against its own wallet) and fast re-pairing. If nothing holds, it becomes an accepted limit with this wording. Wyatt applies the wording to the live spec. `docs/spec.md` stays a snapshot until then.
+
+## 45. One network per pairing, and a pairing starts the pool afresh (RT-11, RT-29)  (status: accepted, 2026-10-31, with Wyatt's changes below)
+Found in: 07b pass 1. RT-11 (round 1, group L5: a signed sync adds a wrong-network subaddress to the pool). RT-29 (fix planning, 2026-10-31, from the code: a re-pair keeps the previous wallet host's unused pool addresses).
+Spec says:
+- Spec change 36: "The plugin never learns the network … neither pairing nor sync carries it".
+- T20: "a mainnet address in a stagenet site's pool, or the reverse, is refused".
+- The wallet-host failure table, "View key leaked": "Create a new shop wallet, run the installer with it … New payments go to the new wallet."
+- Pairing "forgets the previous host's sync and checks" (spec change 29).
+Evidence:
+- **RT-11:** `protocol.ts:181` admits any address whose network byte it can read; nothing compares it with the site's network, which the plugin doesn't have.
+- **RT-29:** pairing (`handle.ts:96–110`) doesn't touch the pool, and the sync adds an address only if its index isn't there yet (`handle.ts:146`). So after a re-pair with another shop wallet, the old wallet's unused addresses stay and are handed out first.
+  - The bridge tops up from the site's `poolTop`, so the new wallet's addresses go above them. Stagenet followed by mainnet gives a mixed pool with no attacker at all.
+  - With the same network, new payments go to the old wallet until its unused addresses run out, which contradicts the spec's "new payments go to the new wallet".
+  - A thief's unused addresses (RT-08) also survive a re-pair, which contradicts RT-08's "until you re-pair".
+  - Not yet shown by a test. The fix session writes it first.
+Proposal (plugin only; no change to what the bridge sends, and no bridge rebuild):
+1. **Every new pairing drops all unused pool addresses**, whatever their network, and clears the stored network. It happens in the same request that stores the new key.
+   - **Order (Wyatt):** only after the code and the new key's signature have both checked out. Then drop the unused pool and clear the network, and only then store the new key and burn the code.
+   - A failure partway therefore leaves the old pairing working, with the code still usable for a retry. It never leaves a new pairing with the old pool. The old bridge refills the pool on its next sync, which can skip up to 50 numbers for that wallet, the same cost as below.
+   - A test makes a pairing fail after the drops and checks that the old key still syncs and the new key is refused.
+   - Claimed addresses stay, with their invoices. An open invoice from another shop wallet can't be watched by the new host and expires as today. That's unchanged and already stated.
+2. **The site's network** is the network of the first readable address the plugin accepts after a pairing, signed by the newly paired bridge. It's stored in KV next to the bridge key (KV isn't a storage collection, so the trust contract is unchanged). An install with no stored network is treated like a fresh pairing. There's no migration: nobody runs Coffer yet (Wyatt, 2026-10-31).
+3. **A sync address on another network is dropped**, like one whose network can't be read today. Within one sync, the first readable address in the body's order sets the network when none is stored.
+4. **Checkout never hands out a pool address whose network differs from the stored one** (defence in depth). A row like that is skipped like an unreadable one (spec change 36's "claimed with no invoice and skipped").
+5. **The admin page shows the stored network next to the pairing status.** For example "Paired · stagenet", or "Paired · network not known yet (set by the wallet host's first addresses)". The exact text goes in the plan for Wyatt.
+6. **Refused addresses aren't reported on their own.** Reporting them is folded into RT-08's Health line (spec change 46, to come; Wyatt, 2026-10-31).
+Costs checked (2026-10-31, from the code):
+- **The empty pool after a re-pair costs a few seconds, at most.**
+  - Pairing clears `lastSyncAt`, so checkout already answers `WALLET_HOST_SILENT` from the pairing until the new host's first full sync (`checkout.ts:37–40`). It answers `WALLET_HOST_SYNCING` while that host's wallet scans.
+  - A reinstall from keys catches up and rescans before it reports anything (spec change 15), so the site stays silent through that too.
+  - The first full sync gets `poolFree: 0` back. The bridge creates the missing addresses and, with `Soon()` true, sends them on an immediate next sync (`bridgeloop.go:255`, `:490`).
+  - So the only new window is that one round trip, when the wallet was already caught up. A checkout in it gets `NO_ADDRESS_AVAILABLE`, as on any empty pool.
+- **Gaps in the address numbers** (spec change 9: a wallet app looks 200 past the last paid address, and the Health page warns when the highest claimed index minus the highest paid one passes 150):
+  - **Reinstall on a new wallet host** (the common re-pair, a wallet restored from keys): **no gap is added.** `poolTop` is the highest remaining row, a claimed one, so the bridge catches up only to it and then creates from the next number, reusing the dropped ones. It's less work than today's catch-up to the old top.
+  - **Re-pairing a host that keeps its wallet** (`xmr-bridge pair` after a lost key, R08, or re-running the installer with the wallet kept): **up to 50 numbers are skipped each time** (`POOL_TARGET`).
+    - The bridge only ever creates new subaddresses (`create_address`) and never re-sends ones its wallet already has, so the dropped numbers are never offered again.
+    - The new pool starts above the wallet's highest. That's at most the old pool's top plus up to 100 pending addresses, but pending ones are still sent, so only the dropped free rows become a gap.
+    - The spec change 9 warning counts claimed indices, so it sees the gap once those addresses are used. Starting from no gap and with nothing paid in between, three such re-pairs reach the warning (150), and the fourth reaches the wallet app's 200.
+  - **Re-pairing to a different wallet, RT-29's own case: a gap the size of the old shop's history. Confirmed from the code, 2026-10-31.**
+    - Pool rows only ever go from free to claimed (`store.ts:22`, `checkout.ts:193–198`). So every checkout's number stays used, expired ones included, and after the drop `poolTop` is the old wallet's highest claimed index.
+    - The new wallet is fresh. The bridge probes that index (`HasSubaddress`, `get_address` out of bounds), catches up to it without sending anything (`bridgeloop.go:443–455`, `catchUp` at `:497`), and tops up from the next number.
+    - So the new wallet's first pool address comes after the old shop's whole history. Past 200 checkouts, it's beyond a wallet app's lookahead for a wallet that has received nothing, and its tips wouldn't show in the wallet app. The bridge itself sees them, because it created the addresses.
+    - The Health warning is blind to it: it measures from `state:paidTop`, the old wallet's last paid number, which pairing doesn't reset (`store.ts:73–75`, `admin.ts:114–115`).
+    - Today's code has the same gap, from the old top instead, so 45 doesn't cause it. 45 alone doesn't fix it either.
+  - **Fixed in spec change 46 (Wyatt, 2026-10-31), which changes the bridge anyway:**
+    - The bridge tells the site at pairing whether it's the same wallet as before.
+    - A different wallet doesn't inherit the old numbering, and the warning's baseline resets with it.
+    - The same wallet re-offers its own unused subaddresses above `poolTop` (`get_address` by index; Wyatt takes this option), so a re-pair that keeps the wallet skips no numbers either.
+  - **Until 46 lands:** the switch-wallets steps say to raise the wallet app's subaddress lookahead. No such steps exist in the repo's user-facing docs yet. The places are the spec's "View key leaked" row (the live spec, Wyatt's) and phase 09's install docs.
+Tests (fix session, failing first):
+- The two RT-11 expected-fail tests become passing tests.
+- A pairing that fails after the drops: the old key still syncs, the new key is refused, and the code still works for a retry.
+- An RT-29 test: a re-pair to another wallet of the same network gets only the new wallet's addresses, and no old unused one is handed out.
+- A stagenet-to-mainnet re-pair: the old unused addresses are gone, checkout hands out mainnet, and claimed rows and invoices are untouched.
+- No stored network: the next address sets it.
+- A mixed first batch: only the first address's network is kept.
+- Checkout skips a row on another network.
+- The admin page shows the network.
+- A re-pair keeps claimed rows, and `poolTop` falls to the highest claimed one.
+- Matrix rows T20, P02, T03 and R08 get the tags.
+Effect on the admin budget: none (no setting, step or upkeep). The admin page gains the network on the pairing line (Wyatt asked for it).
+Effect on the trust contract: none. Same capabilities, hosts, routes and collections. A KV key and an admin-page text change.
+Related, for spec change 46 (RT-08, next; Wyatt, 2026-10-31):
+- At pairing, the bridge says whether it's the same wallet. A different wallet gets fresh numbering and a reset gap baseline; the same wallet re-offers its own unused subaddresses (above).
+- The bridge checks the site's pool against its own wallet.
+- A stolen key mustn't be able to lock the honest bridge out with far-future sequence numbers, or the check never runs (RT-24's `seq` reach applies here).
+- A refused sync from the honest bridge itself raises the red Health line.
+- Refused wrong-network addresses are reported in that same line.
+Wyatt's decision (2026-10-31): accepted, with three changes:
+1. Keep item 4.
+2. The order inside the pairing request, plus a test for a pairing that fails after the drops (item 1).
+3. Record the different-wallet gap and fix it in spec change 46, with the doc note until then (Costs checked).

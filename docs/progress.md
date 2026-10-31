@@ -4054,3 +4054,56 @@ Still go1.27.1: the dev releases in `~/xmr-pay-dev-data/dev-release/` and the de
 Totals: 28 findings, 27 open. RT-28 is fixed.
 
 Next step: the fix sessions, highest first: RT-08 and RT-11 (High), then RT-20 (blocks release 1), then the other Mediums. The first push after this checks CI's bridge job on go1.27.3.
+
+## 2026-10-31 · Phase 07b fix sessions · Plan for the first fix: RT-11 with RT-29 (spec change 45)
+
+Branch `redteam-1`, local. Planning only: no code changed. The build is the next session's.
+
+**Background:**
+- `main` got the Go 1.27.3 pin alone (`191802c`, pushed by Wyatt's request). CI run 41246807865 succeeded: bridge, plugin and theme jobs, with the race-detector tests and the oracle check. The bridge job's log needs a login, so the version is inferred: `GOTOOLCHAIN=local` plus `go 1.27.3` in `bridge/go.mod`, which refuses anything older and is what `setup-go` installs.
+- `redteam-1` is unchanged by that push, and a test merge of `main` into it has no conflicts.
+
+**Decided (Wyatt, 2026-10-31):**
+- **Network:** recorded in the plugin only. The first address after a pairing is signed by the newly paired bridge, so it's as trustworthy as the bridge declaring its network. No bridge rebuild for this part.
+- **Admin page:** shows the stored network next to the pairing status.
+- **No migration:** an install with no stored network is treated like a fresh pairing (nobody runs Coffer yet).
+- **RT-29 filed (Medium) and fixed whole with RT-11:** every new pairing drops all unused pool addresses and clears the stored network.
+- **Reporting:** refused addresses are reported in RT-08's Health line (spec change 46), not on their own.
+- **Spec change 45 accepted** with three changes: keep item 4 (checkout skips a row on another network); the order inside the pairing request (drops before the key, plus a test for a failure after the drops); and the different-wallet address gap (below) recorded in 45 and fixed in 46.
+
+**Found while costing it:** a re-pair to a different wallet starts the new wallet's pool above the old wallet's highest claimed number, expired checkouts included.
+- Past about 200 old checkouts, its tips are beyond a wallet app's lookahead. The Health warning is blind to it, because `state:paidTop` belongs to the old wallet.
+- This was true before 45 as well.
+- **Spec change 46** fixes it: the bridge says at pairing whether it's the same wallet; a different wallet gets fresh numbering and a reset baseline; the same wallet re-offers its own unused subaddresses (Wyatt took that option).
+- **Until then,** the switch-wallets steps say to raise the wallet app's lookahead. No such steps exist yet in the user-facing docs. The places are the spec's "View key leaked" row (live spec, Wyatt) and phase 09's install docs.
+
+**Build plan for the next session (plugin only; tests first, each step green and committed):**
+1. **Failing tests first.** Tag them [T20], [P02], and [T03]/[R08] where re-pairing is involved; add RT-29's tag where it applies:
+   - RT-29: a re-pair to another same-network wallet hands out only the new wallet's addresses.
+   - A stagenet-to-mainnet re-pair: the old unused addresses are gone, checkout hands out mainnet, and claimed rows and invoices are untouched.
+   - No stored network: the next address sets it.
+   - A mixed first batch: only the first readable address's network is kept, and the rest are dropped.
+   - The two RT-11 `it.fails` flip to `it`.
+   - Checkout skips a free row whose network differs from the stored one.
+   - A re-pair keeps claimed rows, and `poolTop` falls to the highest claimed one.
+   - A pairing that fails after the drops: the old key still syncs, the new key is refused, and the code still pairs on a retry. This needs a fault-injecting store in the test host.
+   - The admin page shows the network ("Paired · stagenet", or "not known yet"). **Exact wording to Wyatt before it's written.**
+2. **Code:**
+   - **Pairing step** (`plugin/src/sync/handle.ts`, step 2), after `pairingCodeMatches` and `verifySignature`: drop the free pool rows, clear the network KV, then `setPublicKey`, then burn the code.
+   - **Store** (`plugin/src/store.ts`): a `KV.network` key, `poolDropFree()` (a query on the `status` index, `where: { status: "free" }`) and network get/set.
+   - **Sync apply** (step 4): an address on another network is dropped; with none stored, the first readable one sets it.
+   - **Checkout** (`checkout.ts` `claimAndStore`): skip and claim-without-invoice a row on another network, as for an unreadable one.
+   - **Admin page** (`admin.ts`): the network next to the pairing line.
+3. **Checks:** plugin `pnpm test` (both configs), typecheck, `emdash-plugin validate`, `bundle --validate-only`. Bridge untouched.
+4. **Docs:** matrix T20 (Covered once green), P02, T03 and R08. Findings RT-11 and RT-29 → fixed. Progress.
+
+**Then RT-08 (spec change 46, to write and get approved before building).** It must cover:
+- the bridge checking the site's pool against its own wallet;
+- the same-wallet flag at pairing, with fresh numbering for a different wallet, re-offered unused subaddresses for the same wallet, and the gap baseline;
+- **no lock-out by far-future sequence numbers** from a stolen key (RT-24's `seq` reach), so the honest bridge's check always runs;
+- a refused sync from the honest bridge itself raises the red Health line;
+- refused wrong-network addresses reported in that same line.
+
+**Then RT-20** (blocks release 1).
+
+**Next step:** a fresh session builds spec change 45 (RT-11 with RT-29) from the plan above, starting with the failing tests.

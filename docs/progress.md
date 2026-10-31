@@ -4107,3 +4107,69 @@ Branch `redteam-1`, local. Planning only: no code changed. The build is the next
 **Then RT-20** (blocks release 1).
 
 **Next step:** a fresh session builds spec change 45 (RT-11 with RT-29) from the plan above, starting with the failing tests.
+
+## 2026-10-31 · Phase 07b fix sessions · Spec change 45 built (RT-11, RT-29)
+
+Branch `redteam-1`, local commits only (`ffe6e2a` to `8080e6b`).
+
+**Decided by Wyatt this session:**
+- **The window a running sync leaves is closed, not filed as RT-30.** A sync already past its signature check can write after a re-pairing's drop, and a thief can time bursts through a re-pair. Every pool row carries the key ID of the sync that added it, and checkout skips other pairings' rows. The stored network also carries the key ID. The re-check of the key before writing ((b)) stays too.
+- **Mark-then-delete** for the drop (his preference over the suggested tag-only design), and every reader of a pool row's status was checked.
+- **Wording:** "Paired · stagenet" and "Paired · network not known yet", without the bracket.
+- **`--code` on the command line** is accepted for the dev box's stagenet re-pair. A stdin option for `xmr-bridge pair` goes into spec change 46 (T29/C06).
+
+**Found while building:**
+- **`updateIf` doesn't change a row's revision** (EmDash 1.3.1, `context-…mjs:644–667`). So the planned `getVersioned` plus `compareAndDelete` would have deleted a row a checkout claimed in between. The drop instead marks `free → dropped` with an `updateIf` guarded on `status: "free"` (checkout's own guard), then deletes.
+- **`compareAndDelete` does reach a sandboxed plugin** (sandbox-workerd 0.9.5 bridges `storage/compareAndDelete` on both sides), but isn't used.
+- **The "dropped" status, reader by reader:**
+  - not counted as free: checkout's query, `poolFreeCount`, Health's meter;
+  - not in the gap warning: it reads claimed rows only;
+  - not in `poolTop`: now free and claimed rows only, a deliberate change;
+  - `poolHas` counts it as present, which is fine because no bridge re-sends a number;
+  - uninstall deletes every status;
+  - the data-at-rest scanner doesn't read status, and the counts tool groups by it.
+
+  One is left behind in a route test.
+- **Fixtures:** a site with a pool now needs a paired key whose ID its rows carry. The checkout-route and platform fixtures now pair test1, and 11 test files tag their seeded rows. The redteam harness stores the network for a seeded pool.
+
+**Built** (plugin only; the bridge is untouched):
+1. `ffe6e2a`: `keyId()` (the base64 key's first 16 characters), and fixtures tag their rows.
+2. `d6e8942`: the network per pairing on sync (items 2 and 3), key IDs on new rows, a sync whose key was replaced while it ran refused, and the RT-11 `it.fails` turned into passing tests.
+3. `b8a5982`: the pairing drop (item 1) in Wyatt's order, mark-then-delete, `poolTop` ignoring dropped rows.
+4. `3045295`: checkout skips another network's or another pairing's rows (item 4 and the tag).
+5. `f169690`: Health's "Wallet host" line (item 5).
+6. `8080e6b`: docs. Matrix T20 Covered; P02, T03 and R08 updated; Threats counted from the table: 20 Covered, 7 Partial, 3 Planned, 1 Gap. RT-11 and RT-29 fixed (29 findings, 26 open). Spec change 45 marked built, with these decisions; 46 gains the `pair` stdin option.
+
+**Tests**, the last full run, at `f169690`:
+- **Plugin, default config:** 354 passed, 15 expected fail, 1 skipped (35 files).
+- **Plugin, goods config:** 95 passed, 1 skipped.
+- **Checks:** typecheck, `emdash-plugin validate` and `bundle --validate-only` clean, bundle 59.5 KB (58.3 KB before).
+- **New test files:** `tests/routes/repair.test.ts` (route-level re-pairs, the leftover window, a leftover dropped row) and `tests/routes/pool-drop.test.ts` (the claim racing the drop).
+- **Changed test files:** handle, claim, uninstall, admin-health, admin-route, platform, network.
+
+Notes on the runs:
+- A full run takes about 10 minutes now (468 s default, 139 s goods), so it goes in the background.
+- In step 4's first run, a `grep` pipe hid three failing platform tests from the exit code. They were caught in the output and fixed by the fixture. The later runs used `pipefail`.
+- In step 5, two admin-health tests ("[P03] spam limits", 33 s; "an outdated wallet host", 52 s) failed alongside the step's expected failures. They passed alone and in both later full runs. Worth watching.
+
+**Not covered:**
+- the bridge (no change; spec change 46 is next);
+- `go test -race` (no `gcc` here);
+- CI (nothing pushed);
+- the live re-pair below, pending.
+
+**Dev box:**
+- Two orphaned workerd processes from the dev site (parent PID 1, about 570 MB, up nearly 3 days, probably round 2's j1 SIGKILL run) were stopped.
+- `data.db` backed up to `~/xmr-pay-dev-data/redteam/45-before-repair.db`: 55 invoices; pool 355 rows (305 claimed, 50 free, indexes 306–355, none tagged); bridge key fingerprint `2c00d25866f4`.
+- The plugin is built and the dev site runs in `astro dev` (background).
+- The installed bridge synced at 23:56:54 UTC with its old key; no network is stored yet.
+- Under the new checkout rule, untagged rows can't be handed out until a re-pair (the "no migration" decision).
+
+**Release note for phase 09:** EmDash's plugin guidance asks for a `package.json` version bump when runtime behaviour changes. This build changes it.
+
+**Live re-pair (pending):**
+1. Wyatt runs `sudo sh ~/xmr-pay-dev-data/45-repair.sh`, right after Claude issues a code to `~/xmr-pay-dev-data/45-pair-code.txt` (mode 600; the script deletes it).
+2. Claude runs the after-check: Health "Paired · stagenet", 50 free rows all with the new key's ID, none dropped, a public tip getting a new-key address.
+3. Expected cost: up to 50 stagenet subaddress numbers skipped (306–355), the "host keeps its wallet" case of spec change 45.
+
+**Next step:** the live re-pair above. Then RT-08's spec change 46 (write it, get it approved, then build), then RT-20.

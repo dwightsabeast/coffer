@@ -3849,3 +3849,60 @@ Next step: Step 5 (RT-15's built-copy re-measure), then Step 6 (`pnpm audit`, `g
   - The dev site's `dist` was rebuilt from the placeholder plugin build.
 
 Next step: Step 6. `pnpm audit` in `plugin/`, `theme/` and `contract/`, plus the lockfile check against the tiers. For `govulncheck`, I name the exact version to Wyatt before running it.
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: paused for the night (handoff)
+
+Branch `redteam-1`, local, 36 commits ahead of `main`, not pushed. Plan: `/home/dev/.claude/plans/phase-07b-attacker-pass-shiny-cerf.md` (extends `…-shimmering-kahn.md`). **Steps 4, 2, 3 and 5 are done; Steps 6 and 7 remain.**
+
+**State at the pause (checked):**
+- **Dev box:**
+  - Git tree clean.
+  - No tmux sessions; no `astro dev` running.
+  - Ports 4321, 4322, 8099 and 4399 free.
+  - `xmr-bridge` and `monerod-stagenet` active. The dev box's bridge backs off quietly while the site is stopped.
+- **Dev site:**
+  - `data.db` matches `~/xmr-pay-dev-data/redteam/round2-step5.db`, itself equal to `round2-post-k.db`: 55 invoices, 355 pool rows, 8 KV rows, bridge key `2c00d25866f4`. Checked row for row (419 rows, 0 different).
+  - The plugin `dist` and the site's `dist` are built with the install-command placeholder.
+- **`coffer-test`:** rolled back to `blank`, and the `dev.wyattdilley.com` tunnel route is down (Wyatt). No pairing-code files are left on the dev box.
+- **Evidence kept outside the repo:**
+  - `~/xmr-pay-dev-data/07b-f1-output.txt`, `07b-f1w-output.txt`, `07b-f4-output.txt`, `07b-f4-output-run1.txt`, `07b-f4c-output.txt`;
+  - the void runs, `07b-f1-void-output.txt` and `07b-f1-failed-install-log.txt`;
+  - `redteam/round2-f1-after.db`, the coffer-test test state;
+  - `redteam/h1-2026-10-30T213904728Z.txt`, Step 5.
+  
+  `dev-release/` still holds the signed `0.0.202610301609-dev.2d7a29d` release, its `f4/` tampered copy and the `redteam/` scripts. It's no longer served.
+
+**Findings this session**:
+- **Medium:** RT-20 (**blocks release 1**), RT-26 and RT-27. Wyatt ruled all three.
+- **Low:** RT-19, RT-21, RT-22, RT-23, RT-24 and RT-25. RT-25 follows the matrix's reading.
+- **Observations:**
+  - what the second nodes learn (new row P05);
+  - Cloudflare's beacon blocked by Coffer's CSP;
+  - the address checksum isn't checked;
+  - RT-15's cap drops the newest invoices first.
+- **Totals:** 27 findings, all open. 1 High (RT-11), 8 Medium (RT-05, 07, 08, 12, 15, 20, 26, 27), 18 Low.
+- **New matrix row F08**, the bridge reading the site's replies. T27 is now Covered and T10 is Covered for pass 1.
+
+**Open, needs Wyatt:**
+1. **Step 6 go-ahead.** Proposed: `golang.org/x/vuln/cmd/govulncheck@v1.9.0` (Go team, BSD-3-Clause, proxy timestamp 2026-10-11, commit `e672cbe8fbc8c76e28fcb6db0efd9ce354e0dac5`), run as `go run …@v1.9.0 -C ~/xmr-pay/bridge ./...` from an empty scratch folder. It downloads Go's vulnerability database from `vuln.go.dev`. Plus `pnpm audit` in `plugin/`, `theme/` and `contract/`, which sends package names and versions to npm's audit service. Nothing is added to the repo or CI.
+2. **Upstream reports (Wyatt's):** RT-16 (EmDash admin pages and widgets have no role field) and RT-17 (the admin UI prints the raw refusal), both confirmed in EmDash 1.3.1.
+3. **Spec questions for the fix phase, Wyatt's call:**
+   - whether the spec's Privacy list should say what remote nodes learn (P05);
+   - RT-19's three fix options (pairing order);
+   - RT-26's and RT-27's fix ideas.
+
+**For pass 2 (also listed in earlier entries):**
+- **Fix `07b-i2.sh`:** report unreadable sources as "not checked", search subfolders, check each transcript once.
+- **Not done from Step 3's old list:** both nodes lying, both unreachable, a reordered block.
+- **T26:** the wallet-rpc downgrade case is still open.
+- **A plugin-suite flake:** `tests/redteam/checkout.test.ts` T19 L3 hit the 30 s wall once in a full run; it passes alone and in a re-run.
+
+**Phase 09 items noted this session:**
+- a live check of the tip button through a real https proxy (RT-20);
+- the install docs could mention Cloudflare's injected analytics on pay pages.
+
+**Next session's first step:** read this entry, then ask Wyatt for the Step 6 go-ahead (version above). After Step 6 comes Step 7, closing the round:
+- T24 and T25 spot-checked from the source;
+- a findings summary for "Pass 1, round 2";
+- the coverage column for every row round 2 touched;
+- the session entry, whose next step is the fix sessions: highest open finding first, RT-11, then the Mediums, with RT-20 ahead of the rest because it blocks release 1.

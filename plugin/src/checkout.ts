@@ -12,7 +12,8 @@ import { atomicToXmr, priceToMinor } from "./core/money";
 import { invoiceUri } from "./core/uri";
 import { type Currency, getRate, isCurrency } from "./rates";
 import { KV, SETTING, invoices, pool } from "./store";
-import type { BridgeState } from "./sync/handle";
+import type { BridgeState, NetworkRecord } from "./sync/handle";
+import { keyId } from "./sync/pairing";
 
 export type CheckoutErrorCode = "INVALID_REQUEST" | "PRODUCT_NOT_FOUND" | "ENTRY_NOT_FOUND" | "RATE_UNAVAILABLE" | "NO_ADDRESS_AVAILABLE" | "TOO_MANY_OPEN" | "WALLET_HOST_SILENT" | "WALLET_HOST_SYNCING";
 /** `amountAtomic` and `amountXmr` are null for an open tip (no amount asked). */
@@ -181,15 +182,23 @@ async function findProduct(ctx: PluginContext, idOrSlug: string) {
 /**
  * Claims a free pool row with updateIf (one winner per row), then stores the invoice; `subaddress` is unique on invoices.
  * The build gets the row's network (spec change 36). A row whose network can't be read (sync drops those since 7e, so
- * only an older row) is claimed with no invoice, so it's never handed out, as when the database refuses an invoice.
+ * only an older row), one on another network than the stored one, or one added under another bridge key (spec change
+ * 45) is claimed with no invoice, so it's never handed out, as when the database refuses an invoice.
  */
 export async function claimAndStore(ctx: PluginContext, build: (row: { addrIndex: number; address: string; network: MoneroNetwork }) => Invoice): Promise<Invoice | null> {
+	// Spec change 45: only the paired key's rows, on its network once one is stored. A row from an earlier pairing (a
+	// sync already running when the re-pairing landed) or on another network is skipped like an unreadable one.
+	const key = await ctx.settings.get<string>(SETTING.publicKey);
+	if (!key) return null;
+	const currentId = keyId(key);
+	const record = await ctx.kv.get<NetworkRecord>(KV.network);
+	const siteNetwork = record?.keyId === currentId ? record.network : null;
 	for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
 		const free = await pool(ctx).query({ where: { status: "free" }, orderBy: { addrIndex: "asc" }, limit: 5 });
 		if (free.items.length === 0) return null;
 		const pick = free.items[attempt % free.items.length];
 		const network = subaddressNetwork(pick.data.address);
-		if (network === null) {
+		if (network === null || pick.data.keyId !== currentId || (siteNetwork !== null && network !== siteNetwork)) {
 			await pool(ctx).updateIf(pick.id, { where: { status: "free" }, set: { status: "claimed" } }).catch(() => undefined);
 			continue;
 		}

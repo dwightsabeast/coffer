@@ -35,7 +35,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open |
 | RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open |
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | open |
-| RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | open |
+| RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | fixed 2026-10-31 |
 
 ---
 
@@ -309,7 +309,7 @@ Fresh attacker session, 2026-10-28 (local) / 2026-10-29 UTC. Order (Wyatt): the 
 
 **Findings this round:** 10. They are 3 Medium (RT-20, which **blocks release 1**, RT-26 and RT-27, all ruled by Wyatt) and 7 Low (RT-19, RT-21 to RT-25, RT-28).
 
-**After both rounds:** 28 findings, all open: 2 High (RT-11, and RT-08, raised from Medium by Wyatt on 2026-10-31), 7 Medium (RT-05, 07, 12, 15, 20, 26, 27) and 19 Low. The summary table at the top lists all 28.
+**After both rounds:** 28 findings, 27 open and RT-28 fixed (2026-10-31): 2 High (RT-11, and RT-08, raised from Medium by Wyatt on 2026-10-31), 7 Medium (RT-05, 07, 12, 15, 20, 26, 27) and 19 Low. The summary table at the top lists all 28.
 
 **Observations (no finding):**
 - Cloudflare's injected analytics beacon is blocked by Coffer's CSP.
@@ -684,7 +684,12 @@ One-off runs for pass 1, approved by Wyatt on 2026-10-31. Nothing was added to t
 - **Reach:** no money moves: the bridge is view-only. 6809 needs a compromised intermediate's key plus a position on the path, on a host whose trust store lacks the distrust. 6611 is a slowdown of the wallet host.
 - **Test:** `cmd/xmr-bridge/redteam_test.go`, "[T28] [RT-28] the bridge is built with go1.27.3 or later", `t.Skip("RT-28 open")`. Run once without its skip, it failed: "built with go1.27.1; go1.27.3 or later has the fixes for GO-2026-6809 and GO-2026-6611". It's a floor for today's advisories. Phase 09's govulncheck rerun is still what checks the release.
 - **Fix (Wyatt, 2026-10-31):** go1.27.3, released 2026-10-20, pinned in one place CI reads, plus the same version on the dev box (Wyatt runs the sudo step). Release 1's bridge is built in CI, then rebuilt on the dev box with the same Go and flags, and the hashes must match before Wyatt signs. Afterwards govulncheck must show nothing called, and the test's skip comes off.
-- **Status:** open.
+- **Status:** fixed 2026-10-31.
+  - **The change:** `bridge/go.mod` and `bridge/oracle/go.mod` say `go 1.27.3`. `ci.yml`'s `setup-go` reads `go-version-file: bridge/go.mod`, so that line is the one pin. The dev box has go1.27.3 (Wyatt, sudo; the download's SHA-256 `65efbc80…379b40` matched go.dev's list and dl.google.com's `.sha256`; the old Go is kept at `/usr/local/go1.27.1-old`). With `GOTOOLCHAIN=local`, go1.27.1 now refuses the module ("go.mod requires go >= 1.27.3").
+  - **The test:** its skip came off, and it passes.
+  - **govulncheck v1.9.0 afterwards** (same database, updated 2026-10-27 21:16 UTC): "No vulnerabilities found" in source mode on `bridge/`, and in binary mode on fresh static builds for amd64 and arm64 (`-trimpath`, `CGO_ENABLED=0`, both go1.27.3). Evidence: `~/xmr-pay-dev-data/redteam/rt28-*.txt`.
+  - **Still go1.27.1:** the dev releases in `~/xmr-pay-dev-data/dev-release/` and the dev box's installed bridge. Both are stagenet only; the next dev release picks up the new Go.
+
 
 ## Hardening, round 2 (Low, on the fix list; no RT ID): both localhost checks refuse the same addresses
 

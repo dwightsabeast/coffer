@@ -4021,3 +4021,36 @@ After that, the repo part:
 No tests run for this docs-only commit; none of the changed files are code.
 
 Next step: Wyatt runs the go1.27.3 install, then the RT-28 repo change above. Then the fix sessions, highest first: RT-08 and RT-11 (High), then RT-20 (blocks release 1), then the other Mediums.
+
+## 2026-10-31 · Phase 07b pass 1 · Session 7: RT-28 fixed
+
+- **Dev box:** Wyatt installed go1.27.3 with `~/xmr-pay-dev-data/go1273-install.sh`.
+  - Output: checksum OK, `go version go1.27.3`, `root:root 755`, the old Go kept at `/usr/local/go1.27.1-old`, PASS at 21:59:42 UTC.
+  - Rollback: `sudo rm -rf /usr/local/go && sudo mv /usr/local/go1.27.1-old /usr/local/go`. The old copy can go once CI has passed on go1.27.3.
+- **Repo:**
+  - `bridge/go.mod` and `bridge/oracle/go.mod` now say `go 1.27.3`.
+  - `ci.yml`'s `setup-go` reads `go-version-file: bridge/go.mod`, so the pin lives in one place.
+  - With `GOTOOLCHAIN=local`, go1.27.1 refuses the module: "go.mod requires go >= 1.27.3".
+  - RT-28's test is unskipped and passes.
+  - Decision 72 notes the new pin source. RT-28 is marked fixed in the findings and the matrix (T27, T28).
+- **govulncheck v1.9.0 afterwards** (database updated 2026-10-27 21:16 UTC): "No vulnerabilities found", exit 0, in all three runs:
+  - source mode on `bridge/`;
+  - binary mode on a fresh amd64 static build (`-trimpath`, `CGO_ENABLED=0`, go1.27.3);
+  - binary mode on a fresh arm64 build, the same way.
+
+  Evidence: `~/xmr-pay-dev-data/redteam/rt28-*.txt`.
+
+Tests (go1.27.3, `GOTOOLCHAIN=local`, `GOFLAGS=-mod=readonly`):
+- bridge gofmt clean, `go vet ./...` clean, `go test -count=1 ./...` 21 of 21 packages ok;
+- `bridge/oracle` gofmt, vet and tests ok, with `go.sum` unchanged.
+
+Not run:
+- **`go test -race`:** the dev box has no `gcc`, which cgo needs. CI's runner has it, so CI covers it.
+- **CI itself:** the `go-version-file` change is untested until a push.
+- **The `bridge/oracle` govulncheck rerun:** skipped, since it had 0 called before and its only change is the standard library, which is now clean.
+
+Still go1.27.1: the dev releases in `~/xmr-pay-dev-data/dev-release/` and the dev box's installed bridge, both stagenet only. The next dev release picks up go1.27.3.
+
+Totals: 28 findings, 27 open. RT-28 is fixed.
+
+Next step: the fix sessions, highest first: RT-08 and RT-11 (High), then RT-20 (blocks release 1), then the other Mediums. The first push after this checks CI's bridge job on go1.27.3.

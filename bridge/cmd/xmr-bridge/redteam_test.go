@@ -40,14 +40,13 @@ func TestRedteamNodeCheckNothingChecked(t *testing.T) {
 	})
 }
 
-// RT-28 (Step 6, F5): govulncheck v1.9.0 finds 10 called standard-library vulnerabilities in go1.27.1, the Go the dev
-// releases, the installed dev bridge and CI's setup-go pin all use. Two reach the shipped bridge in practice:
-// GO-2026-6809 (crypto/x509's distrust list, fixed in go1.27.3) and GO-2026-6611 (HTTP/2 client CPU, fixed in
-// go1.27.2). The test binary is built by the same toolchain as the bridge in the same place (this box, CI), so it
-// checks that toolchain. It's a floor for today's advisories, not a substitute for running govulncheck (T28).
+// RT-28 (Step 6, F5): govulncheck v1.9.0 found 10 called standard-library vulnerabilities in go1.27.1. Two reach the
+// shipped bridge in practice: GO-2026-6809 (crypto/x509's distrust list, fixed in go1.27.3) and GO-2026-6611 (HTTP/2
+// client CPU, fixed in go1.27.2). Fixed by pinning go 1.27.3 in go.mod, which CI's setup-go reads, with the same Go
+// on the dev box. The test binary is built by the same toolchain as the bridge in the same place (this box, CI), so
+// it checks that toolchain. It's a floor for today's advisories, not a substitute for running govulncheck (T28).
 func TestRedteamToolchainFloor(t *testing.T) {
 	t.Run("[T28] [RT-28] the bridge is built with go1.27.3 or later (known standard-library fixes)", func(t *testing.T) {
-		t.Skip("RT-28 open")
 		v := runtime.Version()
 		m := regexp.MustCompile(`^go(\d+)\.(\d+)(?:\.(\d+))?$`).FindStringSubmatch(v)
 		if m == nil {

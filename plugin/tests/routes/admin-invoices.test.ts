@@ -8,7 +8,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { MAX_REQUIRED } from "../../src/core/constants";
 import { type Invoice, type Transfer, newInvoice } from "../../src/core/invoice";
-import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -40,7 +40,7 @@ async function setup(invoices: Invoice[] = []) {
 	host = h;
 	await h.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);
 	await h.fixtures.plugin.kv("state:bridge", { height: H0 + 5, lastSyncAt: Date.now() - 30_000, version: 1, outdated: false });
-	await h.fixtures.plugin.storage("pool", "9999", { addrIndex: 9999, address: ADDR(9999), status: "free" });
+	await h.fixtures.plugin.storage("pool", "9999", { addrIndex: 9999, address: ADDR(9999), status: "free", keyId: KEY_IDS.test1 });
 	await h.http.respond(KRAKEN, new Response(JSON.stringify({ error: [], result: { XXMRZUSD: { c: ["150.00", "1.0"] } } })));
 	for (let i = 0; i < invoices.length; i += 50) await Promise.all(invoices.slice(i, i + 50).map((inv) => h.fixtures.plugin.storage("invoices", inv.id, inv)));
 	return h;

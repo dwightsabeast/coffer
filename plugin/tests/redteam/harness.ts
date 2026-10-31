@@ -8,7 +8,7 @@
 //   Cloudflare refusal, where the test plays the host's view of who is asking.
 import { createPluginRuntimeTestHost, type PluginRuntimeTestHost, type PluginTestRequest } from "@emdash-cms/plugin-test";
 
-import { PUBLIC_KEYS, bytesOf, signedHeaders, type KeyName } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS, bytesOf, signedHeaders, type KeyName } from "../sync/helpers";
 import { TAGS, fakeAddress } from "../addresses";
 
 export const H0 = 3_000_000;
@@ -61,7 +61,7 @@ export async function redteamHost(o: HostOptions = {}) {
 	const ago = o.lastSyncAgo === undefined ? 30_000 : o.lastSyncAgo;
 	if (ago !== null) await host.fixtures.plugin.kv("state:bridge", { height: H0, lastSyncAt: Date.now() - ago, version: 1, outdated: false });
 	const tag = TAGS[o.poolNetwork ?? "stagenet"][1];
-	for (let i = 1; i <= (o.pool ?? 0); i++) await host.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: fakeAddress(tag, i, "R"), status: "free" });
+	for (let i = 1; i <= (o.pool ?? 0); i++) await host.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: fakeAddress(tag, i, "R"), status: "free", ...(pairedWith !== null ? { keyId: KEY_IDS[pairedWith] } : {}) });
 
 	/** A sync body (v 1, the next seq, H0, empty lists unless `body` sets them) or exact bytes, signed and posted. */
 	async function sync(body: Json | Uint8Array<ArrayBuffer>, opts: SyncOptions = {}): Promise<Reply> {

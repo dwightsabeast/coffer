@@ -6,7 +6,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { GAP_ALERT, UNPAID_RUN_ALERT } from "../../src/core/constants";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
-import { PUBLIC_KEYS } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -52,7 +52,7 @@ async function setup(o: Setup = {}) {
 			...(o.checks ? { checks: o.checks } : {}),
 		});
 	}
-	for (let i = 1; i <= (o.free ?? 50); i++) await h.fixtures.plugin.storage("pool", String(1000 + i), { addrIndex: 1000 + i, address: ADDR(1000 + i), status: "free" });
+	for (let i = 1; i <= (o.free ?? 50); i++) await h.fixtures.plugin.storage("pool", String(1000 + i), { addrIndex: 1000 + i, address: ADDR(1000 + i), status: "free", keyId: KEY_IDS.test1 });
 	for (const i of o.claimed ?? []) await h.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: ADDR(i), status: "claimed", invoiceId: `inv_${i}` });
 	if (o.paidTop !== undefined && o.paidTop !== null) await h.fixtures.plugin.kv("state:paidTop", o.paidTop);
 	if (o.clientIp !== undefined) await h.fixtures.plugin.kv("state:clientIp", o.clientIp);

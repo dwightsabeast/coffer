@@ -6,7 +6,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { MAX_OPEN_TOTAL } from "../../src/checkout";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
-import { PUBLIC_KEYS } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS } from "../sync/helpers";
 import { fakeAddress, fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -32,7 +32,7 @@ async function setup(o: { lastSyncAgo?: number | null; checks?: unknown; pool?: 
 	await h.fixtures.collection({ slug: "posts", label: "Posts", fields: [{ slug: "title", label: "Title", type: "string" }] } as never);
 	await h.fixtures.content("posts", { slug: "hello", status: "published", data: { title: "Hello & welcome" } } as never);
 	await h.fixtures.content("posts", { slug: "unfinished", status: "draft", data: { title: "Draft" } } as never);
-	for (let i = 1; i <= (o.pool ?? 5); i++) await h.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: ADDR(i), status: "free" });
+	for (let i = 1; i <= (o.pool ?? 5); i++) await h.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: ADDR(i), status: "free", keyId: KEY_IDS.test1 });
 	return h;
 }
 

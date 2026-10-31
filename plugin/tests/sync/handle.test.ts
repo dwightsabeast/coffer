@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { RESTORE_MARGIN_BLOCKS } from "../../src/core/constants";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { handleSync } from "../../src/sync/handle";
-import { PAIRING_TTL_MS, newPairingCode } from "../../src/sync/pairing";
+import { PAIRING_TTL_MS, keyId, newPairingCode } from "../../src/sync/pairing";
 import { PAIR_MAX_BYTES } from "../../src/sync/protocol";
 import { type KeyName, MemoryStore, PUBLIC_KEYS, bytesOf, signedHeaders } from "./helpers";
 import { fakeSubaddress } from "../addresses";
@@ -31,6 +31,12 @@ function pairedStore(key: KeyName = "test1") {
 }
 
 describe("pairing", () => {
+	it("a key ID is the key's first 16 base64 characters, different for the two test keys (spec change 45)", () => {
+		expect(keyId(PUBLIC_KEYS.test1)).toBe(PUBLIC_KEYS.test1.slice(0, 16));
+		expect(keyId(PUBLIC_KEYS.test1)).toHaveLength(16);
+		expect(keyId(PUBLIC_KEYS.test1)).not.toBe(keyId(PUBLIC_KEYS.test2));
+	});
+
 	it("[T03] NOT_PAIRED without a key or an active code", async () => {
 		expect(errorCode(await send(new MemoryStore(), syncBody()))).toBe("NOT_PAIRED");
 	});

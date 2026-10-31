@@ -2,7 +2,7 @@
 // WebCrypto (the same keys as contract/test-vectors/sync-signature.json; never a key of our own).
 import type { Invoice } from "../../src/core/invoice";
 import type { BridgeState, SyncStore } from "../../src/sync/handle";
-import type { PairingState } from "../../src/sync/pairing";
+import { type PairingState, keyId } from "../../src/sync/pairing";
 
 const SEEDS = {
 	test1: "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60",
@@ -12,6 +12,8 @@ export const PUBLIC_KEYS = {
 	test1: "11qYAYKxCrfVS/7TyWQHOg7hcvPapiMlrwIaaPcHURo=",
 	test2: "PUAXw+hDiVqStwqnTRt+vJyYLM8uxJaMwM1V8Sr0Zgw=",
 } as const;
+/** The key IDs pool rows carry (spec change 45): a fixture's free rows belong to the key it pairs with. */
+export const KEY_IDS = { test1: keyId(PUBLIC_KEYS.test1), test2: keyId(PUBLIC_KEYS.test2) } as const;
 export type KeyName = keyof typeof SEEDS;
 
 const hexBytes = (hex: string) => Uint8Array.from(hex.match(/../g) ?? [], (h) => Number.parseInt(h, 16));

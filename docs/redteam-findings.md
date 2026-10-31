@@ -302,6 +302,52 @@ The anonymous and missing-`X-EmDash-Request` cases are covered live by `dev-e2e.
 
 Fresh attacker session, 2026-10-28 (local) / 2026-10-29 UTC. Order (Wyatt): the live block with the real stagenet payments, then `coffer-test`, then the plugin and bridge source. The dev site's baseline for this round is the backup `~/xmr-pay-dev-data/redteam/round2-k.db` (45 invoices, 345 pool rows, 8 KV rows, the bridge key); the setup session's 38/338 is out of date (Wyatt's A3 tips).
 
+## Pass 1, round 2: summary (closed 2026-10-31)
+
+**Findings this round:** 10. They are 3 Medium (RT-20, which **blocks release 1**, RT-26 and RT-27, all ruled by Wyatt) and 7 Low (RT-19, RT-21 to RT-25, RT-28).
+
+**After both rounds:** 28 findings, all open: 1 High (RT-11), 8 Medium (RT-05, 07, 08, 12, 15, 20, 26, 27) and 19 Low. The summary table at the top lists all 28.
+
+**Observations (no finding):**
+- Cloudflare's injected analytics beacon is blocked by Coffer's CSP.
+- What the cross-check's second nodes learn (new row P05).
+- `moneroaddr` doesn't check the address checksum.
+- RT-15's cap drops the newest invoices first.
+- EmDash 1.3.1's own npm tree carries a critical and several high advisories (F5).
+- T25's edges: `0.0.0.0` and IPv4-mapped IPv6 aren't on the loopback list, and a saved address with a path counts as unusable.
+
+**What ran:**
+- Real stagenet payments (K, A13).
+- The data-at-rest scan (I1) and the log and transcript scan (I2).
+- Live A8, C6 and J1 on the Node runner.
+- F1 and F4 on `coffer-test`.
+- The plugin white box (Step 2) and the bridge white box with 10-minute fuzz runs (Step 3).
+- RT-15 on the built copy (Step 5).
+- The dependency checks (F5).
+- T24 and T25 spot-checks.
+
+**New matrix row:** F08. **Now Covered:** T27, and T10 and T29 for pass 1.
+
+**Not covered: tips scope.** Pass 2 runs after release 1 ships, so each of these has a home before release 1:
+
+| Gap | Rows | Home |
+| --- | --- | --- |
+| Both nodes lying, both unreachable, a reordered block (round 1's `TestLiarHarness` and the cross-check tests cover one liar) | T14, R09 | RT-26's fix session, which works on the same chain-height path, adds them as tests |
+| The wallet-rpc downgrade case | T26 | Round 3, after the fix sessions and before phase 09 |
+| `07b-i2.sh` blind spots: subfolders not searched, an unreadable source reported as PASS | T29 | Fix the script and rerun I2 in round 3 |
+| T19 L3 checkout tests hit the 30 s vitest wall once in a full run (passes alone and on re-run) | T19 | RT-12's fix session (the same 30 s wall), or a test-only fix there |
+| The tip button through a real proxy that ends https | T17 (RT-20) | Phase 09, already listed |
+| govulncheck and `pnpm audit` in CI; where release 1's bridge is built, and with which Go | T28 (RT-28) | Wyatt decides the build location and `pnpm audit`'s scope and level. Then a fix session adds CI, and phase 09 reruns both on the release artifacts just before publishing |
+| Spec change 42 (EmDash 1.2+ site URL), and sites under an Astro `base` | T25 | Wyatt's decision on spec change 42; the `base` case, if supported at all, in round 3 |
+| Retest of every fix (each `it.fails` and `t.Skip` flipped) | all open RT | Each fix session, then round 3 as a whole |
+
+**Not covered: orders scope** (release 2, pass 2):
+- product checkout live (A0 is only checked as refused in release 1);
+- late and short orders live (R03, R04);
+- Strict confirmations for large orders (T14);
+- the goods switch on a live site;
+- product-only admin wording beyond RT-01.
+
 ## Real stagenet payments (group K, A13), 2026-10-29 UTC: all as the spec says
 
 Dev site in `astro dev` (EmDash 1.3.1), the dev box's installed bridge, stagenet. Wyatt sent every payment from his Feather buyer wallet; times are his, converted from MDT. Invoices made with `scripts/dev-invoices.mjs`; the watcher's log is `~/xmr-pay-dev-data/3h-watch.txt`. Each tip needed 2 confirmations.

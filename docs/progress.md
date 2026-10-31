@@ -3906,3 +3906,70 @@ Branch `redteam-1`, local, 36 commits ahead of `main`, not pushed. Plan: `/home/
 - a findings summary for "Pass 1, round 2";
 - the coverage column for every row round 2 touched;
 - the session entry, whose next step is the fix sessions: highest open finding first, RT-11, then the Mediums, with RT-20 ahead of the rest because it blocks release 1.
+
+## 2026-10-31 · Phase 07b pass 1 · Session 7: Steps 6 and 7 done, round 2 closed
+
+Branch `redteam-1`, local, not pushed. Plan: `/home/dev/.claude/plans/phase-07b-attacker-pass-stateless-rivest.md` (Wyatt approved it with his changes). Code under test is unchanged. One new skipped Go test (RT-28); the rest is docs.
+
+**Step 6, F5 dependency checks (T28).** Evidence in `~/xmr-pay-dev-data/redteam/step6-*`. Nothing was added to the repo's dependencies or CI, and no lockfile changed.
+- **The tool, checked before it ran:**
+  - Go settings all default (`go env -changed` empty).
+  - govulncheck v1.9.0's commit `e672cbe8fbc8…` was first taken from proxy.golang.org on 2026-10-30. It matched `go mod download -json` (sum.golang.org) and `git ls-remote` on go.googlesource.com, and Wyatt's own check on GitHub's mirror.
+  - Database updated 2026-10-27 21:16 UTC.
+  - No run failed. Under `go run`, the tool's exit code shows as `exit status N`.
+- **Bridge, source mode (go1.27.1):** 10 called standard-library vulnerabilities, all fixed in go1.27.2, except GO-2026-6809, fixed in go1.27.3. Two reach the bridge, which is an HTTP client only: 6809 (x509 distrust list) and 6611 (HTTP/2 client CPU). The other called ones are server, proxy or multipart paths.
+- **Binary mode on both dev-release binaries:** go1.27.1, not stripped, 9 by symbol each. The installed dev bridge is go1.27.1 too.
+- **bridge/oracle:** 0 called, also with `-test`. Nothing in go-crypto, circl, x/crypto or x/sys.
+- **RT-28 (Low, T28/T27), new.** Go test `TestRedteamToolchainFloor`, skipped. Run once without its skip, it failed for the finding's reason.
+- **Release 1's bridge build location isn't decided.** Tier 3 says CI, phase 09 says "a script", and the only existing path, `build-dev-release.sh`, runs on the dev box. Both the box and `ci.yml` (`go-version: 1.27.1`) give go1.27.1, while go1.27.3 is current. **For Wyatt.**
+- **`pnpm audit`** (each a parsed audit report):
+  - plugin: 63 (1 critical, 22 high);
+  - theme: 25 (1 critical, 7 high);
+  - `spikes/xmr-spike`: 63;
+  - `spikes/cf-runner/limits`: 23.
+
+  All are in dev tooling and EmDash 1.3.1's own tree (DOMPurify critical; undici, seroval, MCP SDK, sharp and others high). Nothing ships, by tier 1, so this is an observation, not a finding. EmDash 1.4.0 (2026-10-29) passes the 7-day rule on 2026-11-05. Whether it clears these wasn't checked; moving to it goes through the upgrade checklist.
+- **Not audited:** `spikes/sandbox-canary` (no dependencies, so no lockfile) and `contract/` (no package yet).
+- **Lockfile check, passed (plugin and theme):**
+  - exact pins, with specifiers matching `package.json`;
+  - every package has an sha512 integrity hash (829 of 829, and 694 of 694);
+  - registry sources only, and no overrides, patches or release-age exclusions;
+  - `strictDepBuilds`, `allowBuilds` (esbuild and workerd only) and `minimumReleaseAge: 10080` present.
+- **Matrix T28:** the one-off run is noted, and the row stays Planned for CI.
+
+**Step 7, closing the round:**
+- **T24:** upstream `qrcodegen.ts` at `3c6d0b3`, fetched fresh, hashes to `1dc03fb5…cda9c`, the vendor test's `UPSTREAM_SHA256` (Wyatt matched it independently). The vendored file is that file once the three `export` edits are undone.
+- **T25, from the source:** holds. The address comes only from `ctx.site.url`, then the private admin route's browser `Origin`, never `Host`; no usable address means no command and no code. Edges, no finding: `0.0.0.0` and IPv4-mapped IPv6 aren't on the loopback list, and a saved address with a path counts as unusable.
+- **`docs/redteam-findings.md`:**
+  - "Pass 1, round 2: summary": 10 findings this round, 3 Medium and 7 Low.
+  - Totals: 28, all open: 1 High, 8 Medium, 19 Low. The table and sections match (28 each).
+  - Not covered, split into tips scope (each gap with a home before release 1) and orders scope (pass 2).
+- **Matrix:** T15 (P01 is no longer waiting), T17 (round tag), T24, T25, T27 (RT-28), T28. Every other row round 2 touched already had its round 2 note.
+- **`CLAUDE.md`:** a command row for `scripts/redteam/round1-live.mjs`. It clears every Coffer row and the bridge key at the start and at the end.
+
+Tests (final check, one at a time; output in `~/xmr-pay-dev-data/redteam/step7-*.txt`):
+- **Plugin `pnpm test`:**
+  - Default config: 327 passed, 17 expected fail, 1 skipped (345).
+  - Switch-on `vitest.goods.config.ts`: 92 passed, 1 skipped (93). The T19 L3 flake didn't show.
+  - Typecheck clean, manifest valid, bundle 58.3 KB, validation passed.
+- **Theme `COFFER_REQUIRE_ZBAR=1 pnpm test`:** 73 passed, 2 expected fail, 1 skipped. The skipped one is the "zbarimg is installed" guard, which runs only when zbar is missing. All five QR round trips ran. Typecheck clean.
+- **Bridge:** gofmt clean, `go vet ./...` clean, `go test -count=1 ./...` 21 of 21 packages ok. `hostile` isn't in `go list -deps ./cmd/xmr-bridge`.
+- **Scripts:** `node --test scripts/*.test.mjs scripts/redteam/*.test.mjs`, 43 passed.
+
+State at the end: tree clean after the commit, no tmux sessions, no `astro dev`, ports 4321, 4322, 8099 and 4399 free. `xmr-bridge` and `monerod-stagenet` active. `data.db` untouched this session.
+
+**Open, needs Wyatt:**
+1. **RT-08:** is it High? And the rewording of T03's and the spec's "free goods, not lost funds" line, which feeds the public security report: a stolen bridge key can route new tips to the attacker.
+2. **Release 1's bridge build:** where (CI or the dev box), and with which Go. RT-28's fix is go1.27.3 or later there: the dev box's `/usr/local/go` (sudo) or `ci.yml`'s `go-version`.
+3. **T28 in CI:** `pnpm audit`'s scope and level, and the govulncheck dependency ask for CI.
+4. **EmDash 1.4.0** (eligible 2026-11-05): whether to take it through the upgrade checklist, given 1.3.1's npm advisories.
+5. **Upstream reports:** RT-16 and RT-17 (EmDash 1.3.1).
+6. **Spec questions:** P05 in the Privacy list, RT-19's three options, and RT-26's and RT-27's fixes.
+
+**Phase 09 items:**
+- **New:** rerun `govulncheck -mode binary` on the final release binaries and `pnpm audit` on the release packages just before publishing, since T28 stays out of CI until item 3 is decided.
+- **From earlier:** the tip button through a real https proxy (RT-20), and the install docs could mention Cloudflare's injected analytics.
+
+**Round 3 (after the fix sessions, before phase 09):** retest every fix; T26's wallet-rpc downgrade; fix `07b-i2.sh` and rerun I2 (T29); the Astro `base` case if supported. Both-nodes-lying, both unreachable and a reordered block go with RT-26's fix session; the T19 L3 flake goes with RT-12's.
+
+**Next step:** the fix sessions, highest open finding first: RT-11 (High), then the Mediums with RT-20 ahead of the rest (it blocks release 1), then RT-05, 07, 08, 12, 15, 26, 27.

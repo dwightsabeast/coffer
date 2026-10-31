@@ -17,6 +17,17 @@ Coffer relies on some EmDash behavior that isn't a documented promise. Before mo
 
 ## Checked against
 
+### EmDash 1.4.0 (to do: after 2026-11-05, in the fix phase before phase 09's final tests; Wyatt, 2026-10-31)
+
+Not started. Besides every row above, check these from the 1.4 release notes:
+
+- **Caching:** the pay page and the tip endpoint set their own `Cache-Control`, because Astro's implicit no-cache is gone. Check the built copy with `curl -I`, and test it in `theme/`.
+- **Deferred tasks:** sandboxed calls are awaited, and runtime-host tests use `await host.waitForDeferredTasks()`.
+- **Bundle check:** `emdash-plugin bundle --validate-only` now builds `dist/` itself. Check that it still validates what ships, and that CI and the commit rule still mean the same thing.
+- **DOMPurify:** whether 1.4.0's tree clears 1.3.1's critical (GHSA-cg2g-xh64-v4q7, fixed in `dompurify` 3.4.17).
+  - `@emdash-cms/admin@1.4.0` keeps `dompurify ^3.3.2`, so it depends on what the lockfile resolves. `pnpm why dompurify` before and after.
+  - Today it's on EmDash's runtime path: `@emdash-cms/admin` (a regular dependency) ← `emdash` (07b F5).
+
 ### EmDash 1.3.1 (2026-10-25, session 7g; from 1.1.0)
 
 Packages: `emdash` 1.3.1, `@emdash-cms/plugin-cli` 0.13.4 and `@emdash-cms/plugin-test` 0.2.10 in `plugin/`; `emdash` 1.3.1 in `theme/`; `emdash` 1.3.1 and `@emdash-cms/sandbox-workerd` 0.9.5 on the dev site. Suites: plugin 254 passed + 1 skipped (default) and 92 + 1 (switch on); theme 65 + 1 with zbar required; `dev-e2e.mjs` 32 of 32; script tests 18 of 18; one live stagenet tip (#288, 0.002 XMR) settled with the installed bridge.

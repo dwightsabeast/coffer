@@ -15,7 +15,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | open |
 | RT-06 | Low | F01 | 1, 1 | The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature | open |
 | RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | open |
-| RT-08 | Medium | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open |
+| RT-08 | High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open |
 | RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open |
 | RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open |
 | RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | open |
@@ -124,13 +124,16 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 
 ## RT-08 — A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit
 
-- **Rows:** T03, P02. **Severity:** Medium (Wyatt rules). **Pass 1, round 1.** Group D (stolen bridge key; `plugin/tests/redteam/stolen-key.test.ts`, "[T03][P02] [RT-08] D2: an address a forged sync adds to the pool is never handed to a tipper to pay").
+- **Rows:** T03, P02. **Severity:** High (Wyatt, 2026-10-31; was Medium). **Pass 1, round 1.** Group D (stolen bridge key; `plugin/tests/redteam/stolen-key.test.ts`, "[T03][P02] [RT-08] D2: an address a forged sync adds to the pool is never handed to a tipper to pay").
 - **What I did:** holding the paired key, a forged sync added one pool address the attacker chose (index 2). The one honest address (index 1) was then claimed by a checkout, and the next tipper's checkout was handed index 2.
 - **What happened:** the second tipper's invoice address was the attacker's. So with the signing key, an attacker doesn't only forge a received tip (D1); they can make a real tipper's payment go to an address the shop's wallet isn't watching.
 - **What the spec says:** Security model, "Forged payment events (signing key stolen)": "The result is free goods, not lost funds." The bridge's job includes supplying pool addresses (pool top-up), so a stolen key supplying addresses is within the mechanism — but the stated consequence (free goods / a fake tip shown received) doesn't name "new tips routed to the attacker", and that needs no control of the pay page.
 - **Reach:** needs the bridge signing key (the stolen-key position, a stated design limit). Within that, it reaches real tipper money, not only a fake record. The pay-page-control caveat in the spec's wallet-host table (an attacker who controls the site "can show their own address on the pay page") covers a site break-in, not a stolen bridge key on an intact site. This is a report-completeness finding against the T03 wording: the public report must state that a stolen bridge key can route new tips to the attacker, not only mark invoices paid. Scope matches the plan's D2 break condition exactly; no probing beyond D2 (Wyatt, 2026-10-26).
 - **Evidence:** vitest output, round 1.
 - **Status:** open. For Wyatt: whether this is a wording fix to the report (the mechanism is the stated stolen-key limit) or a change (e.g. the plugin pinning pool addresses it can verify belong to the shop wallet — but the plugin holds no wallet material, so it can't verify an address; this likely stays a documented limit).
+- **Ruling (Wyatt, 2026-10-31): High.** It's gated only by a stolen bridge key, but the outcome is Critical-class.
+  - **Fix sessions:** look for detection (for example the honest bridge checking the site's pool against its own wallet) and fast re-pairing.
+  - **If nothing holds,** it becomes an accepted limit with honest wording. Draft for T03, the spec and the public report (spec change 44): "A stolen bridge key can't spend from or read your wallet, but until you re-pair it can send new tips to the thief's wallet, and your Tips page may still show them as received. If tips listed there are missing from your wallet app, re-pair."
 
 ## RT-09 — A forged sync adds a pool row duplicating an address already held
 
@@ -306,7 +309,7 @@ Fresh attacker session, 2026-10-28 (local) / 2026-10-29 UTC. Order (Wyatt): the 
 
 **Findings this round:** 10. They are 3 Medium (RT-20, which **blocks release 1**, RT-26 and RT-27, all ruled by Wyatt) and 7 Low (RT-19, RT-21 to RT-25, RT-28).
 
-**After both rounds:** 28 findings, all open: 1 High (RT-11), 8 Medium (RT-05, 07, 08, 12, 15, 20, 26, 27) and 19 Low. The summary table at the top lists all 28.
+**After both rounds:** 28 findings, all open: 2 High (RT-11, and RT-08, raised from Medium by Wyatt on 2026-10-31), 7 Medium (RT-05, 07, 12, 15, 20, 26, 27) and 19 Low. The summary table at the top lists all 28.
 
 **Observations (no finding):**
 - Cloudflare's injected analytics beacon is blocked by Coffer's CSP.
@@ -680,12 +683,32 @@ One-off runs for pass 1, approved by Wyatt on 2026-10-31. Nothing was added to t
 - **Where it applies:** the dev releases, the dev box's installed bridge and CI's `setup-go` pin are all go1.27.1. Release 1 will be too, wherever it's built, unless a pin changes (F5, "Which Go each result reflects").
 - **Reach:** no money moves: the bridge is view-only. 6809 needs a compromised intermediate's key plus a position on the path, on a host whose trust store lacks the distrust. 6611 is a slowdown of the wallet host.
 - **Test:** `cmd/xmr-bridge/redteam_test.go`, "[T28] [RT-28] the bridge is built with go1.27.3 or later", `t.Skip("RT-28 open")`. Run once without its skip, it failed: "built with go1.27.1; go1.27.3 or later has the fixes for GO-2026-6809 and GO-2026-6611". It's a floor for today's advisories. Phase 09's govulncheck rerun is still what checks the release.
-- **Fix direction (Wyatt's: a toolchain change):** go1.27.3 or later for the release build, which means the dev box's `/usr/local/go` (needs sudo) and `ci.yml`'s `go-version`, depending on where release 1 is built. Then the test's skip comes off.
+- **Fix (Wyatt, 2026-10-31):** go1.27.3, released 2026-10-20, pinned in one place CI reads, plus the same version on the dev box (Wyatt runs the sudo step). Release 1's bridge is built in CI, then rebuilt on the dev box with the same Go and flags, and the hashes must match before Wyatt signs. Afterwards govulncheck must show nothing called, and the test's skip comes off.
 - **Status:** open.
+
+## Hardening, round 2 (Low, on the fix list; no RT ID): both localhost checks refuse the same addresses
+
+Ruled by Wyatt (2026-10-31) from T25's spot-check edges. Checked with a scratch script on 2026-10-31: the same parsing as the plugin's `isLoopbackHost` and `publicHttpsOrigin`, and Go's `url.Parse` and `config.isLoopback`.
+
+| Site address | Plugin (`admin.ts`, `isLoopbackHost`) | Installer (`config.IsLoopbackSite`, then `SameMachine`) |
+| --- | --- | --- |
+| `https://0.0.0.0` | accepted | accepted by both: it's not loopback in Go, and the same-machine check compares it with the machine's own addresses. On Linux, connecting to it reaches this machine |
+| `https://[::]` | accepted | accepted by both, the same way |
+| `https://[::ffff:127.0.0.1]` | accepted: the URL becomes `[::ffff:7f00:1]`, which the list doesn't match | refused: Go reads it as 127.0.0.1 |
+| `https://localhost.` | accepted | not refused by the loopback check. `SameMachine` resolves it, so it's refused only if the resolver maps it to loopback |
+| `https://127.1` | refused: the URL becomes 127.0.0.1 | not refused by the loopback check: Go doesn't parse `127.1` as an IP. The same-machine DNS check wasn't tried |
+| `https://shop.localhost` | refused | the same as `localhost.` |
+
+- **A trailing slash on the saved address isn't a path.** `walletHostSite` strips it, so `https://shop.example/` is used as `https://shop.example` ("[T25] a saved https address is used as is, without a trailing slash"). The bridge's `validateSite` also accepts a path of `/`.
+- **Fix:** one list for both checks: `localhost` and `*.localhost` (with or without a trailing dot), 127.0.0.0/8 in any spelling, `::1`, IPv4-mapped loopback, and the unspecified `0.0.0.0` and `::`. Tests on both sides.
+- **Reach:** none. These are addresses an admin would have to save or open the admin page at. With one of them the wallet host fails to reach the site, or reaches itself.
 
 ## Observation, F5: EmDash 1.3.1's own dependency tree carries a critical and several high npm advisories
 
 Not Coffer code: tier 1 keeps it out of everything Coffer ships. But it's the tree every Coffer site runs, at the floor Coffer names (`emdash >=1.3.1 <2`). That covers DOMPurify (critical), undici, seroval, `@modelcontextprotocol/sdk`, sharp, sanitize-html, body-parser, hono and others (F5).
 - EmDash 1.4.0 was published on 2026-10-29. It passes the 7-day rule on 2026-11-05.
-- Whether it clears these wasn't checked. Moving to it goes through `docs/emdash-upgrade-checklist.md` and Wyatt.
+- **The DOMPurify critical** (GHSA-cg2g-xh64-v4q7, `>=3.4.4 <=3.4.16`, fixed in 3.4.17 of 2026-10-12):
+  - **It's on EmDash's runtime path.** `pnpm why dompurify` shows `dompurify@3.4.16` ← `@emdash-cms/admin@1.3.1` (a regular dependency) ← `emdash@1.3.1`, in both `plugin/` and `theme/`. So it's installed wherever EmDash is: it's EmDash's admin UI's sanitizer.
+  - **1.4.0 doesn't clear it by itself.** `@emdash-cms/admin@1.4.0` keeps the same range, `dompurify ^3.3.2`. Whether a site gets 3.4.17 depends on when its lockfile last resolved, ours included.
+- **Ruling (Wyatt, 2026-10-31):** EmDash 1.4.0 goes through the upgrade checklist after 2026-11-05, in the fix phase before phase 09's final tests.
 - For the report: Coffer's security claims stop at its own code, and the host CMS's dependency hygiene is EmDash's. A possible upstream note.

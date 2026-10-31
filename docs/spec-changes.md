@@ -1260,3 +1260,12 @@ Wyatt's decision (2026-10-25): go with the suggested decision for each.
 - C04: accepted; now T28. Both CI steps still to build: `govulncheck` goes through the dependency ask first (CLAUDE.md, "Dependencies"), and `pnpm audit`'s scope and level are set then.
 - C05: deferred to release 1.x; stays a candidate, and the report lists it under Known limits.
 - C06: accepted; now T29, with `TestNeverPrinted`, `TestWalletErrorsDontLeakSecrets` and `TestInstallLog` tagged; 07b's journal scan checks the rest.
+
+## 44. What a stolen bridge key reaches (RT-08)  (status: accepted as a draft, 2026-10-31; final wording after the fix sessions)
+Found in: 07b pass 1, round 1, group D (`docs/redteam-findings.md`, RT-08; `plugin/tests/redteam/stolen-key.test.ts`, D2).
+Spec says: Security model, "Forged payment events (signing key stolen)": "Every sync is Ed25519-signed. The result is free goods, not lost funds."
+Evidence: holding the paired key, a forged sync added a pool address the attacker chose, and the next tipper's checkout was handed it. So a stolen key doesn't only forge a received tip; it can route real tippers' money to the thief, on an intact site, with no control of the pay page.
+Proposal (Wyatt's draft, for the spec's row, matrix T03 and the public report): "A stolen bridge key can't spend from or read your wallet, but until you re-pair it can send new tips to the thief's wallet, and your Tips page may still show them as received. If tips listed there are missing from your wallet app, re-pair."
+Effect on the admin budget: none for the wording. A detection feature from the fix sessions might add a Health line, which would come back here first.
+Effect on the trust contract: none for the wording.
+Wyatt's decision (2026-10-31): RT-08 is High. The fix sessions look for detection (for example the honest bridge checking the site's pool against its own wallet) and fast re-pairing. If nothing holds, it becomes an accepted limit with this wording. Wyatt applies the wording to the live spec. `docs/spec.md` stays a snapshot until then.

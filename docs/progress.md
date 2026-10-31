@@ -3973,3 +3973,51 @@ State at the end: tree clean after the commit, no tmux sessions, no `astro dev`,
 **Round 3 (after the fix sessions, before phase 09):** retest every fix; T26's wallet-rpc downgrade; fix `07b-i2.sh` and rerun I2 (T29); the Astro `base` case if supported. Both-nodes-lying, both unreachable and a reordered block go with RT-26's fix session; the T19 L3 flake goes with RT-12's.
 
 **Next step:** the fix sessions, highest open finding first: RT-11 (High), then the Mediums with RT-20 ahead of the rest (it blocks release 1), then RT-05, 07, 08, 12, 15, 26, 27.
+
+## 2026-10-31 · Phase 07b pass 1 · Session 7: Wyatt's rulings recorded
+
+Recorded in `docs/decisions.md` (five rows), `docs/redteam-findings.md`, `docs/security-matrix.md`, `docs/spec-changes.md` (change 44), `docs/phases/09-release.md` and `docs/emdash-upgrade-checklist.md`.
+
+1. **RT-08 is High** (was Medium): gated only by a stolen bridge key, with a Critical-class outcome.
+   - **Fix sessions:** look for detection (for example the honest bridge checking the site's pool against its own wallet) and fast re-pairing. If nothing holds, it becomes an accepted limit with honest wording.
+   - **Wording:** Wyatt's draft is in spec change 44 and now in T03's pass condition. Wyatt applies it to the live spec. `docs/spec.md` is unchanged.
+   - **Totals now:** 2 High (RT-08, RT-11), 7 Medium, 19 Low.
+2. **Release 1's bridge is built in CI.**
+   - Wyatt signs on the dev box, and the signing key never goes to CI. Before signing he rebuilds on the dev box with the same Go and flags and confirms the hashes match. Phase 09's "A script produces…" now says so, plus the pre-publish govulncheck and `pnpm audit` rerun.
+   - **RT-28 fix:** go1.27.3 (released 2026-10-20), pinned in one place CI reads, and the same version on the dev box.
+3. **T28 in CI:**
+   - `govulncheck@v1.9.0` on `bridge/` in source mode, failing on exit 3;
+   - `pnpm audit --prod --audit-level high` in `plugin/` and `theme/`, failing;
+   - no failing audit of the dev tree.
+
+   Built in a fix session. Found while recording it: both packages have only dev and peer dependencies, so `--prod` today audits 15 packages, pnpm's own `packageManager` pin and its platform builds (`step6-audit-prod-*.json`: 0 advisories). It's a guard against a runtime dependency appearing, not an audit of EmDash.
+4. **EmDash 1.4.0** goes through the checklist after 2026-11-05, in the fix phase before phase 09's final tests. Wyatt's three checks from the 1.4 notes are in the checklist.
+   - **DOMPurify** (GHSA-cg2g-xh64-v4q7, fixed in 3.4.17): `pnpm why dompurify` puts it on EmDash's runtime path, `@emdash-cms/admin@1.3.1` (a regular dependency) ← `emdash@1.3.1`.
+   - **1.4.0 doesn't clear it by itself:** `@emdash-cms/admin@1.4.0` keeps `dompurify ^3.3.2`. It depends on what the lockfile resolves.
+5. **The rows round 2 touched were not all current. Fixed now:**
+   - **P04** didn't record the RT-25 ruling (the clock starts at the admin's decision).
+   - **R05** still called the bridge-side kill "round 2's Go step". Step 3 covered it with `TestPendingSurvivesFailureAndRestart`.
+   - **R09** still said whether a remote node can push the height "is Step 3's". It can (RT-26).
+   - **T29** said "fix before pass 2". Its home is now round 3.
+   - **F08** lacked RT-26's and RT-27's ruled severities.
+   - **Punctuation:** T04, T10, T14, T15, R05, R09 and R13 had sentences run together where an edit dropped a full stop.
+
+   T13, T16 and P05 were current.
+6. **T25's edges are Low hardening on the fix list** ("Hardening, round 2" in the findings), checked with a scratch script:
+   - **Plugin:** accepts `0.0.0.0`, `[::]`, `[::ffff:127.0.0.1]` and `localhost.`.
+   - **Installer:** refuses `::ffff:127.0.0.1` (Go maps it), but accepts `0.0.0.0` and `[::]` (neither loopback nor the same-machine check catches them). `localhost.` and `127.1` aren't refused by its loopback check; `localhost.` is caught by the same-machine DNS lookup only if the resolver maps it, and `127.1`'s DNS case wasn't tried.
+   - **A trailing slash isn't a path:** `https://shop.example/` is used as `https://shop.example` (an existing [T25] test).
+
+**RT-28, the dev box part (Wyatt, sudo):**
+- **Download:** `~/xmr-pay-dev-data/go1.27.3/go1.27.3.linux-amd64.tar.gz`. SHA-256 `65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40` matches go.dev's release list and dl.google.com's `.sha256`. `VERSION` says go1.27.3, 2026-10-19T22:20:36Z.
+- **Script:** `~/xmr-pay-dev-data/go1273-install.sh`. It checks the checksum and the archive's layout, stages, then swaps with two renames. The old Go stays at `/usr/local/go1.27.1-old`. Output goes to `go1273-install-output.txt`.
+
+After that, the repo part:
+- `bridge/go.mod` (and `bridge/oracle/go.mod`) `go 1.27.3`, and `ci.yml`'s `setup-go` reads it with `go-version-file`, so the pin lives in one place;
+- RT-28's skip comes off;
+- govulncheck rerun (source and a fresh binary build), expecting nothing called;
+- the bridge suite.
+
+No tests run for this docs-only commit; none of the changed files are code.
+
+Next step: Wyatt runs the go1.27.3 install, then the RT-28 repo change above. Then the fix sessions, highest first: RT-08 and RT-11 (High), then RT-20 (blocks release 1), then the other Mediums.

@@ -1,6 +1,6 @@
 module github.com/dwightsabeast/coffer/bridge/oracle
 
-go 1.27
+go 1.27.3
 
 require (
 	github.com/ProtonMail/go-crypto v1.5.2

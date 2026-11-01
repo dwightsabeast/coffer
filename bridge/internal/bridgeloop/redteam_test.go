@@ -79,10 +79,10 @@ func (w *cappedWallet) CreateAddresses(ctx context.Context, label string, n int)
 // RT-27 (E1): the bridge takes the site's poolTop and poolTarget as given. A poolTop of 2^32-1 (the most
 // syncclient accepts) starts a catch-up that creates subaddresses up to that index (catchUp, 100 per call, no upper
 // bound); a poolTarget of a billion makes every sync create 100 more, forever. Only whoever controls the site's replies
-// can send these (the site, or a broken-in site server: T15).
+// can send these (the site, or a broken-in site server: T15). Fixed with spec change 46 (Wyatt, 2026-11-01): numbering
+// follows claimedTop, the catch-up goes no further than claimedTop + 50, and poolTarget counts for at most 50.
 func TestRedteamSiteNumbersBounded(t *testing.T) {
 	t.Run("[T15][F08] [RT-27] E1: a poolTop of 2^32-1 doesn't start a catch-up of billions of addresses", func(t *testing.T) {
-		t.Skip("RT-27 open")
 		l, w, s, _ := setup(t)
 		cw := &cappedWallet{fakeWallet: w, limit: 20_000}
 		l.o.Wallet = func(context.Context) (Wallet, error) { return cw, nil }
@@ -94,7 +94,6 @@ func TestRedteamSiteNumbersBounded(t *testing.T) {
 		}
 	})
 	t.Run("[T15][F08] [RT-27] E1: a poolTarget of a billion doesn't make every sync create more addresses", func(t *testing.T) {
-		t.Skip("RT-27 open")
 		l, w, s, _ := setup(t)
 		s.target = 1_000_000_000
 		ctx := context.Background()

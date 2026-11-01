@@ -4,7 +4,7 @@
 // learns the watch list, the next reports every watched index). It keeps no state between starts except subaddresses
 // created but not yet acknowledged by the site (run/pending.json), so a restart never leaves them unused, and an
 // unfinished catch-up (run/catchup.json, spec change 15): a wallet restored from keys lacks the subaddresses the site
-// already holds, so before it reports anything it creates them up to the site's poolTop and rescans once.
+// already holds, so before it reports anything it creates them up to the highest index the site has handed out (claimedTop, spec change 46) and rescans once.
 package bridgeloop
 
 import (
@@ -44,6 +44,11 @@ const (
 	// its height at most every nodeHeightEvery.
 	walletBehind    = 5
 	nodeHeightEvery = time.Minute
+	// maxPool is the spec's fixed pool size (RT-27): a site's poolTarget above it is treated as this, and the catch-up
+	// goes no further than claimedTop + maxPool (spec change 46, Wyatt's review).
+	maxPool = 50
+	// maxReoffer bounds the unused subaddresses a matched wallet re-offers after a re-pair.
+	maxReoffer = 1000
 )
 
 // Wallet is what the loop needs from wallet-rpc (*walletrpc.Client).
@@ -54,6 +59,9 @@ type Wallet interface {
 	CreateAddresses(ctx context.Context, label string, n int) ([]walletrpc.NewAddress, error)
 	HasSubaddress(ctx context.Context, index uint32) (bool, error)
 	RescanBlockchain(ctx context.Context) error
+	// Spec change 46: addresses by index (the pool check, the probe) and every index with a transfer.
+	SubaddressAddresses(ctx context.Context, indexes []uint32) (map[uint32]string, error)
+	ReceivedIndexes(ctx context.Context) ([]uint32, error)
 }
 
 // CrossChecker confirms mined transfers against a second node (*crosscheck.Checker); nil when the node is the
@@ -115,6 +123,15 @@ type Status struct {
 	WalletRPC   any    `json:"walletRpc,omitempty"`
 	// CatchUp is set while the wallet is being caught up to the site's pool (spec change 15).
 	CatchUp *CatchUp `json:"catchUp,omitempty"`
+	// PoolCheck is the last check of the site's pool against this wallet (spec change 46); nil until one.
+	PoolCheck *PoolCheck `json:"poolCheck,omitempty"`
+}
+
+// PoolCheck is the result of checking the site's check list: "ok", or "mismatch" with the wallet's own indexes.
+type PoolCheck struct {
+	State string    `json:"state"`
+	Bad   []uint32  `json:"bad,omitempty"`
+	At    time.Time `json:"at"`
 }
 
 // CatchUp is the progress of a catch-up: subaddresses created up to Target, then one rescan.
@@ -136,11 +153,26 @@ type Loop struct {
 	lastSeq int64
 	soon    bool
 	st      Status
-	// Spec change 15: the highest index the wallet is known to have, the site's last poolTop, and the target of an
-	// unfinished catch-up (0 when none).
-	known   uint32
-	poolTop uint32
-	catchup uint32
+	// Spec change 15: the highest index the wallet is known to have, and the target of an unfinished catch-up (0 when
+	// none). Spec change 46 (Wyatt's review): the site's claimedTop, never poolTop, is the numbering cue, since a key
+	// thief can add free rows but not hand them out.
+	known      uint32
+	claimedTop uint32
+	catchup    uint32
+	// Spec change 46. digests caches this wallet's own address digests (subaddresses never change). report is the
+	// pool check to send; reportNow sends a mismatch at once, before any catch-up. waiting is set while the site waits
+	// for the probe answer; answer is the answer to send; reofferPending asks for the re-offer after a match, and
+	// reoffer holds its indexes. probeKey is the key whose site has this wallet's probe digest; receivedTop is the
+	// wallet's highest index with a transfer (no created index at or below it is sent after a no-match).
+	digests        map[uint32]string
+	report         *syncclient.PoolReport
+	reportNow      bool
+	waiting        bool
+	answer         *syncclient.WalletAnswer
+	reofferPending bool
+	reoffer        []uint32
+	probeKey       string
+	receivedTop    uint32
 	// The wallet check's last node answer and when it was asked.
 	nodeAt   time.Time
 	nodeInfo noderpc.Info
@@ -165,7 +197,7 @@ func New(o Options) (*Loop, error) {
 	if o.Now == nil {
 		o.Now = time.Now
 	}
-	l := &Loop{o: o, notify: make(chan struct{}, 1)}
+	l := &Loop{o: o, notify: make(chan struct{}, 1), digests: map[uint32]string{}}
 	l.st.NodeCheck = crosscheck.Report{State: crosscheck.Off, Detail: "the configured node is your own"}
 	if o.CrossCheck != nil {
 		l.st.NodeCheck = crosscheck.Report{State: crosscheck.OK, Detail: "no mined payments checked yet"}
@@ -361,6 +393,13 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("wallet: %w", err)
 	}
+	// Spec change 46 (Wyatt's review): a mismatch goes out as soon as it's found, before any catch-up work.
+	l.mu.Lock()
+	reportNow := l.reportNow
+	l.mu.Unlock()
+	if reportNow {
+		return l.sendReport(ctx, key, height)
+	}
 	l.mu.Lock()
 	target := l.catchup
 	l.mu.Unlock()
@@ -380,8 +419,24 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 		end := min(l.cursor+maxSnapshots, len(l.watch))
 		chunk = append(chunk, l.watch[l.cursor:end]...)
 	}
-	addresses := append([]syncclient.Address(nil), l.pending[:min(len(l.pending), maxAddresses)]...)
+	var addresses []syncclient.Address
+	if !l.waiting { // while the site waits for the probe answer it takes no addresses: keep them pending
+		addresses = append(addresses, l.pending[:min(len(l.pending), maxAddresses)]...)
+	}
+	answer, report := l.answer, l.report
+	sendDigest := l.probeKey != keyText(key)
 	l.mu.Unlock()
+	// The wallet's index-1 digest goes with every sync until one carrying it succeeds (Wyatt): the site keeps the
+	// first as this wallet's probe and ignores later ones.
+	// A wallet without index 1 yet sends none: the top-up creates it, and the next sync carries the digest.
+	var probeDigest string
+	if sendDigest || answer != nil {
+		d, err := l.index1Digest(ctx, w, false)
+		if err != nil {
+			return fmt.Errorf("wallet: %w", err)
+		}
+		probeDigest = d
+	}
 
 	snapshots, warnings, err := l.snapshots(ctx, w, chunk)
 	if err != nil {
@@ -392,12 +447,12 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 	l.mu.Lock()
 	nc := l.st.NodeCheck
 	l.mu.Unlock()
-	checks := &syncclient.Checks{Node: &syncclient.Check{State: string(nc.State), Detail: nc.Detail}, Wallet: l.walletCheck(ctx, height)}
+	checks := &syncclient.Checks{Node: &syncclient.Check{State: string(nc.State), Detail: nc.Detail}, Wallet: l.walletCheck(ctx, height), Pool: report}
 	l.mu.Lock()
 	l.st.WalletCheck = checks.Wallet
 	l.mu.Unlock()
 	for {
-		body := syncclient.Body{V: syncclient.ProtocolV, Seq: l.nextSeq(), Height: height, Addresses: addresses, Snapshots: snapshots[:sent], Checks: checks}
+		body := syncclient.Body{V: syncclient.ProtocolV, Seq: l.nextSeq(), Height: height, Addresses: addresses, Snapshots: snapshots[:sent], Checks: checks, Wallet: answer, ProbeDigest: probeDigest}
 		resp, err = l.o.Site.Send(ctx, key, body)
 		if errors.Is(err, syncclient.ErrTooLarge) && sent > 1 {
 			sent /= 2
@@ -421,10 +476,22 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 	}
 
 	l.mu.Lock()
-	defer l.mu.Unlock()
-	l.pending = l.pending[len(addresses):]
-	if len(addresses) > 0 {
-		l.savePending()
+	// What this sync delivered: the addresses (by value: pending may have changed), the answer, the digest, the report.
+	// A response that says the site is waiting for the probe answer took no addresses, so they stay pending.
+	if resp.Probes == nil {
+		l.pending = dropSent(l.pending, addresses)
+		if len(addresses) > 0 {
+			l.savePending()
+		}
+	}
+	if probeDigest != "" {
+		l.probeKey = keyText(key)
+	}
+	if answer != nil && l.answer == answer {
+		l.answer = nil
+	}
+	if report != nil && l.report == report {
+		l.report = nil
 	}
 	l.watch = resp.Watch
 	passDone := true
@@ -436,58 +503,412 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 		}
 	}
 	l.st.WalletHeight, l.st.PoolFree, l.st.PoolTarget, l.st.Watching, l.st.Warnings = height, resp.PoolFree, resp.PoolTarget, len(resp.Watch), warnings
-	l.poolTop = resp.PoolTop
 
-	// The site holds an index the wallet may lack (a reinstall from keys): catch up before anything is reported or
-	// topped up. Probed only when the pool outgrows what the wallet is known to have.
-	if top := resp.PoolTop; top > l.known {
+	// Spec change 46, item 3: the site waits for this wallet's answer. Nothing is created, sent or caught up meanwhile.
+	if resp.Probes != nil {
+		l.waiting = true
 		l.mu.Unlock()
-		has, err := w.HasSubaddress(ctx, top)
-		if err == nil && !has {
-			err = l.catchUp(ctx, w, top)
-		}
+		ans, err := l.answerProbes(ctx, w, resp.Probes)
 		l.mu.Lock()
+		defer l.mu.Unlock()
+		if err != nil {
+			return fmt.Errorf("wallet: %w", err)
+		}
+		l.answer = ans
+		l.reofferPending = ans.Match != nil
+		l.soon = true
+		return nil
+	}
+	l.waiting = false
+	l.claimedTop = resp.ClaimedTop
+	claimedTop := l.claimedTop
+	reofferPending := l.reofferPending
+	l.mu.Unlock()
+
+	// Spec change 46, item 1: check the site's rows against this wallet. A mismatch is sent at once (next sync, before
+	// any catch-up); "ok" waits until every row can be compared.
+	catchTarget := claimedTop
+	if resp.Check != nil {
+		rep, within, err := l.checkPool(ctx, w, resp.Check, claimedTop)
+		catchTarget = max(catchTarget, within)
+		if err != nil {
+			l.o.Log.Warn("checking the site's addresses", "err", err)
+		} else if rep != nil {
+			l.mu.Lock()
+			l.report = rep
+			l.st.PoolCheck = &PoolCheck{State: rep.State, Bad: rep.Bad, At: l.o.Now()}
+			if rep.State == "mismatch" {
+				l.reportNow, l.soon = true, true
+				l.mu.Unlock()
+				l.o.Log.Warn("the site holds addresses that aren't from this wallet", "indexes", rep.Bad)
+				return nil
+			}
+			l.mu.Unlock()
+		}
+	}
+
+	// The site has handed out an index the wallet may lack (a reinstall from keys): catch up before anything is
+	// reported or topped up. Probed only when the target outgrows what the wallet is known to have. The target is
+	// claimedTop, or a check-list row within claimedTop + maxPool, never further (RT-27).
+	l.mu.Lock()
+	known := l.known
+	l.mu.Unlock()
+	if catchTarget > known {
+		has, err := w.HasSubaddress(ctx, catchTarget)
+		if err == nil && !has {
+			err = l.catchUp(ctx, w, catchTarget)
+		}
 		if err != nil {
 			return fmt.Errorf("wallet: %w", err)
 		}
 		if !has {
 			return nil // caught up; the next sync reconciles and tops up
 		}
-		l.known = top
+		l.mu.Lock()
+		l.known = max(l.known, catchTarget)
+		l.mu.Unlock()
 	}
 
-	// Top up: the site's free addresses plus those already on their way must reach the target.
-	need := resp.PoolTarget - resp.PoolFree - len(l.pending)
+	// Spec change 46, item 4: after a match, the wallet's own unused subaddresses above claimedTop go first.
+	if reofferPending {
+		if err := l.prepareReoffer(ctx, w, claimedTop); err != nil {
+			return fmt.Errorf("wallet: %w", err)
+		}
+	}
+
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	// Top up: the site's free addresses plus those already on their way must reach the target, at most maxPool (RT-27).
+	need := min(resp.PoolTarget, maxPool) - resp.PoolFree - len(l.pending)
 	need = min(need, maxAddresses-len(l.pending))
+	if need > 0 && len(l.reoffer) > 0 {
+		take := l.reoffer[:min(need, len(l.reoffer))]
+		l.mu.Unlock()
+		got, err := w.SubaddressAddresses(ctx, take)
+		l.mu.Lock()
+		if err != nil {
+			return fmt.Errorf("wallet: %w", err)
+		}
+		for _, i := range take {
+			l.pending = append(l.pending, syncclient.Address{Index: i, Address: got[i]})
+		}
+		l.reoffer = l.reoffer[len(take):]
+		l.savePending()
+		need -= len(take)
+	}
 	if need > 0 {
 		l.mu.Unlock()
 		created, cerr := l.create(ctx, w, need)
 		l.mu.Lock()
-		// An index the site already has means the wallet is behind after all: never send it (the duplicate loop of
-		// 3h's L3), catch up on the next sync instead.
+		// An index the site has already handed out means the wallet is behind after all: never send it (the duplicate
+		// loop of 3h's L3), catch up on the next sync instead. Spec change 46: claimedTop, not poolTop.
 		behind := false
 		for _, a := range created {
-			if a.Index <= l.poolTop {
+			l.known = max(l.known, a.Index)
+			if a.Index <= l.claimedTop {
 				behind = true
 				continue
 			}
-			l.known = max(l.known, a.Index)
+			if a.Index <= l.receivedTop {
+				continue // after a no-match: an address that has received before is never handed out again
+			}
 			l.pending = append(l.pending, a)
 		}
 		if len(created) > 0 {
 			l.savePending()
 		}
 		if behind && l.catchup == 0 {
-			l.o.Log.Warn("the wallet returned an address the site already has; catching it up", "poolTop", l.poolTop)
-			l.catchup = l.poolTop
-			l.st.CatchUp = &CatchUp{Target: l.poolTop}
+			target := max(l.claimedTop, catchTarget)
+			l.o.Log.Warn("the wallet returned an address the site has handed out; catching it up", "claimedTop", l.claimedTop)
+			l.catchup = target
+			l.st.CatchUp = &CatchUp{Target: target}
 			l.saveCatchUp()
 		}
 		if cerr != nil {
 			l.o.Log.Warn("creating pool addresses", "err", cerr)
 		}
 	}
-	l.soon = learning || !passDone || len(l.pending) > 0 || l.catchup > 0
+	l.soon = learning || !passDone || len(l.pending) > 0 || l.catchup > 0 || l.answer != nil
+	return nil
+}
+
+// dropSent removes the addresses a sync delivered from pending.
+func dropSent(pending, sent []syncclient.Address) []syncclient.Address {
+	if len(sent) == 0 {
+		return pending
+	}
+	gone := make(map[uint32]bool, len(sent))
+	for _, a := range sent {
+		gone[a.Index] = true
+	}
+	out := pending[:0:0]
+	for _, a := range pending {
+		if !gone[a.Index] {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
+func keyText(k ed25519.PrivateKey) string {
+	if len(k) != ed25519.PrivateKeySize {
+		return ""
+	}
+	return string(k.Public().(ed25519.PublicKey))
+}
+
+// sendReport sends a mismatch at once, before any catch-up (spec change 46, Wyatt's review): no snapshots and no
+// addresses, so it needs nothing from a wallet that may be behind.
+func (l *Loop) sendReport(ctx context.Context, key ed25519.PrivateKey, height uint64) error {
+	l.mu.Lock()
+	report := l.report
+	nc := l.st.NodeCheck
+	l.mu.Unlock()
+	checks := &syncclient.Checks{Node: &syncclient.Check{State: string(nc.State), Detail: nc.Detail}, Pool: report}
+	body := syncclient.Body{V: syncclient.ProtocolV, Seq: l.nextSeq(), Height: height, Addresses: []syncclient.Address{}, Snapshots: []syncclient.Snapshot{}, Checks: checks}
+	_, err := l.o.Site.Send(ctx, key, body)
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	var se *syncclient.Error
+	switch {
+	case err == nil:
+		l.st.Synced++
+		l.reportNow = false
+		if l.report == report {
+			l.report = nil
+		}
+		l.soon = true
+	case errors.As(err, &se):
+		l.st.SiteRefused++
+	default:
+		l.st.Unreachable++
+	}
+	return err
+}
+
+// index1Digest is the digest of the wallet's own index-1 address, the probe the site keeps (spec change 46). Without
+// index 1 the wallet creates it when create is set (to answer a probe), and nothing more; the new address joins the
+// pending ones. Without create, it returns "".
+func (l *Loop) index1Digest(ctx context.Context, w Wallet, create bool) (string, error) {
+	l.mu.Lock()
+	d, ok := l.digests[1]
+	has := l.known >= 1
+	l.mu.Unlock()
+	if ok {
+		return d, nil
+	}
+	if !has {
+		var err error
+		if has, err = w.HasSubaddress(ctx, 1); err != nil {
+			return "", err
+		}
+	}
+	if !has && !create {
+		return "", nil
+	}
+	if !has {
+		a, err := w.CreateAddress(ctx, addressLabel)
+		if err != nil {
+			return "", err
+		}
+		if a.Index != 1 || a.Address == "" {
+			return "", fmt.Errorf("wallet-rpc created index %d, not 1", a.Index)
+		}
+		l.mu.Lock()
+		l.known = max(l.known, 1)
+		l.pending = append(l.pending, syncclient.Address{Index: 1, Address: a.Address})
+		l.savePending()
+		l.mu.Unlock()
+	}
+	got, err := w.SubaddressAddresses(ctx, []uint32{1})
+	if err != nil {
+		return "", err
+	}
+	d = syncclient.AddressDigest(got[1])
+	l.mu.Lock()
+	l.known = max(l.known, 1)
+	l.digests[1] = d
+	l.mu.Unlock()
+	return d, nil
+}
+
+// answerProbes compares the wallet's index-1 digest with each probe (spec change 46, item 3): the first match, or none.
+func (l *Loop) answerProbes(ctx context.Context, w Wallet, probes []syncclient.Probe) (*syncclient.WalletAnswer, error) {
+	d, err := l.index1Digest(ctx, w, true)
+	if err != nil {
+		return nil, err
+	}
+	received, err := w.ReceivedIndexes(ctx)
+	if err != nil {
+		return nil, err
+	}
+	ans := &syncclient.WalletAnswer{}
+	if len(received) > 0 {
+		ans.ReceivedTop = received[len(received)-1]
+	}
+	for _, p := range probes {
+		if p.Index == 1 && p.Digest == d {
+			m := p.Wallet
+			ans.Match = &m
+			break
+		}
+	}
+	l.mu.Lock()
+	l.receivedTop = ans.ReceivedTop
+	l.mu.Unlock()
+	l.o.Log.Info("answering the site's wallet probe", "match", ans.Match != nil, "receivedTop", ans.ReceivedTop)
+	return ans, nil
+}
+
+// walletTop finds the wallet's highest subaddress index at or below hi, from what's known (subaddress indexes have no
+// gaps, so a binary search over HasSubaddress finds it).
+func (l *Loop) walletTop(ctx context.Context, w Wallet, hi uint32) (uint32, error) {
+	l.mu.Lock()
+	lo := l.known
+	l.mu.Unlock()
+	if hi <= lo {
+		return lo, nil
+	}
+	has, err := w.HasSubaddress(ctx, hi)
+	if err != nil {
+		return 0, err
+	}
+	if has {
+		lo = hi
+	} else {
+		top := hi // lo has it, top doesn't
+		for top-lo > 1 {
+			mid := lo + (top-lo)/2
+			ok, err := w.HasSubaddress(ctx, mid)
+			if err != nil {
+				return 0, err
+			}
+			if ok {
+				lo = mid
+			} else {
+				top = mid
+			}
+		}
+	}
+	l.mu.Lock()
+	l.known = max(l.known, lo)
+	l.mu.Unlock()
+	return lo, nil
+}
+
+// checkPool compares the site's check list with this wallet (spec change 46, item 1). An index the wallet holds with
+// another address is bad; so is one it doesn't hold above claimedTop + maxPool, at once, with nothing created. One it
+// doesn't hold within that is left for the catch-up (within returns the highest such row, up to the limit), and while
+// any is left, a clean list gives no report: only "ok" waits for a catch-up.
+func (l *Loop) checkPool(ctx context.Context, w Wallet, entries []syncclient.CheckEntry, claimedTop uint32) (rep *syncclient.PoolReport, within uint32, err error) {
+	limit := uint64(claimedTop) + maxPool
+	var hi uint32
+	for _, e := range entries {
+		if uint64(e.Index) <= limit {
+			within = max(within, e.Index)
+			hi = max(hi, e.Index)
+		}
+	}
+	top, err := l.walletTop(ctx, w, hi)
+	if err != nil {
+		return nil, within, err
+	}
+	var bad, lookup []uint32
+	missing := false
+	l.mu.Lock()
+	for _, e := range entries {
+		switch {
+		case uint64(e.Index) > limit:
+			bad = append(bad, e.Index)
+		case e.Index > top:
+			missing = true
+		default:
+			if _, ok := l.digests[e.Index]; !ok {
+				lookup = append(lookup, e.Index)
+			}
+		}
+	}
+	l.mu.Unlock()
+	for len(lookup) > 0 {
+		batch := lookup[:min(len(lookup), maxAddresses)]
+		lookup = lookup[len(batch):]
+		got, err := w.SubaddressAddresses(ctx, batch)
+		if err != nil {
+			return nil, within, err
+		}
+		l.mu.Lock()
+		for i, a := range got {
+			l.digests[i] = syncclient.AddressDigest(a)
+		}
+		l.mu.Unlock()
+	}
+	l.mu.Lock()
+	for _, e := range entries {
+		if uint64(e.Index) <= limit && e.Index <= top && l.digests[e.Index] != e.Digest {
+			bad = append(bad, e.Index)
+		}
+	}
+	l.mu.Unlock()
+	if len(bad) > 0 {
+		sort.Slice(bad, func(a, b int) bool { return bad[a] < bad[b] })
+		return &syncclient.PoolReport{State: "mismatch", Bad: bad[:min(len(bad), syncclient.MaxBad)]}, within, nil
+	}
+	if missing {
+		return nil, within, nil
+	}
+	return &syncclient.PoolReport{State: "ok", Bad: []uint32{}}, within, nil
+}
+
+// prepareReoffer lists the wallet's own created, unused subaddresses above the matched wallet's claimedTop (spec change
+// 46, item 4): they go to the site before any new one, so a re-pair that keeps the wallet skips no numbers. Pending
+// addresses the site already handed out are dropped.
+func (l *Loop) prepareReoffer(ctx context.Context, w Wallet, claimedTop uint32) error {
+	// The wallet's highest index: grow the bound until HasSubaddress says no, then search.
+	l.mu.Lock()
+	hi := max(l.known, claimedTop) + 1
+	l.mu.Unlock()
+	for {
+		has, err := w.HasSubaddress(ctx, hi)
+		if err != nil {
+			return err
+		}
+		if !has || hi >= 1<<31 {
+			break
+		}
+		hi = hi*2 + 1
+	}
+	top, err := l.walletTop(ctx, w, hi)
+	if err != nil {
+		return err
+	}
+	received, err := w.ReceivedIndexes(ctx)
+	if err != nil {
+		return err
+	}
+	paid := make(map[uint32]bool, len(received))
+	for _, i := range received {
+		paid[i] = true
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	inPending := map[uint32]bool{}
+	kept := l.pending[:0:0]
+	for _, a := range l.pending {
+		if a.Index > claimedTop {
+			kept = append(kept, a)
+			inPending[a.Index] = true
+		}
+	}
+	l.pending = kept
+	l.savePending()
+	l.reoffer = nil
+	for i := claimedTop + 1; i <= top && len(l.reoffer) < maxReoffer; i++ {
+		if !paid[i] && !inPending[i] {
+			l.reoffer = append(l.reoffer, i)
+		}
+	}
+	l.reofferPending = false
+	l.o.Log.Info("re-offering this wallet's unused addresses", "from", claimedTop+1, "count", len(l.reoffer))
 	return nil
 }
 
@@ -540,7 +961,6 @@ func (l *Loop) catchUp(ctx context.Context, w Wallet, target uint32) error {
 	l.mu.Lock()
 	l.catchup, l.st.CatchUp = 0, nil
 	l.known = max(l.known, top)
-	l.poolTop = max(l.poolTop, target)
 	if len(extra) > 0 {
 		l.pending = append(l.pending, extra...)
 		l.savePending()

@@ -38,6 +38,11 @@ func cmdInstall(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		fmt.Fprint(stderr, usage)
 		return 2
 	}
+	pairCode, err := codeArg(*code)
+	if err != nil {
+		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
+		return 2
+	}
 	sys := installer.RealSystem()
 	if sys.Euid() != 0 {
 		fmt.Fprintln(stderr, "xmr-bridge: the installer needs root: run it with sudo")
@@ -55,7 +60,7 @@ func cmdInstall(ctx context.Context, args []string, stdout, stderr io.Writer) in
 	}
 	defer closeTTY()
 	log := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	opts := installer.Options{Paths: installer.Paths{Root: "/"}, Site: *site, Code: *code, Node: *node, RestoreHeight: *restore,
+	opts := installer.Options{Paths: installer.Paths{Root: "/"}, Site: *site, Code: pairCode, Node: *node, RestoreHeight: *restore,
 		NoAutoUpdate: *noUpdate, AllowSameMachine: *sameMachine, Exe: exe}
 	if err := installer.Install(ctx, opts, sys, tty, installSteps(log)); err != nil {
 		fmt.Fprintf(stderr, "xmr-bridge: install stopped: %v\n", err)

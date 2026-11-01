@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dwightsabeast/coffer/bridge/internal/bridgeloop"
@@ -51,6 +52,11 @@ func cmdPair(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stderr, usage)
 		return 2
 	}
+	pairCode, err := codeArg(*code)
+	if err != nil {
+		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
+		return 2
+	}
 	cfg, err := config.Load(*path)
 	if err != nil {
 		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
@@ -70,7 +76,7 @@ func cmdPair(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		height = info.Height
 	}
 	cancel()
-	suggested, err := pairing.Pair(ctx, siteClient(cfg), *code, keyFile(cfg), height, time.Now())
+	suggested, err := pairing.Pair(ctx, siteClient(cfg), pairCode, keyFile(cfg), height, time.Now())
 	if err != nil {
 		fmt.Fprintf(stderr, "xmr-bridge: pairing failed: %v\n", err)
 		return 1
@@ -169,6 +175,20 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 	case crosscheck.Mismatch:
 		healthy = false
 		fmt.Fprintf(stdout, "Node check: MISMATCH: %s\n", nc.Detail)
+	}
+	// Spec change 46: the check of the site's addresses against this wallet.
+	switch pc := st.PoolCheck; {
+	case pc == nil:
+		fmt.Fprintln(stdout, "Address check: not asked yet (the site hasn't sent its addresses to check)")
+	case pc.State == "ok":
+		fmt.Fprintln(stdout, "Address check: ok")
+	default:
+		healthy = false
+		idx := make([]string, len(pc.Bad))
+		for i, b := range pc.Bad {
+			idx[i] = fmt.Sprintf("#%d", b)
+		}
+		fmt.Fprintf(stdout, "Address check: MISMATCH: the site holds addresses that aren't from this wallet (%s). Someone may have this wallet host's key: on the site's admin page, connect a new wallet host, on a machine you trust\n", strings.Join(idx, ", "))
 	}
 	switch wc := st.WalletCheck; {
 	case wc == nil:

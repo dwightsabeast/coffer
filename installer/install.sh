@@ -74,8 +74,38 @@ if ! "$bin" version >/dev/null 2>&1; then
 fi
 printf 'Checked: SHA-256 matches this release. Starting the installer%s...\n' "${as_root:+ (sudo may ask for your password)}"
 
+# Spec change 46 (T29): the pairing code goes to the installer on stdin, as "--pair -", so it isn't on the installer's
+# command line where other processes on this machine could read it while the install runs. It's still in this
+# script's own arguments and the shell's history (single use, 15 minutes).
+code=""
+n=$#
+while [ "$n" -gt 0 ]; do
+	a=$1
+	shift
+	n=$((n - 1))
+	case "$a" in
+	--pair | -pair)
+		if [ "$n" -gt 0 ]; then
+			code=$1
+			shift
+			n=$((n - 1))
+			set -- "$@" --pair -
+		else
+			set -- "$@" "$a"
+		fi
+		;;
+	--pair=* | -pair=*)
+		code=${a#*=}
+		set -- "$@" --pair -
+		;;
+	*) set -- "$@" "$a" ;;
+	esac
+done
+
 # The installer reads its questions from the terminal itself, so this works when the script is piped from curl.
-if (: </dev/tty) 2>/dev/null; then
+if [ -n "$code" ]; then
+	printf '%s\n' "$code" | $as_root "$bin" install "$@"
+elif (: </dev/tty) 2>/dev/null; then
 	$as_root "$bin" install "$@" </dev/tty
 else
 	$as_root "$bin" install "$@"

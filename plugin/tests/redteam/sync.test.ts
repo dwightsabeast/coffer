@@ -18,9 +18,9 @@ const data = (r: Reply) => (r.json as B | null)?.data as B | undefined;
 const code = (r: Reply) => data(r)?.error?.code as string | undefined;
 const ok = (r: Reply) => data(r)?.ok === true;
 
-/** Everything the plugin keeps, as one comparable string. */
-async function state(r: RedteamHost) {
-	const kv = await r.host.inspect.kv.list();
+/** Everything the plugin keeps, as one comparable string; `except` leaves out KV keys a test expects to change. */
+async function state(r: RedteamHost, except: string[] = []) {
+	const kv = (await r.host.inspect.kv.list()).filter((e: { id: string }) => !except.includes(e.id));
 	return JSON.stringify({ invoices: await r.invoices(), pool: await r.pool(), kv, key: await r.host.inspect.setting("bridgePublicKey") });
 }
 
@@ -193,7 +193,9 @@ describe("C3 and F01: hostile bodies behind the signature", () => {
 			if (ok(r) || r.status >= 500) accepted.push(`${name}: ${r.status} ${r.text.slice(0, 100)}`);
 		}
 		expect(accepted).toEqual([]);
-		expect(await state(h)).toBe(before);
+		// Nothing changes but spec change 46's record of the refusal, which Health shows (item 2).
+		expect(await state(h, ["state:refused"])).toBe(before);
+		expect(await h.host.inspect.kv.get("state:refused")).toMatchObject({ code: expect.stringMatching(/^(INVALID_BODY|INVALID_ENCODING|UNSUPPORTED_VERSION)$/) });
 	});
 
 	it("[F01][T11] C3: a repeated key never makes a time-locked or flagged payment count", async () => {

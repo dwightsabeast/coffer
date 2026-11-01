@@ -96,6 +96,17 @@ export interface RotationState {
 	at: number;
 }
 
+/** Spec change 46, item 2: a refusal from the current key, kept until its next good sync. */
+export interface RefusedRecord {
+	code: SyncErrorCode;
+	/** When this code was first refused, since the last good sync. */
+	since: number;
+	/** When it was last written (at most once a minute). */
+	at: number;
+}
+/** The refusal and previous-key records are written at most this often, so a key can't drive KV writes. */
+export const REFUSAL_WRITE_MS = 60_000;
+
 /** The paired key's wallet, or null while the site waits for its answer. */
 export function currentWallet(state: WalletsState | null, signerKeyId: string): number | null {
 	if (!state) return 0;
@@ -137,6 +148,13 @@ export interface SyncStore {
 	setRotation(state: RotationState): Promise<void>;
 	getPoolCheck(): Promise<PoolCheckState | null>;
 	setPoolCheck(state: PoolCheckState): Promise<void>;
+	/** Spec change 46, item 2 (D4): the key the last pairing replaced, and when it was last heard from. */
+	getPreviousKey(): Promise<string | null>;
+	setPreviousKey(publicKey: string | null): Promise<void>;
+	getPreviousSeen(): Promise<{ at: number } | null>;
+	setPreviousSeen(seen: { at: number } | null): Promise<void>;
+	getRefused(): Promise<RefusedRecord | null>;
+	setRefused(record: RefusedRecord | null): Promise<void>;
 	getNetwork(): Promise<NetworkRecord | null>;
 	setNetwork(record: NetworkRecord): Promise<void>;
 	clearNetwork(): Promise<void>;
@@ -215,13 +233,18 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 			if (!(await pairingCodeMatches(pairing, body.value.pair.code, now))) return error("PAIRING_REJECTED");
 			const key = decodeBase64(body.value.pair.publicKey, 32);
 			if (!key || !(await verifySignature(key, ts, bytes, signature))) return error("BAD_SIGNATURE");
-			replaced = (await store.getPublicKey()) !== null;
+			const previous = await store.getPublicKey();
+			replaced = previous !== null;
 			// Spec change 45, in this order: drop the unused pool and clear the network, then store the key, then burn the
 			// code. A failure partway leaves the old pairing working and the code usable for a retry, never a new
 			// pairing holding the old pool.
 			await store.poolDropUnused();
 			await store.clearNetwork();
 			await store.setPublicKey(body.value.pair.publicKey);
+			// Spec change 46, item 2: keep the key this pairing replaced, to tell its requests apart later.
+			if (previous !== null && previous !== body.value.pair.publicKey) await store.setPreviousKey(previous);
+			await store.setPreviousSeen(null);
+			await store.setRefused(null);
 			// Spec change 46: a site with history waits for the bridge to say which wallet it holds; a fresh one is wallet 0.
 			// After the key, so a failure before this leaves the old key's wallet state as it was.
 			const prior = await store.getWallets();
@@ -246,18 +269,22 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 		const stored = await store.getPublicKey();
 		const key = stored === null ? null : decodeBase64(stored, 32);
 		if (!key) return error("NOT_PAIRED");
-		if (!(await verifySignature(key, ts, bytes, signature))) return error("BAD_SIGNATURE");
+		if (!(await verifySignature(key, ts, bytes, signature))) {
+			await notePrevious(store, ts, bytes, signature, now);
+			return error("BAD_SIGNATURE");
+		}
 		const text = decodeStrict(bytes);
-		if (text === null) return error("INVALID_ENCODING");
+		if (text === null) return refuse(store, "INVALID_ENCODING", now);
 		const body = parseSyncBody(text);
-		if (!body.ok) return error(body.code);
-		if (!seqInRange(body.value.seq, ts)) return error("SEQ_OUT_OF_RANGE");
+		if (!body.ok) return refuse(store, body.code, now);
+		if (!seqInRange(body.value.seq, ts)) return refuse(store, "SEQ_OUT_OF_RANGE", now);
 		if (body.value.pair) return error(pairing === null ? "PAIRING_NOT_ACTIVE" : "PAIRING_REJECTED");
 		// Spec change 45: if a pairing replaced the key while this request ran, it's refused as if signed by the old key.
 		// The tags below cover a pairing that lands after this check.
 		if ((await store.getPublicKey()) !== stored) return error("BAD_SIGNATURE");
 		parsed = body.value;
 		signer = stored as string;
+		if ((await store.getRefused()) !== null) await store.setRefused(null);
 	}
 
 	// 4. Apply: bridge state, pool top-up, snapshots. The chain height never goes down (spec change 16): a fresh
@@ -360,6 +387,26 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 		response.restoreHeight = Math.max(0, Math.min(...watched.map((inv) => inv.createdHeight)) - RESTORE_MARGIN_BLOCKS);
 	}
 	return { response, events, ...(paired ? { paired, replaced } : {}) };
+}
+
+/**
+ * Spec change 46, item 2: a request the current key signed, refused afterwards, is recorded with its code, so Health
+ * can say the site is refusing the wallet host's updates (today such a sync fails silently on the site's side).
+ */
+async function refuse(store: SyncStore, code: SyncErrorCode, now: number): Promise<SyncOutcome> {
+	const rec = await store.getRefused();
+	if (!rec || rec.code !== code) await store.setRefused({ code, since: now, at: now });
+	else if (now - rec.at >= REFUSAL_WRITE_MS) await store.setRefused({ ...rec, at: now });
+	return error(code);
+}
+
+/** After a re-pair: a request the previous key signed is still refused, but recorded (D4), at most once a minute. */
+async function notePrevious(store: SyncStore, ts: string, bytes: Uint8Array, signature: Uint8Array<ArrayBuffer>, now: number) {
+	const previous = await store.getPreviousKey();
+	const key = previous === null ? null : decodeBase64(previous, 32);
+	if (!key || !(await verifySignature(key, ts, bytes, signature))) return;
+	const seen = await store.getPreviousSeen();
+	if (!seen || now - seen.at >= REFUSAL_WRITE_MS) await store.setPreviousSeen({ at: now });
 }
 
 /**

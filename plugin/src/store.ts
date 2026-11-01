@@ -11,11 +11,11 @@ import { LATE_WINDOW_MS, TIP_WATCH_MS } from "./core/constants";
 import type { Invoice } from "./core/invoice";
 import { CURRENCIES, rateCacheKey } from "./rates";
 import { ownIndex, walletRange } from "./core/walletindex";
-import type { BridgeState, CheckRow, NetworkRecord, PoolCheckState, RotationState, SyncStore, WalletsState } from "./sync/handle";
+import type { BridgeState, CheckRow, NetworkRecord, PoolCheckState, RefusedRecord, RotationState, SyncStore, WalletsState } from "./sync/handle";
 import type { PairingState } from "./sync/pairing";
 
 export const SETTING = { publicKey: "bridgePublicKey", currency: "currency", speed: "speed" } as const;
-export const KV = { pairing: "state:pairing", bridge: "state:bridge", alerts: "state:alerts", purgeCursor: "state:purgeCursor", cronScheduled: "state:cronScheduled", salt: "state:salt", buckets: "state:buckets", paidTop: "state:paidTop", clientIp: "state:clientIp", lastPairing: "state:lastPairing", setupDone: "state:setupDone", watchTruncatedAt: "state:watchTruncatedAt", network: "state:network", wallets: "state:wallets", recent: "state:recent", checkRotation: "state:checkRotation", poolCheck: "state:poolCheck" } as const;
+export const KV = { pairing: "state:pairing", bridge: "state:bridge", alerts: "state:alerts", purgeCursor: "state:purgeCursor", cronScheduled: "state:cronScheduled", salt: "state:salt", buckets: "state:buckets", paidTop: "state:paidTop", clientIp: "state:clientIp", lastPairing: "state:lastPairing", setupDone: "state:setupDone", watchTruncatedAt: "state:watchTruncatedAt", network: "state:network", wallets: "state:wallets", recent: "state:recent", checkRotation: "state:checkRotation", poolCheck: "state:poolCheck", previousKey: "state:previousKey", previousSeen: "state:previousSeen", refused: "state:refused" } as const;
 
 /** A wallet's gap baseline (spec change 46): wallet 0 keeps today's key, the others get their own. */
 export const paidTopKey = (wallet: number) => (wallet === 0 ? KV.paidTop : `${KV.paidTop}:${wallet}`);
@@ -144,6 +144,27 @@ export class CtxSyncStore implements SyncStore {
 	}
 	setPoolCheck(state: PoolCheckState) {
 		return this.ctx.kv.set(KV.poolCheck, state);
+	}
+	getPreviousKey() {
+		return this.ctx.kv.get<string>(KV.previousKey);
+	}
+	async setPreviousKey(publicKey: string | null) {
+		if (publicKey === null) await this.ctx.kv.delete(KV.previousKey);
+		else await this.ctx.kv.set(KV.previousKey, publicKey);
+	}
+	getPreviousSeen() {
+		return this.ctx.kv.get<{ at: number }>(KV.previousSeen);
+	}
+	async setPreviousSeen(seen: { at: number } | null) {
+		if (seen === null) await this.ctx.kv.delete(KV.previousSeen);
+		else await this.ctx.kv.set(KV.previousSeen, seen);
+	}
+	getRefused() {
+		return this.ctx.kv.get<RefusedRecord>(KV.refused);
+	}
+	async setRefused(record: RefusedRecord | null) {
+		if (record === null) await this.ctx.kv.delete(KV.refused);
+		else await this.ctx.kv.set(KV.refused, record);
 	}
 	async poolAdd(row: { addrIndex: number; address: string; keyId: string; addedAt: number }) {
 		// Create only when absent: a concurrent sync must never reset a claimed row to free.

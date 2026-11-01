@@ -8,7 +8,7 @@
 // Loopback only. It pairs a fresh in-memory key through the KV shortcut, pushes a small pool, runs the checks, and
 // cleans up its own rows and key. Back up data.db first (the caller does). PASS/FAIL per check; exit 1 on any FAIL.
 
-import { DEFAULT_DB, DEFAULT_SITE, cleanupCofferRows, fakeAddress, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders, syncBody, writePairingCode } from "./lib.mjs";
+import { DEFAULT_DB, DEFAULT_SITE, cleanupCofferRows, fakeAddress, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders, syncBody, writePairingCode, handoutWait, HANDOUT_WAIT_MS } from "./lib.mjs";
 
 const args = process.argv.slice(2);
 const value = (name, fallback) => {
@@ -43,6 +43,9 @@ try {
 	const addresses = Array.from({ length: 12 }, (_, i) => ({ index: i + 1, address: fakeAddress(i + 1) }));
 	r = await sync(body({ addresses, pair: { code, publicKey: key.publicB64 } }));
 	if (!check("pair + 12 addresses -> ok", r.data?.ok === true && r.data.poolFree >= 12, show(r))) throw new Error("pairing failed");
+	// Spec change 46: a new pool row is handed out only once it's 45 s old.
+	console.log(`waiting ${HANDOUT_WAIT_MS / 1000} s for the hand-out window (spec change 46)`);
+	await handoutWait();
 
 	// --- A6 / F06: a spoofed Host and X-Forwarded-Host on the public routes ---
 	const spoof = { host: "evil.example", "x-forwarded-host": "evil.example", "x-forwarded-proto": "http", "x-forwarded-for": "203.0.113.1" };

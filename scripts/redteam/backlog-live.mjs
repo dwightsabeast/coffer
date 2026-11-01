@@ -16,26 +16,7 @@
 // restore from the backup instead. PASS/FAIL per check; exit 1 on any FAIL.
 import { randomBytes } from "node:crypto";
 
-import {
-	DEFAULT_DB,
-	DEFAULT_SITE,
-	PLUGIN,
-	adminCall,
-	assertMemory,
-	devAdminSession,
-	evidencePath,
-	fakeAddress,
-	flood,
-	loopbackUrl,
-	memAvailableMiB,
-	newKey,
-	openSiteDb,
-	route as routeOn,
-	send,
-	signedHeaders,
-	syncBody,
-	writePairingCode,
-} from "./lib.mjs";
+import { DEFAULT_DB, DEFAULT_SITE, PLUGIN, adminCall, assertMemory, devAdminSession, evidencePath, fakeAddress, flood, loopbackUrl, memAvailableMiB, newKey, openSiteDb, route as routeOn, send, signedHeaders, syncBody, writePairingCode, handoutWait } from "./lib.mjs";
 import { appendFileSync, writeFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
@@ -199,6 +180,12 @@ try {
 	const code = writePairingCode(db);
 	r = await sync({ pair: { code, publicKey: key.publicB64 } });
 	if (!check("pair (empty body) -> ok", r.data?.ok === true, `${r.status} ${r.code ?? ""} ${r.ms.toFixed(0)}ms`)) throw new Error("pairing failed");
+	// Spec change 46: the seeded backlog is wallet 0's, so this test key answers the site's probes as wallet 0 (a
+	// stand-in: it holds no wallet), or "no match" when the site has no probe for it.
+	if (Array.isArray(r.data?.probes)) {
+		r = await sync({ wallet: { match: r.data.probes.some((p) => p.wallet === 0) ? 0 : null, receivedTop: 0 } });
+		check("answered the wallet probe", r.data?.ok === true && !Array.isArray(r.data?.probes), `${r.status} ${r.code ?? ""}`);
+	}
 	const freeBase = probeIndex + 1;
 	const freeAddrs = Array.from({ length: 60 }, (_, i) => ({ index: freeBase + i, address: fakeAddress(freeBase + i) }));
 	r = await sync({ addresses: freeAddrs });
@@ -279,6 +266,8 @@ try {
 		log("probe never became watched by reporting the backlog settled; recorded as an observation for R11/R13 (the cap bounds rows scanned, so a past-cap invoice waits for the backlog to be purged, not merely matured)");
 	}
 
+	// Spec change 46: the free rows are handed out only once they're 45 s old.
+	await handoutWait();
 	// --- L7: checkout latency during a sync (the scan busy), ≤50 in flight ---
 	const during = sync({});
 	const checkoutTask = () => send(route("checkout"), { body: JSON.stringify({ kind: "tip" }), headers: { "content-type": "application/json" } });

@@ -12,7 +12,7 @@ import { execFileSync, spawnSync } from "node:child_process";
 import { appendFileSync } from "node:fs";
 import { homedir } from "node:os";
 
-import { DEFAULT_DB, DEFAULT_SITE, KEY_OPTION, assertMemory, cleanupCofferRows, evidencePath, fakeAddress, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders, syncBody, writePairingCode } from "./lib.mjs";
+import { DEFAULT_DB, DEFAULT_SITE, KEY_OPTION, assertMemory, cleanupCofferRows, evidencePath, fakeAddress, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders, syncBody, writePairingCode, handoutWait } from "./lib.mjs";
 
 const args = process.argv.slice(2);
 const value = (name, fallback) => {
@@ -61,6 +61,9 @@ async function freshSite(db, count) {
 		const p = await signedSync(key, { addresses });
 		if (p.data?.ok !== true) throw new Error(`address push failed: ${show(p)}`);
 	}
+	// Spec change 46: a new pool row is handed out only once it's 45 s old. (After the cleanup above the site has no
+	// history, so the pairing doesn't wait for a wallet answer.)
+	await handoutWait();
 	return key;
 }
 

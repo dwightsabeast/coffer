@@ -4332,3 +4332,70 @@ All the others failed before their code.
 - the `seq` and timestamp agreement.
 
 Then `contract/` documents the fields, the dev scripts are updated, and the live check follows.
+
+## 2026-11-01 · Phase 07b fix sessions · Spec change 46, bridge side built (with Wyatt's review)
+
+Branch `redteam-1`, local commits only (`4619904` to the docs commit after `259981e`).
+
+**Decided by Wyatt this session:**
+- **CLAUDE.md** gains the previous bridge key in its list of stored items (D4), committed as `4619904`.
+- **RT-27 is folded into 46.**
+- **His review of the bridge plan** (recorded in spec change 46):
+  1. **Numbering cues only from handed-out rows:** the new `claimedTop`, never `poolTop`. The catch-up goes no further than `claimedTop + 50`, and a mismatch is reported at once, even mid catch-up.
+  2. **Probes are always index 1,** by the bridge's `probeDigest`, sent until a sync carrying it succeeds. A bridge answering a probe creates at most index 1, and a probe at any other index is a malformed response.
+  3. **A shared digest test value.**
+
+**Built** (tests first; each step green):
+1. **`fad272f`, plugin (Part A):**
+   - `claimedTop` in every response;
+   - index-1 probes from `probeDigest`, or wallet 0's row 1 read before the drop;
+   - a site with claimed rows but no probe waits with `probes: []`;
+   - the contract's digest vector and its generator.
+
+   Two re-pair route tests now answer the probe "no match" (wallet 0 has no row 1 in one, a probe in the other).
+2. **`259981e`, bridge (Part B):**
+   - **syncclient:** the new fields, validation (a probe only at index 1), `AddressDigest`, the `SEQ_OUT_OF_RANGE` hint.
+   - **walletrpc:** `SubaddressAddresses` and `ReceivedIndexes`.
+   - **bridgeloop:**
+     - numbering from `claimedTop` (RT-27 fixed, its tests unskipped);
+     - the pool check by digest, with a report-only sync for a mismatch;
+     - the probe answer;
+     - `probeDigest` until delivered;
+     - the re-offer after a match;
+     - addresses a waiting response didn't take stay pending.
+   - **status:** "Address check".
+   - **Commands:** `pair --code -` and `install --pair -`; `install.sh` pipes the code in.
+   - **The live test:** `TestLiveShopWallet` gains the new calls.
+   - **Tests whose expectations changed with the design:**
+     - `TestAtMost100AddressesPerSync` expects the pool to stop at 50 (RT-27's cap);
+     - the wget `install.sh` test expects `--pair -`;
+     - two loop tests allow the one index-1 probe;
+     - the fake site's `claimedTop` is capped at its own pool.
+3. **This docs commit:**
+   - `contract/` documents the new fields;
+   - the dev scripts (`lib.mjs` helpers `answerProbes`, `handoutWait` and `addressDigest`, the cleanup of 46's KV keys, `dev-e2e.mjs` and the three red-team live scripts) answer the probe and wait out the 45 s;
+   - matrix rows T03, T04, T15, T29, F08 and R08;
+   - findings: RT-27 fixed (29 findings, 24 open), RT-08's bridge side built;
+   - 46's record of the review.
+
+**Tests:**
+- **Plugin, at `fad272f`:** default 422 passed, 12 expected fail, 1 skipped; goods 101 passed, 1 skipped. Typecheck, validate and bundle (70.3 KB) clean.
+- **Bridge, at `259981e`:** gofmt and vet clean; `go test ./...` passes in every package; the static build is fine.
+- **Red first:** the new Go tests failed against the old code (a stash run: the syncclient, walletrpc and bridgeloop tests didn't compile; the `install.sh` tests failed on behaviour). The Part A plugin tests failed before their code (7 red).
+- **Live:** `TestLiveShopWallet` against stagenet wallet-rpc PASS (52 s; output in `~/xmr-pay-dev-data/46-live-shopwallet.txt`).
+  - `get_address` by index works on the view-only wallet, and an index past the top is refused.
+  - `ReceivedIndexes` found 35 indexes, from 1 to 305.
+  - The freshly restored wallet's next index was 10, though it holds payments up to 305, found only after creating to 1110 and rescanning. That's the restored-wallet case behind Wyatt's known limit.
+  - The temporary wallet was deleted.
+- **Scripts:** `node --test scripts/*.test.mjs scripts/redteam/*.test.mjs` 47 passed. The live scripts were only syntax-checked (they need the dev site).
+
+**Not covered:**
+- `-race` (no gcc here);
+- CI (nothing pushed);
+- running `dev-e2e.mjs` and the red-team live scripts against the dev site;
+- the live check (the dev release, `xmr-bridge update`, the forged row, the same-wallet and different-wallet re-pairs).
+
+**Next step:** the live check, in a session with Wyatt (46's "Live check", steps 1–8):
+1. **Back up `data.db`, build the plugin, start the dev site.**
+2. **The dev release:** `scripts/build-dev-release.sh`. Wyatt signs it and runs `sudo xmr-bridge update`.
+3. **The live steps:** the forged row, the same-wallet re-pair with `--code -`, the different-wallet re-pair, then back to the shop wallet.

@@ -1354,7 +1354,7 @@ Decided while building (Wyatt, 2026-10-31):
    - `compareAndDelete` is reachable from the sandbox (sandbox-workerd 0.9.5 bridges `storage/compareAndDelete`) but isn't used.
 4. **Admin wording:** "Paired · stagenet" (or mainnet, testnet), "Paired · network not known yet", "Not paired". No bracket.
 
-## 46. The honest bridge checks the site's pool, and a re-pair knows whether the wallet changed (RT-08, the rest of RT-29)  (status: accepted, 2026-11-01, with Wyatt's decisions below; the proposal text already includes them; plugin side built 2026-11-01 on `redteam-1`, bridge and live check pending)
+## 46. The honest bridge checks the site's pool, and a re-pair knows whether the wallet changed (RT-08, the rest of RT-29)  (status: accepted, 2026-11-01, with Wyatt's decisions below; the proposal text already includes them; plugin and bridge sides built 2026-11-01 on `redteam-1`, with Wyatt's review of the bridge plan below; live check pending)
 Found in: 07b pass 1.
 - **RT-08 (High):** a stolen bridge key adds pool addresses that tippers then pay.
 - **RT-24 (Low):** a far-future `seq` freezes an invoice.
@@ -1576,3 +1576,23 @@ Wyatt's decisions (2026-11-01; his draft answers, reviewed with Claude against t
 - **Live check (Wyatt):**
   - Step 6 opens a fresh unpaid tip, since `inv_e266ef9e2e436bd0` expired at 01:22 UTC.
   - Step 7 expects 357 first.
+
+Wyatt's review of the bridge plan (2026-11-01), built the same day:
+1. **Numbering cues come only from rows the site has handed out.**
+   - Why: `poolTop` counts free rows, which a key thief can add. One forged free row 99,999 above the wallet's highest would have made the honest bridge create ~100,000 subaddresses, repeatably. And holding a report back during a catch-up would have let a forged row outlast the 45 s wait.
+   - **The plugin** sends `claimedTop`: the current wallet's highest claimed row, in its own numbering. Free, `bad` and `dropped` rows don't count, and it's 0 while the site waits for the probe answer.
+   - **The bridge:** `claimedTop`, never `poolTop`, drives the catch-up, the "behind" check and the re-offer floor. It catches up no further than `claimedTop + 50` (POOL_TARGET), which replaces the 100,000 gap first planned as RT-27's bound. A check-list index the wallet doesn't hold above that limit is bad at once, with nothing created.
+   - **A mismatch is reported as soon as it's found,** even mid catch-up. Only "ok" waits for a catch-up to finish.
+   - **The re-offer floor** is the `claimedTop` of the first response after the answer, not the 0 sent while waiting.
+2. **Probes are always index 1.**
+   - **The bridge** sends the digest of its own index-1 address (`probeDigest`) with its answer, and with every sync until one carrying it succeeds (not one attempt). The site keeps the first as the wallet's probe. Wallet 0 on an existing site uses its row at index 1, read at pairing before the drop.
+   - **To answer a probe,** the bridge creates at most index 1. A probe at any other index is a malformed response.
+   - Why: a wallet's first-seen row is index 1 only for a fresh wallet. A reused wallet might first appear at 301, and a later switch to a fresh wallet would create 301 subaddresses to answer, starting it past its wallet app's lookahead. "Create up to it" also had no bound.
+   - **Found while building:** a site with claimed rows but no row 1 (so no probe for wallet 0) still waits, with `probes: []`, and the bridge's "no match" starts a new wallet: the safe start.
+3. **A digest test value:** `contract/test-vectors/address-digest.json` (made by `make-address-digest.mjs` with `node:crypto`), checked by the plugin's, the bridge's and the scripts' tests.
+4. **RT-27 folded in:** the bound above, plus `poolTarget` counting for at most 50.
+
+Also found while building the bridge:
+- **A response that says the site is waiting** took no addresses, so the bridge keeps the addresses it carried pending, rather than dropping them as delivered.
+- **The bridge sends `probeDigest` only once its wallet has index 1.** It creates index 1 only to answer a probe; a fresh wallet's first top-up creates it, and the next sync carries the digest.
+

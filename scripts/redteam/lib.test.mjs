@@ -153,3 +153,31 @@ describe("EmDash sessions", () => {
 		assert.equal(magicTokenFrom(undefined), null);
 	});
 });
+
+describe("spec change 46 helpers", async () => {
+	const { RUN_KV, addressDigest, answerProbes, HANDOUT_WAIT_MS } = await import("./lib.mjs");
+	const { readFileSync } = await import("node:fs");
+	it("addressDigest matches contract/test-vectors/address-digest.json", () => {
+		const v = JSON.parse(readFileSync(new URL("../../contract/test-vectors/address-digest.json", import.meta.url), "utf8"));
+		assert.equal(addressDigest(v.address), v.digest);
+	});
+	it("cleanup removes spec change 46's run state too", () => {
+		for (const k of ["state:wallets", "state:recent", "state:checkRotation", "state:poolCheck", "state:previousKey", "state:previousSeen", "state:refused"]) assert.ok(RUN_KV.includes(k), k);
+	});
+	it("answerProbes answers \"no match\" with the probe digest only when the site is waiting", async () => {
+		const sent = [];
+		const doSync = async (fields) => {
+			sent.push(fields);
+			return { data: { ok: true } };
+		};
+		const waiting = { data: { ok: true, probes: [] } };
+		assert.deepEqual(await answerProbes(doSync, waiting, { probeAddress: "7abc" }), { data: { ok: true } });
+		assert.deepEqual(sent, [{ wallet: { match: null, receivedTop: 0 }, probeDigest: addressDigest("7abc") }]);
+		const notWaiting = { data: { ok: true } };
+		assert.equal(await answerProbes(doSync, notWaiting, { probeAddress: "7abc" }), notWaiting);
+		assert.equal(sent.length, 1);
+	});
+	it("the hand-out wait is past the plugin's 45 s", () => {
+		assert.ok(HANDOUT_WAIT_MS > 45_000 && HANDOUT_WAIT_MS < 60_000);
+	});
+});

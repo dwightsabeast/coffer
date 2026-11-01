@@ -28,7 +28,7 @@ import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 
-import { DEFAULT_DB, DEFAULT_SITE, KEY_OPTION, PLUGIN, RUN_KV, b64url, cleanupCofferRows, fakeAddress, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders as signWith, syncBody as bodyOf, writePairingCode } from "./redteam/lib.mjs";
+import { DEFAULT_DB, DEFAULT_SITE, KEY_OPTION, PLUGIN, RUN_KV, b64url, cleanupCofferRows, fakeAddress, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders as signWith, syncBody as bodyOf, writePairingCode, answerProbes, handoutWait, HANDOUT_WAIT_MS } from "./redteam/lib.mjs";
 
 const PRODUCT = "test-sticker";
 const FAKE_HEIGHT = 1_000_000;
@@ -151,6 +151,8 @@ try {
 	check("pair with a wrong code: PAIRING_REJECTED", r.code === "PAIRING_REJECTED", show(r));
 	const pairBytes = syncBody({ addresses: firstAddresses, pair: { code, publicKey: bridgeKey.publicB64 } });
 	r = await sync(pairBytes);
+	// Spec change 46: on a site with history the site waits for the wallet answer and takes no addresses until then.
+	r = await answerProbes((fields) => sync(syncBody({ ...fields, addresses: firstAddresses })), r, { probeAddress: firstAddresses[0].address });
 	check(`pair ${handCode ? "(admin page code)" : "(KV shortcut)"}, 10 addresses: ok, 10 free`, r.data?.ok === true && r.data.poolFree === 10, show(r));
 	r = await sync(syncBody({ pair: { code, publicKey: newKey().publicB64 } }), newKey());
 	check("the same code again, another key: refused", r.code !== null && r.data?.ok !== true, show(r));
@@ -173,6 +175,10 @@ try {
 	const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), syncBody({})]);
 	r = await sync(bom);
 	check("signed body with a leading BOM: INVALID_ENCODING", r.code === "INVALID_ENCODING", show(r));
+
+	// Spec change 46: a new pool row is handed out only once it's 45 s old (the honest wallet host checks it first).
+	console.log(`waiting ${HANDOUT_WAIT_MS / 1000} s: new pool rows are handed out only once they're 45 s old (spec change 46)`);
+	await handoutWait();
 
 	// 6. Checkout as a same-origin browser would send it. Release 1 (the switch off, spec change 22): products are
 	// refused like an unknown kind; a tip of $1.00 at the live rate, with a client-sent amount ignored.

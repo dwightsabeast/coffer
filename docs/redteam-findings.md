@@ -15,7 +15,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | open |
 | RT-06 | Low | F01 | 1, 1 | The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature | open |
 | RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | open |
-| RT-08 | High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open; plugin side of spec change 46 built 2026-11-01 |
+| RT-08 | High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open; spec change 46 built 2026-11-01 (plugin and bridge), live check pending |
 | RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open |
 | RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open |
 | RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | fixed 2026-10-31 (spec change 45) |
@@ -34,7 +34,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | fixed 2026-11-01 (spec change 46, item 5) |
 | RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open |
 | RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open |
-| RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | open |
+| RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | fixed 2026-11-01 (spec change 46, bridge side) |
 | RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | fixed 2026-10-31 |
 | RT-29 | Medium | T20, T03, R08 | 1, fix planning | A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first | fixed 2026-10-31 with RT-11 (spec change 45) |
 
@@ -138,7 +138,8 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Plugin side built (2026-11-01, spec change 46, `011f585` and the steps around it):**
   - **Prevention while the honest host runs:** a new free row waits 45 s before hand-out, and the honest bridge checks every free row in that time. Its mismatch report turns the row "bad", so it's never handed out. The D2 `it.fails` is replaced by a passing test of exactly that.
   - **The limit while it's stopped:** nothing reports, so after 45 s the thief's row is handed out. A passing test records it, and the 24-hour window and `not_your_wallet` review list the affected tips once the honest host is back.
-  - **Still to do:** the bridge's side of the check (a later session), the live check, then spec change 44's final wording.
+  - **Bridge side built (2026-11-01):** the bridge checks each `check` list by digest and reports a mismatch at once, before any catch-up; numbering follows `claimedTop` only, so a thief's free rows can't move the honest bridge.
+  - **Still to do:** the live check, then spec change 44's final wording.
 
 ## RT-09 — A forged sync adds a pool row duplicating an address already held
 
@@ -599,7 +600,12 @@ The spec's Privacy list says nothing about remote nodes. Spec change 13 says the
   - refuse a catch-up target far above the wallet's highest index (spec change 15 expects a reinstall's gap, not billions);
   - cap `poolTarget` at the spec's fixed pool size (with headroom);
   - say so in `status` when refusing.
-- **Status:** open.
+- **Status:** fixed 2026-11-01, folded into spec change 46's bridge side (Wyatt):
+  - numbering follows the site's `claimedTop`, never `poolTop`;
+  - the catch-up goes no further than `claimedTop + 50`;
+  - `poolTarget` counts for at most 50.
+
+  The two tests pass without their `t.Skip`. A check-list row the wallet doesn't hold above that limit is reported to the site as not from this wallet, at once, with nothing created.
 
 ## Step 3 (bridge white box): what else was checked, no finding
 

@@ -165,8 +165,31 @@ export function fakeAddress(index, tag = TAGS.stagenet[1]) {
 }
 
 // ---- the dev site's database ----
-/** What a run creates and cleanup removes. Wyatt's settings (currency, speed), the salt and the cron flag stay. */
-export const RUN_KV = ["state:pairing", "state:bridge", "state:alerts", "state:buckets", "state:purgeCursor"];
+/**
+ * What a run creates and cleanup removes. Wyatt's settings (currency, speed), the salt and the cron flag stay. Spec
+ * change 46's run state too, so a cleaned site has no wallet history left to make the next pairing wait (cleanup also
+ * removes every wallet's own gap baseline, state:paidTop:<n>; wallet 0's state:paidTop stays).
+ */
+export const RUN_KV = ["state:pairing", "state:bridge", "state:alerts", "state:buckets", "state:purgeCursor",
+	"state:wallets", "state:recent", "state:checkRotation", "state:poolCheck", "state:previousKey", "state:previousSeen", "state:refused"];
+
+/** Spec change 46: the site hands out a new pool row only once it's 45 s old; scripts wait a little longer. */
+export const HANDOUT_WAIT_MS = 46_000;
+export const handoutWait = (ms = HANDOUT_WAIT_MS) => new Promise((resolve) => setTimeout(resolve, ms));
+
+/** The digest the site sends instead of an address (contract/test-vectors/address-digest.json). */
+export const addressDigest = (address) => createHash("sha256").update(address, "utf8").digest().subarray(0, 16).toString("base64");
+
+/**
+ * Spec change 46: after a pairing on a site with history, the site waits for the bridge to say which wallet it is.
+ * A script's throwaway key holds no wallet the site knows, so it answers "no match" with the digest of its own
+ * index-1 address. `doSync(fields)` sends one signed sync with those extra fields; a reply that isn't waiting is
+ * returned as is.
+ */
+export async function answerProbes(doSync, reply, { probeAddress }) {
+	if (!Array.isArray(reply?.data?.probes)) return reply;
+	return doSync({ wallet: { match: null, receivedTop: 0 }, probeDigest: addressDigest(probeAddress) });
+}
 export const KEY_OPTION = `plugin:${PLUGIN}:settings:bridgePublicKey`;
 
 export function openSiteDb(path = DEFAULT_DB, { readOnly = false } = {}) {
@@ -194,7 +217,7 @@ export function writePairingCode(db, { code = b64url(randomBytes(16)), now = Dat
 /** Removes Coffer's pool and invoice rows, the run's KV rows and the paired key. Returns what it removed. */
 export function cleanupCofferRows(db) {
 	const rows = db.prepare("DELETE FROM _plugin_storage WHERE plugin_id = ? AND collection IN ('pool', 'invoices')").run(PLUGIN).changes;
-	const kv = db.prepare(`DELETE FROM _plugin_storage WHERE plugin_id = ? AND collection = '__kv' AND id IN (${RUN_KV.map(() => "?").join(",")})`).run(PLUGIN, ...RUN_KV).changes;
+	const kv = db.prepare(`DELETE FROM _plugin_storage WHERE plugin_id = ? AND collection = '__kv' AND (id IN (${RUN_KV.map(() => "?").join(",")}) OR id LIKE 'state:paidTop:%')`).run(PLUGIN, ...RUN_KV).changes;
 	const key = db.prepare("DELETE FROM options WHERE name = ?").run(KEY_OPTION).changes;
 	return { rows, kv, key };
 }

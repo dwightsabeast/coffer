@@ -46,6 +46,7 @@ describe("a new pairing starts the pool afresh (spec change 45)", () => {
 
 		const fresh = newAddresses(2, 5);
 		expect(data(await h.sync({ addresses: fresh }, { key: "test2" }))).toMatchObject({ ok: true, poolFree: 5 });
+		await h.agePool(); // spec change 46's 45 s wait
 		const handedOut: string[] = [];
 		for (let i = 0; i < 5; i++) handedOut.push(data(await h.checkout({ kind: "tip" }))?.address as string);
 		expect(handedOut.sort()).toEqual(fresh.map((a) => a.address).sort());
@@ -66,6 +67,7 @@ describe("a new pairing starts the pool afresh (spec change 45)", () => {
 		await answer(h, null);
 
 		await h.sync({ addresses: newAddresses(2, 3, "mainnet") }, { key: "test2" });
+		await h.agePool();
 		expect(await h.host.inspect.kv.get("state:network")).toEqual({ network: "mainnet", keyId: KEY_IDS.test2 });
 		const tip = data(await h.checkout({ kind: "tip" }));
 		expect(subaddressNetwork(tip?.address)).toBe("mainnet");
@@ -80,6 +82,7 @@ describe("a new pairing starts the pool afresh (spec change 45)", () => {
 		for (const i of [3, 4]) await h.host.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: fakeAddress(TAGS.stagenet[1], i, "THIEF"), status: "free", keyId: KEY_IDS.test1 });
 		await h.host.fixtures.plugin.kv("state:network", { network: "stagenet", keyId: KEY_IDS.test1 });
 		await h.sync({ addresses: newAddresses(5, 1) }, { key: "test2" });
+		await h.agePool();
 		expect(data(await h.checkout({ kind: "tip" }))?.address).toBe(NEW(5));
 		expect(data(await h.checkout({ kind: "tip" }))).toMatchObject({ error: { code: "NO_ADDRESS_AVAILABLE" } });
 		expect(await h.invoices()).toHaveLength(1);

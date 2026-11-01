@@ -367,7 +367,11 @@ async function testAddress(ctx: PluginContext, now: number): Promise<Toast> {
 	const inv = await claimAndStore(ctx, (row) =>
 		({ ...newInvoice({ ...newIds(), kind: "tip", fiatMinor: null, currency: isCurrency(currencySetting) ? currencySetting : "USD", rate: null, speed, subaddress: row.address, addrIndex: row.addrIndex, network: row.network, now, chainHeight, uriDescription: TEST_TIP_DESCRIPTION }), required: TEST_TIP_REQUIRED }),
 	);
-	if (!inv) return { type: "error", message: "No payment address is free yet. The wallet host adds them at its next sync; try again in a minute." };
+	if (!inv) {
+		// Spec change 46: free rows younger than the hand-out wait are still being checked by the wallet host.
+		if ((await pool(ctx).count({ status: "free" })) > 0) return { type: "error", message: "Payment addresses are being checked against your wallet. Try again in a minute." };
+		return { type: "error", message: "No payment address is free yet. The wallet host adds them at its next sync; try again in a minute." };
+	}
 	return { type: "success", message: "Test address ready. Send the test tip from any wallet." };
 }
 

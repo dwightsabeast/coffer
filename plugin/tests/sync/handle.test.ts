@@ -332,10 +332,10 @@ describe("one network per pairing (spec change 45)", () => {
 		expect(store.network).toEqual({ network: "stagenet", keyId: KEY_IDS.test1 });
 	});
 
-	it("[T03] each pool row carries the ID of the key that signed the sync", async () => {
+	it("[T03] each pool row carries the ID of the key that signed the sync, and when it was added (spec change 46)", async () => {
 		const store = pairedStore("test2");
 		await send(store, syncBody({ addresses: [{ index: 1, address: ADDR(1) }] }), { key: "test2" });
-		expect(store.pool.get(1)).toEqual({ addrIndex: 1, address: ADDR(1), status: "free", keyId: KEY_IDS.test2 });
+		expect(store.pool.get(1)).toEqual({ addrIndex: 1, address: ADDR(1), status: "free", keyId: KEY_IDS.test2, addedAt: T0 });
 	});
 
 	it("[T03][R08] a sync whose key is replaced by a pairing while it runs is refused, and changes nothing", async () => {

@@ -11,11 +11,11 @@ import { LATE_WINDOW_MS, TIP_WATCH_MS } from "./core/constants";
 import type { Invoice } from "./core/invoice";
 import { CURRENCIES, rateCacheKey } from "./rates";
 import { ownIndex, walletRange } from "./core/walletindex";
-import type { BridgeState, NetworkRecord, SyncStore, WalletsState } from "./sync/handle";
+import type { BridgeState, CheckRow, NetworkRecord, PoolCheckState, RotationState, SyncStore, WalletsState } from "./sync/handle";
 import type { PairingState } from "./sync/pairing";
 
 export const SETTING = { publicKey: "bridgePublicKey", currency: "currency", speed: "speed" } as const;
-export const KV = { pairing: "state:pairing", bridge: "state:bridge", alerts: "state:alerts", purgeCursor: "state:purgeCursor", cronScheduled: "state:cronScheduled", salt: "state:salt", buckets: "state:buckets", paidTop: "state:paidTop", clientIp: "state:clientIp", lastPairing: "state:lastPairing", setupDone: "state:setupDone", watchTruncatedAt: "state:watchTruncatedAt", network: "state:network", wallets: "state:wallets" } as const;
+export const KV = { pairing: "state:pairing", bridge: "state:bridge", alerts: "state:alerts", purgeCursor: "state:purgeCursor", cronScheduled: "state:cronScheduled", salt: "state:salt", buckets: "state:buckets", paidTop: "state:paidTop", clientIp: "state:clientIp", lastPairing: "state:lastPairing", setupDone: "state:setupDone", watchTruncatedAt: "state:watchTruncatedAt", network: "state:network", wallets: "state:wallets", recent: "state:recent", checkRotation: "state:checkRotation", poolCheck: "state:poolCheck" } as const;
 
 /** A wallet's gap baseline (spec change 46): wallet 0 keeps today's key, the others get their own. */
 export const paidTopKey = (wallet: number) => (wallet === 0 ? KV.paidTop : `${KV.paidTop}:${wallet}`);
@@ -28,9 +28,12 @@ export const paidTopKey = (wallet: number) => (wallet === 0 ? KV.paidTop : `${KV
 export interface PoolRow {
 	addrIndex: number;
 	address: string;
-	status: "free" | "claimed" | "dropped";
+	/** "bad" (spec change 46): the wallet host found the row isn't from its wallet; never handed out, never deleted. */
+	status: "free" | "claimed" | "dropped" | "bad";
 	/** The ID of the bridge key whose sync added the row (spec change 45); rows from before it have none. */
 	keyId?: string;
+	/** When a sync added the row (ms, spec change 46); rows from before it have none and count as old. */
+	addedAt?: number;
 	invoiceId?: string;
 }
 
@@ -105,7 +108,44 @@ export class CtxSyncStore implements SyncStore {
 	poolHas(index: number) {
 		return pool(this.ctx).exists(String(index));
 	}
-	async poolAdd(row: { addrIndex: number; address: string; keyId: string }) {
+	async poolGet(index: number) {
+		return (await pool(this.ctx).get(String(index))) ?? null;
+	}
+	async poolRows(q: { wallet: number; status: "free" | "claimed"; after?: number; through?: number; limit: number }) {
+		const range = walletRange(q.wallet);
+		const addrIndex = { gte: q.after === undefined ? range.gte : Math.max(range.gte, q.after + 1), lt: q.through === undefined ? range.lt : Math.min(range.lt, q.through + 1) };
+		const rows: PoolRow[] = [];
+		let cursor: string | undefined;
+		while (rows.length < q.limit) {
+			const r = await pool(this.ctx).query({ where: { status: q.status, addrIndex }, orderBy: { addrIndex: "asc" }, limit: Math.min(PAGE, q.limit - rows.length), ...(cursor ? { cursor } : {}) });
+			for (const item of r.items) rows.push(item.data);
+			if (!r.hasMore || !r.cursor) break;
+			cursor = r.cursor;
+		}
+		return rows;
+	}
+	async poolMarkBad(index: number) {
+		await pool(this.ctx).updateIf(String(index), { where: { status: { in: ["free", "claimed"] } }, set: { status: "bad" } }).catch(() => undefined);
+	}
+	async getRecent() {
+		return (await this.ctx.kv.get<Array<{ index: number; at: number }>>(KV.recent)) ?? [];
+	}
+	setRecent(rows: Array<{ index: number; at: number }>) {
+		return this.ctx.kv.set(KV.recent, rows);
+	}
+	getRotation() {
+		return this.ctx.kv.get<RotationState>(KV.checkRotation);
+	}
+	setRotation(state: RotationState) {
+		return this.ctx.kv.set(KV.checkRotation, state);
+	}
+	getPoolCheck() {
+		return this.ctx.kv.get<PoolCheckState>(KV.poolCheck);
+	}
+	setPoolCheck(state: PoolCheckState) {
+		return this.ctx.kv.set(KV.poolCheck, state);
+	}
+	async poolAdd(row: { addrIndex: number; address: string; keyId: string; addedAt: number }) {
 		// Create only when absent: a concurrent sync must never reset a claimed row to free.
 		await pool(this.ctx).compareAndSet(String(row.addrIndex), null, { ...row, status: "free" });
 	}

@@ -28,6 +28,14 @@ export const MAX_PER_CLIENT = 5;
 const BUCKET_WINDOW_MS = 30 * 60_000;
 const MAX_BUCKETS = 500;
 const CLAIM_ATTEMPTS = 10;
+/**
+ * Spec change 46 (D3): a free row is handed out only once it's this old, so the honest wallet host has checked it
+ * (every free row is in every check list, and it syncs every 12-15 s) before any tipper sees it. A row with no
+ * addedAt is from before spec change 46 and counts as old.
+ */
+export const HANDOUT_WAIT_MS = 45_000;
+/** Free rows read per attempt, lowest first; the youngest are skipped. */
+const FREE_READ = 20;
 
 /**
  * The chain height an invoice is made at: the last sync's, while the wallet host is not silent and its node has caught
@@ -185,7 +193,7 @@ async function findProduct(ctx: PluginContext, idOrSlug: string) {
  * only an older row), one on another network than the stored one, or one added under another bridge key (spec change
  * 45) is claimed with no invoice, so it's never handed out, as when the database refuses an invoice.
  */
-export async function claimAndStore(ctx: PluginContext, build: (row: { addrIndex: number; address: string; network: MoneroNetwork }) => Invoice): Promise<Invoice | null> {
+export async function claimAndStore(ctx: PluginContext, build: (row: { addrIndex: number; address: string; network: MoneroNetwork }) => Invoice, now: number = Date.now()): Promise<Invoice | null> {
 	// Spec change 45: only the paired key's rows, on its network once one is stored. A row from an earlier pairing (a
 	// sync already running when the re-pairing landed) or on another network is skipped like an unreadable one.
 	const key = await ctx.settings.get<string>(SETTING.publicKey);
@@ -194,9 +202,10 @@ export async function claimAndStore(ctx: PluginContext, build: (row: { addrIndex
 	const record = await ctx.kv.get<NetworkRecord>(KV.network);
 	const siteNetwork = record?.keyId === currentId ? record.network : null;
 	for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
-		const free = await pool(ctx).query({ where: { status: "free" }, orderBy: { addrIndex: "asc" }, limit: 5 });
-		if (free.items.length === 0) return null;
-		const pick = free.items[attempt % free.items.length];
+		const read = await pool(ctx).query({ where: { status: "free" }, orderBy: { addrIndex: "asc" }, limit: FREE_READ });
+		const free = read.items.filter((r) => r.data.addedAt === undefined || now - r.data.addedAt >= HANDOUT_WAIT_MS).slice(0, 5);
+		if (free.length === 0) return null;
+		const pick = free[attempt % free.length];
 		const network = subaddressNetwork(pick.data.address);
 		if (network === null || pick.data.keyId !== currentId || (siteNetwork !== null && network !== siteNetwork)) {
 			await pool(ctx).updateIf(pick.id, { where: { status: "free" }, set: { status: "claimed" } }).catch(() => undefined);

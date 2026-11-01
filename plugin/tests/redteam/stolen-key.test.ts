@@ -48,15 +48,30 @@ describe("D2: push attacker-controlled pool addresses", () => {
 	// Break (beyond the stated limit): a forged sync makes NEW tipper payments go to an attacker address, which the
 	// "controls the pay page" caveat doesn't already cover. If so, the report's "free goods / fake tip" wording is
 	// incomplete. RT-08 records it. A duplicate/reused index corrupting the pool would be its own finding (D2b).
-	it.fails("[T03][P02] [RT-08] D2: an address a forged sync adds to the pool is never handed to a tipper to pay", async () => {
+	// Spec change 46 (D3): a new row waits 45 s before hand-out, and the honest wallet host checks every free row in that
+	// time. These two replace the it.fails: prevention while the honest host runs, and the limit while it's stopped.
+	it("[T03][P02] [RT-08] D2: an address a forged sync adds to the pool is never handed to a tipper to pay, while the honest wallet host runs", async () => {
 		h = await redteamHost({ pool: 1 });
 		for (const c of ["USD", "EUR"] as const) await h.price(c, "150.00");
 		const attacker = fakeAddress(TAGS.stagenet[1], 2, "ATTACKER");
 		await h.sync({ height: H0 + 2, addresses: [{ index: 2, address: attacker }] });
-		// Drain the one honest address, then the next tipper is handed index 2.
+		// Drain the one honest address; the next tipper isn't handed index 2 within the wait.
 		await h.checkout({ kind: "tip" });
-		const second = data(await h.checkout({ kind: "tip" }));
-		expect(second?.address, "a tipper was handed the attacker's address").not.toBe(attacker);
+		expect(data(await h.checkout({ kind: "tip" }))).toMatchObject({ error: { code: "NO_ADDRESS_AVAILABLE" } });
+		// The honest wallet host's next sync (12-15 s later) reports it; after the wait it's still never handed out.
+		await h.sync({ checks: { pool: { state: "mismatch", bad: [2] } } });
+		await h.agePool();
+		const later = data(await h.checkout({ kind: "tip" }));
+		expect(later?.address, "a tipper was handed the attacker's address").not.toBe(attacker);
+	});
+
+	it("[T03] [RT-08] D2, what's left (spec change 44's wording): with the honest wallet host stopped, nothing reports, and after 45 s the forged row is handed out", async () => {
+		h = await redteamHost({ pool: 0 });
+		for (const c of ["USD", "EUR"] as const) await h.price(c, "150.00");
+		const attacker = fakeAddress(TAGS.stagenet[1], 2, "ATTACKER");
+		await h.sync({ height: H0 + 2, addresses: [{ index: 2, address: attacker }] });
+		await h.agePool();
+		expect(data(await h.checkout({ kind: "tip" }))?.address).toBe(attacker);
 	});
 
 	it("[T03][P02] D2b: a forged address reusing a claimed index never overwrites that row; no two invoices share an address", async () => {

@@ -66,6 +66,36 @@ export interface WalletsState {
 export const MAX_PROBES = 10;
 export const MAX_WALLETS = 100;
 
+/** Spec change 46, item 1: the check list's size, the rotation's chunk and pace, and what counts as a recent row. */
+export const MAX_CHECK = 150;
+export const CHECK_ROTATION_CHUNK = 50;
+export const CHECK_ROTATE_MS = 30_000;
+export const RECENT_MS = 24 * 3_600_000;
+
+/** A pool row as the check list reads it (site number). */
+export interface CheckRow {
+	addrIndex: number;
+	address: string;
+	status: string;
+}
+
+/**
+ * The pool check's state (spec change 46, D3): when the bridge last reported "ok" (a thief's forged "ok" can refresh it
+ * too, so it shows only that a check is running), and a mismatch, sticky until the next pairing.
+ */
+export interface PoolCheckState {
+	lastOkAt?: number;
+	mismatch?: { at: number; keyId: string };
+}
+
+/** The rotation through the rest of the current wallet's rows: the chunk [from, to], taken at `at` (site numbers). */
+export interface RotationState {
+	wallet: number;
+	from: number;
+	to: number;
+	at: number;
+}
+
 /** The paired key's wallet, or null while the site waits for its answer. */
 export function currentWallet(state: WalletsState | null, signerKeyId: string): number | null {
 	if (!state) return 0;
@@ -90,8 +120,23 @@ export interface SyncStore {
 	poolLowest(wallet: number): Promise<{ index: number; address: string } | null>;
 	/** True if the pool already has this subaddress index (free or claimed). */
 	poolHas(index: number): Promise<boolean>;
-	/** Adds a free row tagged with the ID of the key that signed the sync (spec change 45). */
-	poolAdd(row: { addrIndex: number; address: string; keyId: string }): Promise<void>;
+	/** Adds a free row tagged with the ID of the key that signed the sync (spec change 45) and when (spec change 46). */
+	poolAdd(row: { addrIndex: number; address: string; keyId: string; addedAt: number }): Promise<void>;
+	/** One pool row by site number, any status. */
+	poolGet(index: number): Promise<CheckRow | null>;
+	/**
+	 * A wallet's rows of one status, lowest site number first: above `after` and up to `through` when given (site
+	 * numbers), at most `limit`.
+	 */
+	poolRows(q: { wallet: number; status: "free" | "claimed"; after?: number; through?: number; limit: number }): Promise<CheckRow[]>;
+	/** Spec change 46: marks a row "bad" (never handed out, never deleted, out of poolTop and the free count). */
+	poolMarkBad(index: number): Promise<void>;
+	getRecent(): Promise<Array<{ index: number; at: number }>>;
+	setRecent(rows: Array<{ index: number; at: number }>): Promise<void>;
+	getRotation(): Promise<RotationState | null>;
+	setRotation(state: RotationState): Promise<void>;
+	getPoolCheck(): Promise<PoolCheckState | null>;
+	setPoolCheck(state: PoolCheckState): Promise<void>;
 	getNetwork(): Promise<NetworkRecord | null>;
 	setNetwork(record: NetworkRecord): Promise<void>;
 	clearNetwork(): Promise<void>;
@@ -124,6 +169,8 @@ export interface SyncSuccess {
 	watch: number[];
 	/** Spec change 46, item 3: while the site waits for the answer, one digest per wallet it has used. */
 	probes?: Array<{ wallet: number; index: number; digest: string }>;
+	/** Spec change 46, item 1: the current wallet's rows for the bridge to check, by own index and digest. */
+	check?: Array<{ index: number; digest: string }>;
 	/** Spec change 17, on the response that completes a pairing only: scan from here when creating a wallet, so a
 	 * reinstall finds payments to invoices made before it. Absent when nothing is watched. */
 	restoreHeight?: number;
@@ -185,6 +232,8 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 			}
 			const history = list.some((w) => w.probe !== undefined);
 			await store.setWallets({ current: { keyId: keyId(body.value.pair.publicKey), wallet: history ? null : (list[0]?.wallet ?? 0) }, list });
+			// Spec change 46: a mismatch is sticky until the next pairing (after the key, so a failed pairing keeps it).
+			await store.setPoolCheck({});
 			await store.setPairing({ ...pairing, used: true });
 			parsed = body.value;
 			signer = body.value.pair.publicKey;
@@ -251,21 +300,32 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 		}
 	}
 	const events: SyncOutcome["events"] = [];
+	let wrongNetwork = false;
 	if (current !== null) {
 		const wallet = current;
 		const record = parsed.addresses.length > 0 ? await store.getNetwork() : null;
 		let network = record?.keyId === signerId ? record.network : null;
+		// Spec change 46: at most POOL_TARGET rows free, so every free row fits in every check list.
+		let room = parsed.addresses.length > 0 ? POOL_TARGET - (await store.poolFreeCount()) : 0;
+		const added: number[] = [];
 		for (const a of parsed.addresses) {
+			if (room <= 0) break;
 			const addressNetwork = subaddressNetwork(a.address);
 			if (addressNetwork === null) continue;
 			if (network === null) {
 				network = addressNetwork;
 				await store.setNetwork({ network, keyId: signerId });
 			}
-			if (addressNetwork !== network) continue;
+			if (addressNetwork !== network) {
+				// An honest bridge never sends one: its own first address set the network (spec change 46, item 2).
+				wrongNetwork = true;
+				continue;
+			}
 			const n = siteIndex(wallet, a.index);
 			if (await store.poolHas(n)) continue;
-			await store.poolAdd({ addrIndex: n, address: a.address, keyId: signerId });
+			await store.poolAdd({ addrIndex: n, address: a.address, keyId: signerId, addedAt: now });
+			added.push(n);
+			room--;
 			if (wallets) {
 				const entry = wallets.list.find((w) => w.wallet === wallet);
 				if (entry && (!entry.probe || a.index < entry.probe.index)) {
@@ -274,6 +334,9 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 				}
 			}
 		}
+		if (added.length > 0) await store.setRecent([...added.reverse().map((index) => ({ index, at: now })), ...(await store.getRecent())].slice(0, MAX_CHECK));
+		// The bridge's check of the last list it was sent (spec change 46, item 1).
+		await applyPoolReport(store, parsed.checks?.pool, wrongNetwork, wallet, signerId, now, events);
 		// The highest index with a counted payment in this sync, noted once.
 		const paid = Math.max(0, ...parsed.snapshots.filter((snap) => snap.transfers.some((t) => counted(t) && t.amount !== "0")).map((snap) => snap.index));
 		if (paid > 0) await store.notePaid(wallet, paid);
@@ -289,6 +352,7 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 	const watched = candidates.filter((inv) => isWatched(inv, now));
 	const watch = current === null ? [] : [...new Set(watched.filter((inv) => walletOf(inv.addrIndex) === current && !leftBehind(inv)).map((inv) => ownIndex(inv.addrIndex)))].sort((a, b) => a - b);
 	const response: SyncSuccess = { ok: true, poolFree: await store.poolFreeCount(), poolTarget: POOL_TARGET, poolTop: current === null ? 0 : await store.poolTop(current), watch };
+	if (current !== null) response.check = await checkList(store, current, candidates, now);
 	if (current === null && wallets) {
 		response.probes = await Promise.all(probeEntries(wallets).map(async (w) => ({ wallet: w.wallet, index: w.probe.index, digest: await addressDigest(w.probe.address) })));
 	}
@@ -298,8 +362,80 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 	return { response, events, ...(paired ? { paired, replaced } : {}) };
 }
 
-/** Closed because its wallet was no longer connected (D2): resuming that wallet doesn't reopen it. */
-const leftBehind = (inv: Invoice) => inv.reviewReason === "wallet_changed" || inv.expiredReason === "wallet_changed";
+/**
+ * Closed because its wallet was no longer connected (D2), or because its address wasn't from the wallet (D3): never
+ * watched again, and no snapshot reopens it.
+ */
+const leftBehind = (inv: Invoice) => inv.reviewReason === "wallet_changed" || inv.expiredReason === "wallet_changed" || inv.reviewReason === "not_your_wallet";
+
+/**
+ * Spec change 46, item 1 (D3): "ok" records when the check last passed; a mismatch (or an address on another network
+ * from the current key) is recorded, sticky, and every bad row turns "bad" with any invoice on it sent to review
+ * (not_your_wallet), closed and admin-decided ones included, since those decisions were made without knowing.
+ */
+async function applyPoolReport(store: SyncStore, report: BridgeChecks["pool"], wrongNetwork: boolean, wallet: number, signerId: string, now: number, events: SyncOutcome["events"]) {
+	if (!report && !wrongNetwork) return;
+	const state = (await store.getPoolCheck()) ?? {};
+	if (report?.state === "ok") state.lastOkAt = now;
+	if (report?.state === "mismatch" || wrongNetwork) {
+		state.mismatch ??= { at: now, keyId: signerId };
+		for (const own of report?.state === "mismatch" ? report.bad : []) {
+			const n = siteIndex(wallet, own);
+			await store.poolMarkBad(n);
+			const inv = await store.invoiceForIndex(n);
+			if (!inv || inv.reviewReason === "not_your_wallet") continue;
+			const from = inv.status;
+			inv.status = "review";
+			inv.reviewReason = "not_your_wallet";
+			delete inv.adminFinal;
+			delete inv.pendingExpiry;
+			inv.finalAt ??= now;
+			await store.saveInvoice(inv);
+			events.push({ invoiceId: inv.id, event: { type: "status", from, to: "review", reason: "not_your_wallet" } });
+		}
+	}
+	await store.setPoolCheck(state);
+}
+
+/**
+ * The rows the bridge checks (spec change 46, item 1): every free row, lowest first (checkout hands those out next);
+ * then rows added in the last 24 hours, newest first, whatever their status; then open invoices' rows, newest first;
+ * then a rotation through the rest that moves on by the clock, every CHECK_ROTATE_MS, so a thief syncing often can't
+ * hurry it past the honest bridge. The current wallet's rows only, at most MAX_CHECK, as own indexes and digests.
+ */
+async function checkList(store: SyncStore, wallet: number, candidates: Invoice[], now: number): Promise<Array<{ index: number; digest: string }>> {
+	const out: Array<{ index: number; address: string }> = [];
+	const seen = new Set<number>();
+	const push = (index: number, address: string) => {
+		if (out.length >= MAX_CHECK || seen.has(index) || walletOf(index) !== wallet) return;
+		seen.add(index);
+		out.push({ index, address });
+	};
+	const live = (r: CheckRow | null): r is CheckRow => r !== null && (r.status === "free" || r.status === "claimed");
+	for (const r of await store.poolRows({ wallet, status: "free", limit: MAX_CHECK })) push(r.addrIndex, r.address);
+	for (const e of await store.getRecent()) {
+		if (out.length >= MAX_CHECK) break;
+		if (now - e.at > RECENT_MS || seen.has(e.index) || walletOf(e.index) !== wallet) continue;
+		const r = await store.poolGet(e.index);
+		if (live(r)) push(r.addrIndex, r.address);
+	}
+	const open = candidates.filter((inv) => isOpen(inv) && walletOf(inv.addrIndex) === wallet && !leftBehind(inv)).sort((a, b) => b.createdAt - a.createdAt);
+	for (const inv of open) push(inv.addrIndex, inv.subaddress);
+	const start = siteIndex(wallet, 0);
+	let rotation = await store.getRotation();
+	let chunk: CheckRow[];
+	if (!rotation || rotation.wallet !== wallet || now - rotation.at >= CHECK_ROTATE_MS) {
+		const after = rotation?.wallet === wallet ? rotation.to : start;
+		chunk = await store.poolRows({ wallet, status: "claimed", after, limit: CHECK_ROTATION_CHUNK });
+		if (chunk.length === 0 && after > start) chunk = await store.poolRows({ wallet, status: "claimed", after: start, limit: CHECK_ROTATION_CHUNK });
+		rotation = { wallet, from: chunk[0]?.addrIndex ?? start, to: chunk.at(-1)?.addrIndex ?? start, at: now };
+		await store.setRotation(rotation);
+	} else {
+		chunk = await store.poolRows({ wallet, status: "claimed", after: rotation.from - 1, through: rotation.to, limit: CHECK_ROTATION_CHUNK });
+	}
+	for (const r of chunk) push(r.addrIndex, r.address);
+	return Promise.all(out.map(async (e) => ({ index: ownIndex(e.index), digest: await addressDigest(e.address) })));
+}
 
 /**
  * Spec change 46, D2: another wallet's open invoices can't get evidence from this wallet host. Something received goes

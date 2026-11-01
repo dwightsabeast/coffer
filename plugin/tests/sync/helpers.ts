@@ -2,7 +2,8 @@
 // WebCrypto (the same keys as contract/test-vectors/sync-signature.json; never a key of our own).
 import type { Invoice } from "../../src/core/invoice";
 import { ownIndex, walletOf } from "../../src/core/walletindex";
-import type { BridgeState, NetworkRecord, SyncStore, WalletsState } from "../../src/sync/handle";
+import { siteIndex } from "../../src/core/walletindex";
+import type { BridgeState, CheckRow, NetworkRecord, PoolCheckState, RotationState, SyncStore, WalletsState } from "../../src/sync/handle";
 import { type PairingState, keyId } from "../../src/sync/pairing";
 
 const SEEDS = {
@@ -43,7 +44,10 @@ export class MemoryStore implements SyncStore {
 	publicKey: string | null = null;
 	pairing: PairingState | null = null;
 	bridge: BridgeState | null = null;
-	pool = new Map<number, { addrIndex: number; address: string; status: "free" | "claimed" | "dropped"; keyId?: string; invoiceId?: string }>();
+	pool = new Map<number, { addrIndex: number; address: string; status: "free" | "claimed" | "dropped" | "bad"; keyId?: string; invoiceId?: string; addedAt?: number }>();
+	recent: Array<{ index: number; at: number }> = [];
+	rotation: RotationState | null = null;
+	poolCheck: PoolCheckState | null = null;
 	network: NetworkRecord | null = null;
 	invoices = new Map<string, Invoice>();
 
@@ -69,7 +73,21 @@ export class MemoryStore implements SyncStore {
 	}
 	async setBridgeState(s: BridgeState) { this.bridge = s; }
 	async poolHas(i: number) { return this.pool.has(i); }
-	async poolAdd(row: { addrIndex: number; address: string; keyId: string }) { this.pool.set(row.addrIndex, { ...row, status: "free" }); }
+	async poolAdd(row: { addrIndex: number; address: string; keyId: string; addedAt: number }) { this.pool.set(row.addrIndex, { ...row, status: "free" }); }
+	async poolGet(i: number): Promise<CheckRow | null> { const r = this.pool.get(i); return r ? { ...r } : null; }
+	async poolRows(q: { wallet: number; status: "free" | "claimed"; after?: number; through?: number; limit: number }) {
+		const lo = q.after === undefined ? siteIndex(q.wallet, 0) : q.after + 1;
+		const hi = q.through ?? siteIndex(q.wallet, 0) + 2 ** 32 - 1;
+		return [...this.pool.values()].filter((r) => r.status === q.status && r.addrIndex >= Math.max(lo, siteIndex(q.wallet, 0)) && r.addrIndex <= hi && walletOf(r.addrIndex) === q.wallet)
+			.sort((a, b) => a.addrIndex - b.addrIndex).slice(0, q.limit).map((r) => ({ ...r }));
+	}
+	async poolMarkBad(i: number) { const r = this.pool.get(i); if (r && (r.status === "free" || r.status === "claimed")) r.status = "bad"; }
+	async getRecent() { return this.recent.map((e) => ({ ...e })); }
+	async setRecent(rows: Array<{ index: number; at: number }>) { this.recent = rows.map((e) => ({ ...e })); }
+	async getRotation() { return this.rotation ? { ...this.rotation } : null; }
+	async setRotation(s: RotationState) { this.rotation = { ...s }; }
+	async getPoolCheck() { return this.poolCheck ? structuredClone(this.poolCheck) : null; }
+	async setPoolCheck(s: PoolCheckState) { this.poolCheck = structuredClone(s); }
 	async getNetwork() { return this.network; }
 	async setNetwork(r: NetworkRecord) { this.network = { ...r }; }
 	async clearNetwork() { this.network = null; }

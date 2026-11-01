@@ -99,10 +99,20 @@ export async function redteamHost(o: HostOptions = {}) {
 		await host.http.respond(`https://api.kraken.com/0/public/Ticker?pair=XMR${pair}`, new Response(JSON.stringify({ error: [], result: { [`XXMRZ${pair}`]: { c: [value, "1.0"] } } })));
 	}
 
+	/**
+	 * Spec change 46's 45 s wait before a new row is handed out, in a test: makes every free row a sync added look `ms`
+	 * older (default a minute), as if the honest wallet host had had time to check it.
+	 */
+	async function agePool(ms = 60_000) {
+		for (const r of await host.inspect.storage.list<Json>("pool")) {
+			if (r.data.status === "free" && typeof r.data.addedAt === "number") await host.fixtures.plugin.storage("pool", r.id, { ...r.data, addedAt: r.data.addedAt - ms });
+		}
+	}
+
 	const invoices = async () => (await host.inspect.storage.list<Json>("invoices")).map((r) => r.data);
 	const pool = async () => (await host.inspect.storage.list<Json>("pool")).map((r) => r.data);
 
-	return { host, sync, checkout, checkoutAs, status, price, invoices, pool };
+	return { host, sync, checkout, checkoutAs, status, price, agePool, invoices, pool };
 }
 
 export type RedteamHost = Awaited<ReturnType<typeof redteamHost>>;

@@ -54,7 +54,7 @@ describe("the check list (spec change 46, item 1)", () => {
 	it("[T03][R08] only the current wallet's rows", async () => {
 		const store = paired();
 		store.pool.set(7, { addrIndex: 7, address: HONEST(7), status: "claimed", invoiceId: "inv_7" });
-		store.wallets = { current: { keyId: PUBLIC_KEYS.test1.slice(0, 16), wallet: 1 }, list: [{ wallet: 1 }, { wallet: 0, probe: { index: 7, address: HONEST(7) } }] };
+		store.wallets = { current: { keyId: PUBLIC_KEYS.test1.slice(0, 16), wallet: 1 }, list: [{ wallet: 1 }, { wallet: 0, probe: { digest: "qYtoTZjlFXXSf7Ul9MFxxg==" } }] };
 		const out = ok(await send(store, body({ addresses: addrs(1, 2, THIEF) })));
 		expect(out.check?.map((c) => c.index)).toEqual([1, 2]);
 		expect(store.pool.has(siteIndex(1, 1))).toBe(true);

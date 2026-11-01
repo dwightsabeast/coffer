@@ -134,6 +134,11 @@ export interface SyncBody {
 	 * transfer.
 	 */
 	wallet?: { match: number | null; receivedTop: number };
+	/**
+	 * Spec change 46 (Wyatt's review): the digest of the bridge's own index-1 address, sent with its answer and once after
+	 * a pairing on a site with no history. The site keeps it as that wallet's probe.
+	 */
+	probeDigest?: string;
 	/** True when the bridge speaks the previous protocol version: the admin page shows "wallet host update available". */
 	outdated: boolean;
 }
@@ -147,6 +152,8 @@ const TXID = /^[0-9a-f]{64}$/;
 /** A Monero subaddress: 95 base58 characters, and a subaddress network byte the plugin can read (spec change 36). */
 const SUBADDRESS = /^[1-9A-HJ-NP-Za-km-z]{95}$/;
 export const PAIRING_CODE = /^[A-Za-z0-9_-]{22}$/;
+/** An address digest: standard padded base64 of 16 bytes. */
+export const DIGEST = /^[A-Za-z0-9+/]{22}==$/;
 
 /** Current, or the previous version when there is one. */
 export const acceptsVersion = (v: number, current: number = PROTOCOL_VERSION) => v === current || (v === current - 1 && v >= 1);
@@ -246,6 +253,7 @@ export function parseSyncBody(text: string, current: number = PROTOCOL_VERSION):
 	if (checks) body.checks = checks;
 	const wallet = parseWalletAnswer(json.wallet);
 	if (wallet) body.wallet = wallet;
+	if (typeof json.probeDigest === "string" && DIGEST.test(json.probeDigest)) body.probeDigest = json.probeDigest;
 	if (json.pair !== undefined) {
 		const p = json.pair;
 		if (!isObject(p) || typeof p.code !== "string" || !PAIRING_CODE.test(p.code) || typeof p.publicKey !== "string" || !decodeBase64(p.publicKey, 32)) {

@@ -76,10 +76,8 @@ export class MemoryStore implements SyncStore {
 	async getWallets() { return this.wallets ? structuredClone(this.wallets) : null; }
 	async setWallets(s: WalletsState) { this.wallets = structuredClone(s); }
 	private live(w: number) { return [...this.pool.values()].filter((r) => (r.status === "free" || r.status === "claimed") && walletOf(r.addrIndex) === w); }
-	async poolLowest(w: number) {
-		const rows = this.live(w).sort((a, b) => a.addrIndex - b.addrIndex);
-		return rows[0] ? { index: ownIndex(rows[0].addrIndex), address: rows[0].address } : null;
-	}
+	async claimedTop(w: number) { return Math.max(0, ...this.live(w).filter((r) => r.status === "claimed").map((r) => ownIndex(r.addrIndex))); }
+	async poolAnyClaimed() { return [...this.pool.values()].some((r) => r.status === "claimed"); }
 	async setBridgeState(s: BridgeState) { this.bridge = s; }
 	async poolHas(i: number) { return this.pool.has(i); }
 	async poolAdd(row: { addrIndex: number; address: string; keyId: string; addedAt: number }) { this.pool.set(row.addrIndex, { ...row, status: "free" }); }

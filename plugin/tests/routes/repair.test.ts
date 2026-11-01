@@ -78,6 +78,7 @@ describe("a new pairing starts the pool afresh (spec change 45)", () => {
 	it("[T03][R08] the leftover window on purpose: an old-key sync's rows that land after the pairing are never handed out", async () => {
 		h = await redteamHost({ pool: 2 });
 		expect(data(await pairTest2(h))?.ok).toBe(true);
+		await answer(h, null); // spec change 46: wallet 0 has a probe (its row 1), so the site waits for the answer
 		// A sync signed by test1 that passed its checks before the new key was stored, writing after the drop.
 		for (const i of [3, 4]) await h.host.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: fakeAddress(TAGS.stagenet[1], i, "THIEF"), status: "free", keyId: KEY_IDS.test1 });
 		await h.host.fixtures.plugin.kv("state:network", { network: "stagenet", keyId: KEY_IDS.test1 });
@@ -111,8 +112,10 @@ describe("a new pairing starts the pool afresh (spec change 45)", () => {
 		expect(page.find((b) => b.type === "meter")).toMatchObject({ value: 0 });
 		expect(page.filter((b) => b.type === "banner" && String(b.description ?? "").includes(String(GAP_ALERT)))).toEqual([]);
 
-		expect(data(await pairTest2(h))).toMatchObject({ ok: true, poolTop: 0 }); // waiting for the probe answer
+		expect(data(await pairTest2(h))).toMatchObject({ ok: true, poolTop: 0, probes: [] }); // waiting; no row 1, so no probe
 		expect([...(await byIndex(h)).keys()]).toEqual([5]);
-		expect(data(await answer(h, 0))).toMatchObject({ ok: true, poolTop: 5 });
+		// Spec change 46 (Wyatt's review): with no row at index 1, wallet 0 can't be matched; "no match" starts a new wallet.
+		expect(data(await answer(h, 0))).toMatchObject({ ok: true, probes: [] }); // ignored: not among the probes
+		expect(data(await answer(h, null))).toMatchObject({ ok: true, poolTop: 0, claimedTop: 0 });
 	});
 });

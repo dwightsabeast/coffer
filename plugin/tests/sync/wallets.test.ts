@@ -24,7 +24,7 @@ async function send(store: MemoryStore, b: unknown, opts: { now?: number; key?: 
 	const bytes = bytesOf(b);
 	return handleSync({ body: bytes, headers: await signedHeaders(bytes, now, opts.key ?? "test1"), now }, store);
 }
-type Ok = { ok: true; poolFree: number; poolTop: number; watch: number[]; probes?: Array<{ wallet: number; index: number; digest: string }>; restoreHeight?: number };
+type Ok = { ok: true; poolFree: number; poolTop: number; claimedTop: number; watch: number[]; probes?: Array<{ wallet: number; index: number; digest: string }>; restoreHeight?: number };
 const ok = (out: Awaited<ReturnType<typeof send>>) => {
 	if (!("ok" in out.response)) throw new Error(`refused: ${JSON.stringify(out.response)}`);
 	return out.response as unknown as Ok;
@@ -63,7 +63,39 @@ describe("the probe and the wait (spec change 46, item 3)", () => {
 		expect(out.probes).toBeUndefined();
 		expect(out).toMatchObject({ poolFree: 1, poolTop: 1 });
 		expect(store.wallets?.current).toEqual({ keyId: PUBLIC_KEYS.test1.slice(0, 16), wallet: 0 });
-		expect(store.wallets?.list[0]).toMatchObject({ wallet: 0, probe: { index: 1, address: SHOP(1) } });
+		// Spec change 46 (Wyatt's review): the probe is always index 1, by the digest the bridge sends once after pairing.
+		expect(store.wallets?.list[0]).toEqual({ wallet: 0 });
+		await send(store, body({ seq: T0 + 1000, probeDigest: await addressDigest(SHOP(1)) }), { now: T0 + 1000 });
+		expect(store.wallets?.list[0]).toEqual({ wallet: 0, probe: { digest: await addressDigest(SHOP(1)) } });
+		// Sent again, or a different one, it doesn't change.
+		await send(store, body({ seq: T0 + 2000, probeDigest: await addressDigest(OTHER(1)) }), { now: T0 + 2000 });
+		expect(store.wallets?.list[0]).toEqual({ wallet: 0, probe: { digest: await addressDigest(SHOP(1)) } });
+	});
+
+	it("[P02] wallet 0's probe on an existing site is its row at index 1, read before the pairing drops the free rows", async () => {
+		const store = devSite();
+		store.pool.set(1, { addrIndex: 1, address: SHOP(1), status: "free", keyId: "old" });
+		const out = ok(await repair(store, "test2"));
+		expect(store.pool.has(1)).toBe(false); // dropped
+		expect(out.probes).toEqual([{ wallet: 0, index: 1, digest: await addressDigest(SHOP(1)) }]);
+	});
+
+	it("[P02] no row at index 1: wallet 0 has no probe, so the site still waits, sends no probes, and \"no match\" starts a new wallet", async () => {
+		const store = devSite();
+		store.pool.delete(1);
+		const out = ok(await repair(store, "test2"));
+		expect(out.probes).toEqual([]);
+		expect(store.wallets?.current.wallet).toBeNull();
+		await send(store, body({ seq: T0 + 2000, wallet: { match: null, receivedTop: 0 }, probeDigest: await addressDigest(OTHER(1)) }), { key: "test2", now: T0 + 2000 });
+		expect(store.wallets?.current.wallet).toBe(1);
+	});
+
+	it("[T03] a malformed probe digest is ignored", async () => {
+		const store = new MemoryStore();
+		store.publicKey = PUBLIC_KEYS.test1;
+		store.wallets = { current: { keyId: PUBLIC_KEYS.test1.slice(0, 16), wallet: 0 }, list: [{ wallet: 0 }] };
+		for (const probeDigest of ["short", "A".repeat(24), 7, null]) await send(store, body({ probeDigest }));
+		expect(store.wallets?.list[0]).toEqual({ wallet: 0 });
 	});
 
 	it("[P02] a paired site from before spec change 46 (no wallet state) is wallet 0, unchanged", async () => {
@@ -121,7 +153,7 @@ describe("each wallet keeps its own numbering (spec change 46, item 4)", () => {
 	it("[P02] Wyatt's test case: after a different-wallet re-pair the first pool address is the new wallet's own index 1, and the gap baseline is its receivedTop", async () => {
 		const store = devSite();
 		await repair(store, "test2");
-		const answered = ok(await send(store, body({ seq: T0 + 2000, wallet: { match: null, receivedTop: 0 } }), { key: "test2", now: T0 + 2000 }));
+		const answered = ok(await send(store, body({ seq: T0 + 2000, wallet: { match: null, receivedTop: 0 }, probeDigest: await addressDigest(OTHER(1)) }), { key: "test2", now: T0 + 2000 }));
 		expect(answered.probes).toBeUndefined();
 		expect(answered.poolTop).toBe(0); // the new wallet holds nothing yet: its own numbering, not 356
 		expect(store.wallets?.current.wallet).toBe(1);
@@ -130,7 +162,7 @@ describe("each wallet keeps its own numbering (spec change 46, item 4)", () => {
 		expect(filled).toMatchObject({ poolFree: 3, poolTop: 3 });
 		expect(store.pool.get(siteIndex(1, 1))).toMatchObject({ address: OTHER(1), status: "free" });
 		expect(store.pool.get(1)?.address).toBe(SHOP(1)); // wallet 0's own index 1 untouched
-		expect(store.wallets?.list.find((w) => w.wallet === 1)?.probe).toEqual({ index: 1, address: OTHER(1) });
+		expect(store.wallets?.list.find((w) => w.wallet === 1)?.probe).toEqual({ digest: await addressDigest(OTHER(1)) });
 	});
 
 	it("[P02] a returning wallet the site has forgotten: the baseline starts at its receivedTop, not 0", async () => {
@@ -161,13 +193,14 @@ describe("each wallet keeps its own numbering (spec change 46, item 4)", () => {
 	it("[P02] a match resumes that wallet: poolTop is its own highest, and its invoices take snapshots again", async () => {
 		const store = devSite();
 		await repair(store, "test2");
-		await send(store, body({ seq: T0 + 2000, wallet: { match: null, receivedTop: 0 }, addresses: [{ index: 1, address: OTHER(1) }] }), { key: "test2", now: T0 + 2000 });
+		await send(store, body({ seq: T0 + 2000, wallet: { match: null, receivedTop: 0 }, probeDigest: await addressDigest(OTHER(1)), addresses: [{ index: 1, address: OTHER(1) }] }), { key: "test2", now: T0 + 2000 });
 		// Back to the shop wallet with a third key.
 		const probes = ok(await repair(store, "test1", T0 + 5000)).probes;
-		expect(probes?.map((p) => p.wallet)).toEqual([1, 0]); // most recent first
+		expect(probes).toEqual([{ wallet: 1, index: 1, digest: await addressDigest(OTHER(1)) }, { wallet: 0, index: 1, digest: await addressDigest(SHOP(1)) }]); // most recent first
 		const back = ok(await send(store, body({ seq: T0 + 6000, wallet: { match: 0, receivedTop: 300 } }), { now: T0 + 6000 }));
 		expect(store.wallets?.current.wallet).toBe(0);
 		expect(back.poolTop).toBe(356); // wallet 0's free rows were dropped at the first re-pair; its claimed top stays
+		expect(back.claimedTop).toBe(356);
 		await send(store, body({ seq: T0 + 7000, addresses: [{ index: 357, address: SHOP(357) }] }), { now: T0 + 7000 });
 		expect(store.pool.get(357)).toMatchObject({ address: SHOP(357), status: "free" });
 	});
@@ -240,5 +273,22 @@ describe("open invoices of a wallet that's no longer connected (spec change 46, 
 		await send(store, body({ seq: T0 + 3_603_000, height: H0 + 13, snapshots: [{ index: 305, transfers: [settle] }, { index: 356, transfers: [settle] }] }), { now: T0 + 3_603_000 });
 		expect(store.invoices.get("inv_seen")).toMatchObject({ status: "review", reviewReason: "wallet_changed" });
 		expect(store.invoices.get("inv_new")).toMatchObject({ status: "expired", expiredReason: "wallet_changed" });
+	});
+});
+
+describe("claimedTop (spec change 46, Wyatt's review: numbering cues only from rows the site handed out)", () => {
+	it("[T03][P02] the current wallet's highest claimed row, in its own numbering; free, bad and dropped rows don't count; 0 while waiting", async () => {
+		const store = devSite();
+		store.pool.set(500, { addrIndex: 500, address: SHOP(500), status: "bad", keyId: "old" });
+		store.pool.set(600, { addrIndex: 600, address: SHOP(600), status: "dropped", keyId: "old" });
+		let out = ok(await send(store, body()));
+		expect(out).toMatchObject({ poolTop: 405, claimedTop: 356 });
+		out = ok(await repair(store, "test2"));
+		expect(out.claimedTop).toBe(0);
+		out = ok(await send(store, body({ seq: T0 + 2000, wallet: { match: null, receivedTop: 0 }, addresses: [1, 2].map((i) => ({ index: i, address: OTHER(i) })) }), { key: "test2", now: T0 + 2000 }));
+		expect(out).toMatchObject({ poolTop: 2, claimedTop: 0 });
+		const row = store.pool.get(siteIndex(1, 2))!;
+		row.status = "claimed";
+		expect(ok(await send(store, body({ seq: T0 + 3000 }), { key: "test2", now: T0 + 3000 })).claimedTop).toBe(2);
 	});
 });

@@ -100,10 +100,13 @@ export class CtxSyncStore implements SyncStore {
 	setWallets(state: WalletsState) {
 		return this.ctx.kv.set(KV.wallets, state);
 	}
-	async poolLowest(wallet: number) {
-		const low = await pool(this.ctx).query({ where: { status: { in: ["free", "claimed"] }, addrIndex: walletRange(wallet) }, orderBy: { addrIndex: "asc" }, limit: 1 });
-		const row = low.items[0]?.data;
-		return row ? { index: ownIndex(row.addrIndex), address: row.address } : null;
+	async claimedTop(wallet: number) {
+		const top = await pool(this.ctx).query({ where: { status: "claimed", addrIndex: walletRange(wallet) }, orderBy: { addrIndex: "desc" }, limit: 1 });
+		const row = top.items[0]?.data;
+		return row ? ownIndex(row.addrIndex) : 0;
+	}
+	async poolAnyClaimed() {
+		return (await pool(this.ctx).count({ status: "claimed" })) > 0;
 	}
 	poolHas(index: number) {
 		return pool(this.ctx).exists(String(index));

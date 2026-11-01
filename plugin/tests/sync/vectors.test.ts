@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { handleSync } from "../../src/sync/handle";
 import { decodeBase64, decodeStrict, verifySignature } from "../../src/sync/protocol";
 import vectors from "../../../contract/test-vectors/sync-signature.json";
+import digestVector from "../../../contract/test-vectors/address-digest.json";
+import { addressDigest } from "../../src/core/digest";
 import { MemoryStore, fromB64 } from "./helpers";
 
 describe("shared signature vectors", () => {
@@ -28,4 +30,11 @@ describe("shared signature vectors", () => {
 			else expect(out.response).toEqual({ error: { code: v.expected } });
 		});
 	}
+});
+
+describe("the shared address digest (spec change 46, D3)", () => {
+	it("[T03] addressDigest matches contract/test-vectors/address-digest.json", async () => {
+		expect(digestVector.digest).toHaveLength(24);
+		expect(await addressDigest(digestVector.address)).toBe(digestVector.digest);
+	});
 });

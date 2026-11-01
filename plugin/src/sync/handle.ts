@@ -46,10 +46,13 @@ export interface NetworkRecord {
 	keyId: string;
 }
 
-/** One wallet the site has used (spec change 46). `probe` is its lowest-index row, in the wallet's own index. */
+/**
+ * One wallet the site has used (spec change 46). `probe` is the digest of its own index-1 address (Wyatt's review:
+ * probes are always index 1, so answering one never makes a fresh wallet create more than its first subaddress).
+ */
 export interface WalletEntry {
 	wallet: number;
-	probe?: { index: number; address: string };
+	probe?: { digest: string };
 }
 
 /**
@@ -127,8 +130,10 @@ export interface SyncStore {
 	notePaid(wallet: number, index: number): Promise<void>;
 	getWallets(): Promise<WalletsState | null>;
 	setWallets(state: WalletsState): Promise<void>;
-	/** A wallet's lowest-index row (free or claimed), in its own index; null when it has none. */
-	poolLowest(wallet: number): Promise<{ index: number; address: string } | null>;
+	/** A wallet's highest claimed own index, 0 when none (spec change 46: numbering cues only from handed-out rows). */
+	claimedTop(wallet: number): Promise<number>;
+	/** True if any pool row of any wallet is claimed: the site has history. */
+	poolAnyClaimed(): Promise<boolean>;
 	/** True if the pool already has this subaddress index (free or claimed). */
 	poolHas(index: number): Promise<boolean>;
 	/** Adds a free row tagged with the ID of the key that signed the sync (spec change 45) and when (spec change 46). */
@@ -185,8 +190,14 @@ export interface SyncSuccess {
 	poolTop: number;
 	/** The current wallet's own indexes; empty while the site waits for the probe answer. */
 	watch: number[];
-	/** Spec change 46, item 3: while the site waits for the answer, one digest per wallet it has used. */
-	probes?: Array<{ wallet: number; index: number; digest: string }>;
+	/**
+	 * Spec change 46 (Wyatt's review): the current wallet's highest claimed own index; free, "bad" and "dropped" rows
+	 * don't count, so a key thief's free rows can't move it. The bridge's catch-up follows this, never poolTop. 0 while
+	 * the site waits for the probe answer.
+	 */
+	claimedTop: number;
+	/** Spec change 46, item 3: while the site waits for the answer, one per wallet with a probe (index 1); may be empty. */
+	probes?: Array<{ wallet: number; index: 1; digest: string }>;
 	/** Spec change 46, item 1: the current wallet's rows for the bridge to check, by own index and digest. */
 	check?: Array<{ index: number; digest: string }>;
 	/** Spec change 17, on the response that completes a pairing only: scan from here when creating a wallet, so a
@@ -235,6 +246,14 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 			if (!key || !(await verifySignature(key, ts, bytes, signature))) return error("BAD_SIGNATURE");
 			const previous = await store.getPublicKey();
 			replaced = previous !== null;
+			// Spec change 46: on a site from before it, wallet 0's probe is its row at index 1, read before the drop below
+			// can remove it (a free row 1).
+			const prior = await store.getWallets();
+			let probe0: WalletEntry["probe"];
+			if (!prior) {
+				const row1 = await store.poolGet(siteIndex(0, 1));
+				if (row1 && (row1.status === "free" || row1.status === "claimed")) probe0 = { digest: await addressDigest(row1.address) };
+			}
 			// Spec change 45, in this order: drop the unused pool and clear the network, then store the key, then burn the
 			// code. A failure partway leaves the old pairing working and the code usable for a retry, never a new
 			// pairing holding the old pool.
@@ -247,13 +266,10 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 			await store.setRefused(null);
 			// Spec change 46: a site with history waits for the bridge to say which wallet it holds; a fresh one is wallet 0.
 			// After the key, so a failure before this leaves the old key's wallet state as it was.
-			const prior = await store.getWallets();
-			let list = prior?.list;
-			if (!list) {
-				const low = await store.poolLowest(0);
-				list = [{ wallet: 0, ...(low ? { probe: low } : {}) }];
-			}
-			const history = list.some((w) => w.probe !== undefined);
+			const list = prior?.list ?? [{ wallet: 0, ...(probe0 ? { probe: probe0 } : {}) }];
+			// History: a probe to match, or any row ever handed out. A site with claimed rows but no probe still waits, and
+			// the bridge's "no match" then starts a new wallet (the safe start).
+			const history = list.some((w) => w.probe !== undefined) || (await store.poolAnyClaimed());
 			await store.setWallets({ current: { keyId: keyId(body.value.pair.publicKey), wallet: history ? null : (list[0]?.wallet ?? 0) }, list });
 			// Spec change 46: a mismatch is sticky until the next pairing (after the key, so a failed pairing keeps it).
 			await store.setPoolCheck({});
@@ -318,12 +334,20 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 		if (answer.match === null) next = Math.max(-1, ...wallets.list.map((w) => w.wallet)) + 1;
 		else if (probeEntries(wallets).some((w) => w.wallet === answer.match)) next = answer.match;
 		if (next !== null) {
-			const entry = wallets.list.find((w) => w.wallet === next) ?? { wallet: next };
+			const entry = wallets.list.find((w) => w.wallet === next) ?? { wallet: next, ...(parsed.probeDigest ? { probe: { digest: parsed.probeDigest } } : {}) };
 			wallets = { current: { keyId: signerId, wallet: next }, list: [entry, ...wallets.list.filter((w) => w.wallet !== next)].slice(0, MAX_WALLETS) };
 			current = next;
 			walletsChanged = true;
 			// The gap baseline: the wallet's highest received index, so a returning wallet shows no false gap.
 			await store.notePaid(next, answer.receivedTop);
+		}
+	}
+	// The bridge's index-1 digest, sent once after a pairing on a site with no history: the current wallet's probe.
+	if (current !== null && wallets && parsed.probeDigest) {
+		const entry = wallets.list.find((w) => w.wallet === current);
+		if (entry && !entry.probe) {
+			entry.probe = { digest: parsed.probeDigest };
+			walletsChanged = true;
 		}
 	}
 	const events: SyncOutcome["events"] = [];
@@ -353,13 +377,6 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 			await store.poolAdd({ addrIndex: n, address: a.address, keyId: signerId, addedAt: now });
 			added.push(n);
 			room--;
-			if (wallets) {
-				const entry = wallets.list.find((w) => w.wallet === wallet);
-				if (entry && (!entry.probe || a.index < entry.probe.index)) {
-					entry.probe = { index: a.index, address: a.address };
-					walletsChanged = true;
-				}
-			}
 		}
 		if (added.length > 0) await store.setRecent([...added.reverse().map((index) => ({ index, at: now })), ...(await store.getRecent())].slice(0, MAX_CHECK));
 		// The bridge's check of the last list it was sent (spec change 46, item 1).
@@ -378,10 +395,10 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 	if (current !== null) await leaveOtherWallets(store, candidates, current, now, events);
 	const watched = candidates.filter((inv) => isWatched(inv, now));
 	const watch = current === null ? [] : [...new Set(watched.filter((inv) => walletOf(inv.addrIndex) === current && !leftBehind(inv)).map((inv) => ownIndex(inv.addrIndex)))].sort((a, b) => a - b);
-	const response: SyncSuccess = { ok: true, poolFree: await store.poolFreeCount(), poolTarget: POOL_TARGET, poolTop: current === null ? 0 : await store.poolTop(current), watch };
+	const response: SyncSuccess = { ok: true, poolFree: await store.poolFreeCount(), poolTarget: POOL_TARGET, poolTop: current === null ? 0 : await store.poolTop(current), watch, claimedTop: current === null ? 0 : await store.claimedTop(current) };
 	if (current !== null) response.check = await checkList(store, current, candidates, now);
 	if (current === null && wallets) {
-		response.probes = await Promise.all(probeEntries(wallets).map(async (w) => ({ wallet: w.wallet, index: w.probe.index, digest: await addressDigest(w.probe.address) })));
+		response.probes = probeEntries(wallets).map((w) => ({ wallet: w.wallet, index: 1 as const, digest: w.probe.digest }));
 	}
 	if (paired && watched.length > 0) {
 		response.restoreHeight = Math.max(0, Math.min(...watched.map((inv) => inv.createdHeight)) - RESTORE_MARGIN_BLOCKS);

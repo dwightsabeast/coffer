@@ -157,4 +157,13 @@ describe("spec change 46: the wallet's index range, the seq bound, and the new r
 			expect(wallet(bad)).toBeUndefined();
 		}
 	});
+	it("[T03][P02] reads probeDigest: a 24-character base64 digest; anything else dropped", () => {
+		const d = (v: unknown) => {
+			const r = parseSyncBody(body({ probeDigest: v }));
+			expect(r.ok).toBe(true);
+			return r.ok ? r.value.probeDigest : "rejected";
+		};
+		expect(d("qYtoTZjlFXXSf7Ul9MFxxg==")).toBe("qYtoTZjlFXXSf7Ul9MFxxg==");
+		for (const bad of ["qYtoTZjlFXXSf7Ul9MFxxg=", "A".repeat(24), "qYtoTZjlFXXSf7Ul9MFxx-==", 7, null]) expect(d(bad)).toBeUndefined();
+	});
 });

@@ -290,7 +290,7 @@ describe("health panel", () => {
 
 	it("[P02] the gap is the current wallet's, in its own numbers (spec change 46): wallet 0's history doesn't count", async () => {
 		const h = await setup({ claimed: [356], paidTop: 300 });
-		await h.fixtures.plugin.kv("state:wallets", { current: { keyId: KEY_IDS.test1, wallet: 1 }, list: [{ wallet: 1, probe: { index: 1, address: ADDR(1) } }, { wallet: 0 }] });
+		await h.fixtures.plugin.kv("state:wallets", { current: { keyId: KEY_IDS.test1, wallet: 1 }, list: [{ wallet: 1, probe: { digest: "qYtoTZjlFXXSf7Ul9MFxxg==" } }, { wallet: 0 }] });
 		await h.fixtures.plugin.kv("state:paidTop:1", 5);
 		const n = siteIndex(1, 5 + GAP_ALERT);
 		await h.fixtures.plugin.storage("pool", String(n), { addrIndex: n, address: ADDR(7), status: "claimed", invoiceId: "inv_w1" });
@@ -302,7 +302,7 @@ describe("health panel", () => {
 
 	it("[P02] while the site waits for the probe answer there's no current wallet, so no gap", async () => {
 		const h = await setup({ claimed: [9 + GAP_ALERT], paidTop: 9 });
-		await h.fixtures.plugin.kv("state:wallets", { current: { keyId: KEY_IDS.test1, wallet: null }, list: [{ wallet: 0, probe: { index: 1, address: ADDR(1) } }] });
+		await h.fixtures.plugin.kv("state:wallets", { current: { keyId: KEY_IDS.test1, wallet: null }, list: [{ wallet: 0, probe: { digest: "qYtoTZjlFXXSf7Ul9MFxxg==" } }] });
 		expect(field(await load(), "Unpaid addresses since the last payment")).toBe(`0 (warning at ${GAP_ALERT})`);
 	});
 

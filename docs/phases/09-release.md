@@ -64,6 +64,7 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
 
 - **Open item (spec change 21, 2026-10-12): no redirects on the wget path.** On a machine without curl, `install.sh` downloads the bridge with `wget --max-redirect=0`, because wget can't limit a redirect's protocol the way curl's `--proto` does. The bridge binaries must therefore be served from `RELEASE_BASE` without a redirect. GitHub Releases asset URLs redirect, so either the install host serves the binaries itself, or `RELEASE_BASE` points at an address that answers directly. Test the published install command on a machine with wget and no curl.
 - **The install docs list what the wallet host needs:** Linux with systemd, `sh`, curl or wget, `sha256sum`, and `sudo` or a root login.
+- **The install docs say to use a wallet made for this shop, not one with history** (spec change 46's known limit, 2026-11-01). A wallet restored from keys stops at the first gap of 200 unused subaddresses, so a reused wallet paired as new can hand out addresses that already received payments.
 
 **4. Registry (spec change 41):** `publisher` is Wyatt's DID (the DID, never the handle); `@emdash-cms/plugin-cli` is pinned exactly; `license`, `author`, the `security` contact URL and `repo` (`https://github.com/dwightsabeast/coffer`) are filled in.
 

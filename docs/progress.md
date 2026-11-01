@@ -4241,7 +4241,7 @@ Branch `redteam-1`. Docs only.
   - live steps 6 (a fresh unpaid tip) and 7 (357 first).
 - **Later work, pass 2:**
   - **Orders paid to a previous wallet:** they need a "paid to a previous wallet" path (D2).
-  - **Address reuse after both sides are rebuilt:** a restored wallet hands out unpaid tips' old addresses again, and a late payment settles the new invoice. A known limit for release 1; for orders, free goods.
+  - **Address reuse on a "no match" for a wallet with history** (both sides rebuilt, or a reused wallet): a restored wallet hands out old addresses again, already-paid ones included, and a payment to one settles the new invoice. A known limit for release 1; for orders, free goods. (Corrected 2026-11-01, below: a restored wallet stops at the first 200-address gap.)
 - **At build time:** CLAUDE.md's list of stored items gains the previous bridge key (D4), with Wyatt's OK.
 - **Approved by Wyatt as written (same day):** Claude's two additions to 46. One is item 1's "What's left": the 45 s wait protects only while the wallet host runs, and a stopped host's window is listed afterwards. The other is the matching example wording for spec change 44.
 
@@ -4399,3 +4399,18 @@ Branch `redteam-1`, local commits only (`4619904` to the docs commit after `2599
 1. **Back up `data.db`, build the plugin, start the dev site.**
 2. **The dev release:** `scripts/build-dev-release.sh`. Wyatt signs it and runs `sudo xmr-bridge update`.
 3. **The live steps:** the forged row, the same-wallet re-pair with `--code -`, the different-wallet re-pair, then back to the shop wallet.
+
+## 2026-11-01 · Phase 07b fix sessions · Spec change 46's known limit corrected
+
+- **Corrected (Wyatt), from `TestLiveShopWallet`:**
+  - **What a restore finds:** a wallet restored from keys stops at the first gap of 200 unused subaddresses. The live test's restored shop wallet had its next index at 10 while holding payments up to 305.
+  - **So on a "no match" for a wallet with history** (both sides rebuilt, or a reused wallet), `create_address` can hand out addresses that already received payments, not only unpaid ones, and `receivedTop` can be far too low.
+  - **A match is fine:** the catch-up creates up to `claimedTop` and rescans.
+- **Updated:**
+  - spec change 46 (item 4's known limit, and the open-check line);
+  - the earlier pass-2 note above;
+  - a note under RT-29 in the findings (recorded there, not filed as a new finding);
+  - phase 09's install docs: "use a wallet made for this shop, not one with history".
+- **Answered (Wyatt's question):** the address digest uses WebCrypto `crypto.subtle.digest("SHA-256")`.
+  - `dist/plugin.mjs` holds three `subtle.digest` calls and no SHA-256 round constants, so no SHA-256 code is bundled.
+  - The bundle's growth (59.5 to 70.3 KB) is 46's own source. From `8080e6b` to `fad272f`, `handle.ts` went from 10.4 to 28.0 KB, `admin.ts` grew 5.7 KB, `store.ts` 4.2 KB and `protocol.ts` 3.0 KB.

@@ -1454,7 +1454,15 @@ Evidence:
   - **How it ends:** the bridge's pending list and `l.known` keep it from offering one twice. The site skips an index it already holds (`poolHas`), as today.
   - **Why only on a match:** with no match, the site doesn't know the wallet's history. Unused below the bridge's start could mean "handed out and never paid".
 - **When a wallet's rows can all disappear:** only on uninstall with "delete data", which also clears every KV key, `state:wallets` included (`store.ts:153–163`). The 30-day purge clears buyer data only (`housekeeping.ts:28`). A returning wallet then looks new, and the no-match rule above applies.
-- **Known limit for release 1:** after both sides are rebuilt (the plugin reinstalled with its data deleted, and the wallet restored fresh from keys), a restored wallet's `create_address` continues from its highest received index. So addresses from unpaid tips can be handed out again, and a late payment to one is credited to the new invoice rather than left unattributed. For tips that's a misattributed tip; for orders (release 2) it means free goods. On pass 2's list.
+- **Known limit for release 1** (corrected 2026-11-01 from `TestLiveShopWallet`, Wyatt):
+  - **What a restore finds:** a wallet restored from keys stops at the first gap of 200 unused subaddresses (wallet2's lookahead). In the live test, the restored shop wallet's next index was 10 while it held payments up to index 305. It found 261–305 only after creating up to 1110 and rescanning.
+  - **The consequence on a "no match" for a wallet with history** (both sides rebuilt, or a reused wallet paired as new):
+    - `create_address` can hand out addresses that **already received payments**, not only unpaid ones;
+    - and `receivedTop` can be far too low (9 instead of 305 in the live test), so the gap baseline is too.
+    - A payment to such an address, late or not, is credited to the new invoice. For tips that's a misattributed tip; for orders (release 2) it means free goods.
+  - **A match is fine:** the catch-up creates up to `claimedTop` and rescans, so the wallet's own history is found before anything new is handed out.
+  - **The docs say to use a wallet made for this shop,** not one with history (phase 09's install docs).
+  - On pass 2's list.
 - **Open invoices of another wallet** can't get evidence from the new host (decision D2):
   - those with something received go to `review` with reason `wallet_changed`;
   - those with nothing received expire at their deadline with reason `wallet_changed`. This is a stated exception to "expire on evidence": no evidence can come from a wallet that isn't connected.
@@ -1572,7 +1580,7 @@ Wyatt's decisions (2026-11-01; his draft answers, reviewed with Claude against t
 - **Open check (Wyatt):**
   - Rows vanish only on uninstall with "delete data".
   - Re-offer only on a match; a no-match start above max(created, `receivedTop`); the baseline from `receivedTop`; probes kept in `state:wallets`.
-  - The reuse after both sides are rebuilt is a known limit for release 1, on pass 2's list.
+  - The reuse on a "no match" for a wallet with history (both sides rebuilt, or a reused wallet) is a known limit for release 1, on pass 2's list. Corrected 2026-11-01: a restored wallet stops at the first 200-address gap, so already-paid addresses can be handed out again and `receivedTop` can be far too low (item 4's known limit).
 - **Live check (Wyatt):**
   - Step 6 opens a fresh unpaid tip, since `inv_e266ef9e2e436bd0` expired at 01:22 UTC.
   - Step 7 expects 357 first.

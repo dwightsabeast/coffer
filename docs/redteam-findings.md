@@ -760,3 +760,8 @@ Not Coffer code: tier 1 keeps it out of everything Coffer ships. But it's the tr
   - **The window a running sync leaves (Wyatt, 2026-10-31: close it, don't file it):** each pool row carries the ID of the key that added it, and checkout hands out only the paired key's rows. A sync whose key is replaced while it runs is also refused before it writes.
   - **Tests:** repair (route level), pool-drop (the race), handle (the order, a failure after the drops), claim, uninstall.
   - **Still open, in spec change 46:** the different-wallet numbering gap and the same-wallet skipped numbers.
+  - **A known limit left by spec change 46** (2026-11-01, from `TestLiveShopWallet`; recorded here, not filed as a new finding):
+    - A wallet restored from keys stops at the first gap of 200 unused subaddresses: the live test's restored shop wallet had its next index at 10 while it held payments up to 305.
+    - So on a "no match" for a wallet with history (both sides rebuilt, or a reused wallet paired as new), `create_address` can hand out addresses that already received payments, and `receivedTop` can be far too low.
+    - A match is fine: the catch-up creates up to `claimedTop` and rescans.
+    - The install docs will say to use a wallet made for this shop (phase 09). It's on pass 2's list.

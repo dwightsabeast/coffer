@@ -9,6 +9,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 import { MAX_REQUIRED } from "../../src/core/constants";
 import { type Invoice, type Transfer, newInvoice } from "../../src/core/invoice";
 import { KEY_IDS, PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { siteIndex } from "../../src/core/walletindex";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -144,6 +145,12 @@ describe("invoice list", () => {
 		// Buyer-supplied text stays plain text.
 		expect(field(t, "Buyer email")).toBe("a@example.invalid");
 		expect(inner.find((x) => x.type === "context" && String(x.text).startsWith("Buyer's note"))?.text).toBe("Buyer's note: Leave it at the door");
+	});
+
+	it("[P02] the payment address number is the wallet's own index, as the wallet app shows it (spec change 46)", async () => {
+		await setup([invoice(267, { addrIndex: siteIndex(1, 3) })]);
+		const inner = deep(item(await load(), "inv_0267").blocks);
+		expect(inner.some((x) => x.type === "context" && x.text === "Payment address (#3)")).toBe(true);
 	});
 
 	it("no Product field; the Open product link stays, beside the Actions menu (change 5)", async () => {

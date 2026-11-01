@@ -1,7 +1,8 @@
 // Test helpers for bridge/sync: an in-memory SyncStore, and signing with the published RFC 8032 test keys through
 // WebCrypto (the same keys as contract/test-vectors/sync-signature.json; never a key of our own).
 import type { Invoice } from "../../src/core/invoice";
-import type { BridgeState, NetworkRecord, SyncStore } from "../../src/sync/handle";
+import { ownIndex, walletOf } from "../../src/core/walletindex";
+import type { BridgeState, NetworkRecord, SyncStore, WalletsState } from "../../src/sync/handle";
 import { type PairingState, keyId } from "../../src/sync/pairing";
 
 const SEEDS = {
@@ -50,9 +51,22 @@ export class MemoryStore implements SyncStore {
 	async setPublicKey(k: string) { this.publicKey = k; }
 	async getPairing() { return this.pairing; }
 	async setPairing(s: PairingState) { this.pairing = s; }
+	/** Wallet 0's gap baseline (state:paidTop); other wallets' are in paidTops (spec change 46). */
 	paidTop: number | null = null;
+	paidTops = new Map<number, number>();
+	wallets: WalletsState | null = null;
 	async getBridgeState() { return this.bridge; }
-	async notePaid(i: number) { this.paidTop = Math.max(this.paidTop ?? 0, i); }
+	async notePaid(w: number, i: number) {
+		if (w === 0) this.paidTop = Math.max(this.paidTop ?? i, i);
+		else this.paidTops.set(w, Math.max(this.paidTops.get(w) ?? i, i));
+	}
+	async getWallets() { return this.wallets ? structuredClone(this.wallets) : null; }
+	async setWallets(s: WalletsState) { this.wallets = structuredClone(s); }
+	private live(w: number) { return [...this.pool.values()].filter((r) => (r.status === "free" || r.status === "claimed") && walletOf(r.addrIndex) === w); }
+	async poolLowest(w: number) {
+		const rows = this.live(w).sort((a, b) => a.addrIndex - b.addrIndex);
+		return rows[0] ? { index: ownIndex(rows[0].addrIndex), address: rows[0].address } : null;
+	}
 	async setBridgeState(s: BridgeState) { this.bridge = s; }
 	async poolHas(i: number) { return this.pool.has(i); }
 	async poolAdd(row: { addrIndex: number; address: string; keyId: string }) { this.pool.set(row.addrIndex, { ...row, status: "free" }); }
@@ -63,7 +77,7 @@ export class MemoryStore implements SyncStore {
 		for (const [i, r] of this.pool) if (r.status === "free" || r.status === "dropped") this.pool.delete(i);
 	}
 	async poolFreeCount() { return [...this.pool.values()].filter((r) => r.status === "free").length; }
-	async poolTop() { return Math.max(0, ...[...this.pool.values()].filter((r) => r.status !== "dropped").map((r) => r.addrIndex)); }
+	async poolTop(w: number) { return Math.max(0, ...this.live(w).map((r) => ownIndex(r.addrIndex))); }
 	async invoiceForIndex(i: number) {
 		const row = this.pool.get(i);
 		return row?.invoiceId ? (this.invoices.get(row.invoiceId) ?? null) : null;

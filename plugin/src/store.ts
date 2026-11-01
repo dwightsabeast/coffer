@@ -10,11 +10,15 @@ import type { PluginContext } from "emdash/plugin";
 import { LATE_WINDOW_MS, TIP_WATCH_MS } from "./core/constants";
 import type { Invoice } from "./core/invoice";
 import { CURRENCIES, rateCacheKey } from "./rates";
-import type { BridgeState, NetworkRecord, SyncStore } from "./sync/handle";
+import { ownIndex, walletRange } from "./core/walletindex";
+import type { BridgeState, NetworkRecord, SyncStore, WalletsState } from "./sync/handle";
 import type { PairingState } from "./sync/pairing";
 
 export const SETTING = { publicKey: "bridgePublicKey", currency: "currency", speed: "speed" } as const;
-export const KV = { pairing: "state:pairing", bridge: "state:bridge", alerts: "state:alerts", purgeCursor: "state:purgeCursor", cronScheduled: "state:cronScheduled", salt: "state:salt", buckets: "state:buckets", paidTop: "state:paidTop", clientIp: "state:clientIp", lastPairing: "state:lastPairing", setupDone: "state:setupDone", watchTruncatedAt: "state:watchTruncatedAt", network: "state:network" } as const;
+export const KV = { pairing: "state:pairing", bridge: "state:bridge", alerts: "state:alerts", purgeCursor: "state:purgeCursor", cronScheduled: "state:cronScheduled", salt: "state:salt", buckets: "state:buckets", paidTop: "state:paidTop", clientIp: "state:clientIp", lastPairing: "state:lastPairing", setupDone: "state:setupDone", watchTruncatedAt: "state:watchTruncatedAt", network: "state:network", wallets: "state:wallets" } as const;
+
+/** A wallet's gap baseline (spec change 46): wallet 0 keeps today's key, the others get their own. */
+export const paidTopKey = (wallet: number) => (wallet === 0 ? KV.paidTop : `${KV.paidTop}:${wallet}`);
 
 /**
  * A pool row goes free -> claimed (checkout), or free -> dropped -> deleted (a new pairing, spec change 45). "dropped"
@@ -82,9 +86,21 @@ export class CtxSyncStore implements SyncStore {
 	setBridgeState(state: BridgeState) {
 		return this.ctx.kv.set(KV.bridge, state);
 	}
-	async notePaid(index: number) {
-		const top = await this.ctx.kv.get<number>(KV.paidTop);
-		if (top === null || index > top) await this.ctx.kv.set(KV.paidTop, index);
+	async notePaid(wallet: number, index: number) {
+		const key = paidTopKey(wallet);
+		const top = await this.ctx.kv.get<number>(key);
+		if (top === null || index > top) await this.ctx.kv.set(key, index);
+	}
+	getWallets() {
+		return this.ctx.kv.get<WalletsState>(KV.wallets);
+	}
+	setWallets(state: WalletsState) {
+		return this.ctx.kv.set(KV.wallets, state);
+	}
+	async poolLowest(wallet: number) {
+		const low = await pool(this.ctx).query({ where: { status: { in: ["free", "claimed"] }, addrIndex: walletRange(wallet) }, orderBy: { addrIndex: "asc" }, limit: 1 });
+		const row = low.items[0]?.data;
+		return row ? { index: ownIndex(row.addrIndex), address: row.address } : null;
 	}
 	poolHas(index: number) {
 		return pool(this.ctx).exists(String(index));
@@ -123,9 +139,10 @@ export class CtxSyncStore implements SyncStore {
 	poolFreeCount() {
 		return pool(this.ctx).count({ status: "free" });
 	}
-	async poolTop() {
-		const top = await pool(this.ctx).query({ where: { status: { in: ["free", "claimed"] } }, orderBy: { addrIndex: "desc" }, limit: 1 });
-		return top.items[0]?.data.addrIndex ?? 0;
+	async poolTop(wallet: number) {
+		const top = await pool(this.ctx).query({ where: { status: { in: ["free", "claimed"] }, addrIndex: walletRange(wallet) }, orderBy: { addrIndex: "desc" }, limit: 1 });
+		const row = top.items[0]?.data;
+		return row ? ownIndex(row.addrIndex) : 0;
 	}
 	async invoiceForIndex(index: number) {
 		const row = await pool(this.ctx).get(String(index));
@@ -158,6 +175,11 @@ export async function deletePluginData(ctx: PluginContext): Promise<void> {
 			await col.deleteMany(r.items.map((i) => i.id));
 		}
 	}
+	// Each wallet's gap baseline (spec change 46). Wallet numbers only go up, so 1..the highest covers every one, trimmed
+	// from the list or not. (The sandbox's ctx.kv has no list().)
+	const wallets = await ctx.kv.get<WalletsState>(KV.wallets);
+	const highest = Math.max(0, ...(wallets?.list.map((w) => w.wallet) ?? []));
+	for (let w = 1; w <= highest; w++) await ctx.kv.delete(paidTopKey(w));
 	for (const key of Object.values(KV)) await ctx.kv.delete(key);
 	for (const c of CURRENCIES) await ctx.kv.delete(rateCacheKey(c));
 	for (const key of Object.values(SETTING)) await ctx.settings.delete(key);

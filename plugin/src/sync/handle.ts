@@ -4,7 +4,9 @@
  */
 import { type MoneroNetwork, subaddressNetwork } from "../core/address";
 import { RESTORE_MARGIN_BLOCKS } from "../core/constants";
+import { addressDigest } from "../core/digest";
 import { type Invoice, type InvoiceEvent, counted } from "../core/invoice";
+import { ownIndex, siteIndex, walletOf } from "../core/walletindex";
 import { isWatched } from "../core/watch";
 import { mergeSnapshot } from "./merge";
 import { type PairingState, isPairingActive, keyId, pairingCodeMatches } from "./pairing";
@@ -44,6 +46,32 @@ export interface NetworkRecord {
 	keyId: string;
 }
 
+/** One wallet the site has used (spec change 46). `probe` is its lowest-index row, in the wallet's own index. */
+export interface WalletEntry {
+	wallet: number;
+	probe?: { index: number; address: string };
+}
+
+/**
+ * The wallets the site has used, most recent first, and which one the paired key's bridge holds (spec change 46,
+ * item 3). `current.wallet` is null while the site waits for the bridge's answer to the probes; a `current` from
+ * another key counts as waiting too. No record at all is a site from before spec change 46: everything is wallet 0.
+ */
+export interface WalletsState {
+	current: { keyId: string; wallet: number | null };
+	list: WalletEntry[];
+}
+
+/** The probes go out for at most this many wallets; the list keeps at most MAX_WALLETS (an older one then looks new). */
+export const MAX_PROBES = 10;
+export const MAX_WALLETS = 100;
+
+/** The paired key's wallet, or null while the site waits for its answer. */
+export function currentWallet(state: WalletsState | null, signerKeyId: string): number | null {
+	if (!state) return 0;
+	return state.current.keyId === signerKeyId ? state.current.wallet : null;
+}
+
 export interface SyncStore {
 	getPublicKey(): Promise<string | null>;
 	setPublicKey(publicKey: string): Promise<void>;
@@ -51,8 +79,15 @@ export interface SyncStore {
 	setPairing(state: PairingState): Promise<void>;
 	getBridgeState(): Promise<BridgeState | null>;
 	setBridgeState(state: BridgeState): Promise<void>;
-	/** Raises the highest subaddress index known to have received a counted payment (spec change 9's gap). */
-	notePaid(index: number): Promise<void>;
+	/**
+	 * Raises a wallet's highest own index known to have received a counted payment (spec change 9's gap; per wallet
+	 * since spec change 46).
+	 */
+	notePaid(wallet: number, index: number): Promise<void>;
+	getWallets(): Promise<WalletsState | null>;
+	setWallets(state: WalletsState): Promise<void>;
+	/** A wallet's lowest-index row (free or claimed), in its own index; null when it has none. */
+	poolLowest(wallet: number): Promise<{ index: number; address: string } | null>;
 	/** True if the pool already has this subaddress index (free or claimed). */
 	poolHas(index: number): Promise<boolean>;
 	/** Adds a free row tagged with the ID of the key that signed the sync (spec change 45). */
@@ -66,9 +101,9 @@ export interface SyncStore {
 	 */
 	poolDropUnused(): Promise<void>;
 	poolFreeCount(): Promise<number>;
-	/** The highest subaddress index in the pool (free or claimed; a leftover "dropped" row doesn't count), 0 when empty.
-	 * Every invoice's index is a pool row. */
-	poolTop(): Promise<number>;
+	/** A wallet's highest own index in the pool (free or claimed; "dropped" and "bad" rows don't count), 0 when it has
+	 * none. Every invoice's index is a pool row. */
+	poolTop(wallet: number): Promise<number>;
 	/** The invoice that claimed this subaddress index, if any. */
 	invoiceForIndex(index: number): Promise<Invoice | null>;
 	saveInvoice(inv: Invoice): Promise<void>;
@@ -80,9 +115,15 @@ export interface SyncSuccess {
 	ok: true;
 	poolFree: number;
 	poolTarget: number;
-	/** Spec change 15: a bridge whose wallet lacks this index catches up (creates addresses, rescans) before it reports. */
+	/**
+	 * Spec change 15: a bridge whose wallet lacks this index catches up (creates addresses, rescans) before it reports.
+	 * The current wallet's own index (spec change 46); 0 while the site waits for the probe answer.
+	 */
 	poolTop: number;
+	/** The current wallet's own indexes; empty while the site waits for the probe answer. */
 	watch: number[];
+	/** Spec change 46, item 3: while the site waits for the answer, one digest per wallet it has used. */
+	probes?: Array<{ wallet: number; index: number; digest: string }>;
 	/** Spec change 17, on the response that completes a pairing only: scan from here when creating a wallet, so a
 	 * reinstall finds payments to invoices made before it. Absent when nothing is watched. */
 	restoreHeight?: number;
@@ -134,6 +175,16 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 			await store.poolDropUnused();
 			await store.clearNetwork();
 			await store.setPublicKey(body.value.pair.publicKey);
+			// Spec change 46: a site with history waits for the bridge to say which wallet it holds; a fresh one is wallet 0.
+			// After the key, so a failure before this leaves the old key's wallet state as it was.
+			const prior = await store.getWallets();
+			let list = prior?.list;
+			if (!list) {
+				const low = await store.poolLowest(0);
+				list = [{ wallet: 0, ...(low ? { probe: low } : {}) }];
+			}
+			const history = list.some((w) => w.probe !== undefined);
+			await store.setWallets({ current: { keyId: keyId(body.value.pair.publicKey), wallet: history ? null : (list[0]?.wallet ?? 0) }, list });
 			await store.setPairing({ ...pairing, used: true });
 			parsed = body.value;
 			signer = body.value.pair.publicKey;
@@ -181,37 +232,80 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 	// Spec change 45: one network per pairing. With none stored for this key, the first readable address in the body's
 	// order sets it; an address on another network is dropped, like one whose network can't be read.
 	const signerId = keyId(signer);
-	const record = parsed.addresses.length > 0 ? await store.getNetwork() : null;
-	let network = record?.keyId === signerId ? record.network : null;
-	for (const a of parsed.addresses) {
-		const addressNetwork = subaddressNetwork(a.address);
-		if (addressNetwork === null) continue;
-		if (network === null) {
-			network = addressNetwork;
-			await store.setNetwork({ network, keyId: signerId });
+	// Spec change 46, items 3 and 4: which wallet this key's bridge holds, from its answer to the probes if it sends one.
+	let wallets = await store.getWallets();
+	let current = currentWallet(wallets, signerId);
+	let walletsChanged = false;
+	if (current === null && wallets && parsed.wallet) {
+		const answer = parsed.wallet;
+		let next: number | null = null;
+		if (answer.match === null) next = Math.max(-1, ...wallets.list.map((w) => w.wallet)) + 1;
+		else if (probeEntries(wallets).some((w) => w.wallet === answer.match)) next = answer.match;
+		if (next !== null) {
+			const entry = wallets.list.find((w) => w.wallet === next) ?? { wallet: next };
+			wallets = { current: { keyId: signerId, wallet: next }, list: [entry, ...wallets.list.filter((w) => w.wallet !== next)].slice(0, MAX_WALLETS) };
+			current = next;
+			walletsChanged = true;
+			// The gap baseline: the wallet's highest received index, so a returning wallet shows no false gap.
+			await store.notePaid(next, answer.receivedTop);
 		}
-		if (addressNetwork !== network) continue;
-		if (!(await store.poolHas(a.index))) await store.poolAdd({ addrIndex: a.index, address: a.address, keyId: signerId });
 	}
-	// The highest index with a counted payment in this sync, noted once.
-	const paid = Math.max(0, ...parsed.snapshots.filter((snap) => snap.transfers.some((t) => counted(t) && t.amount !== "0")).map((snap) => snap.index));
-	if (paid > 0) await store.notePaid(paid);
 	const events: SyncOutcome["events"] = [];
-	for (const snap of parsed.snapshots) {
-		const inv = await store.invoiceForIndex(snap.index);
-		if (!inv) continue;
-		const merged = mergeSnapshot(inv, snap.transfers, { seq: parsed.seq, now, chainHeight: height });
-		if (!merged.applied) continue;
-		await store.saveInvoice(merged.invoice);
-		for (const event of merged.events) events.push({ invoiceId: inv.id, event });
+	if (current !== null) {
+		const wallet = current;
+		const record = parsed.addresses.length > 0 ? await store.getNetwork() : null;
+		let network = record?.keyId === signerId ? record.network : null;
+		for (const a of parsed.addresses) {
+			const addressNetwork = subaddressNetwork(a.address);
+			if (addressNetwork === null) continue;
+			if (network === null) {
+				network = addressNetwork;
+				await store.setNetwork({ network, keyId: signerId });
+			}
+			if (addressNetwork !== network) continue;
+			const n = siteIndex(wallet, a.index);
+			if (await store.poolHas(n)) continue;
+			await store.poolAdd({ addrIndex: n, address: a.address, keyId: signerId });
+			if (wallets) {
+				const entry = wallets.list.find((w) => w.wallet === wallet);
+				if (entry && (!entry.probe || a.index < entry.probe.index)) {
+					entry.probe = { index: a.index, address: a.address };
+					walletsChanged = true;
+				}
+			}
+		}
+		// The highest index with a counted payment in this sync, noted once.
+		const paid = Math.max(0, ...parsed.snapshots.filter((snap) => snap.transfers.some((t) => counted(t) && t.amount !== "0")).map((snap) => snap.index));
+		if (paid > 0) await store.notePaid(wallet, paid);
+		for (const snap of parsed.snapshots) await applySnapshot(store, siteIndex(wallet, snap.index), snap.transfers, { seq: parsed.seq, now, chainHeight: height }, events);
 	}
+	if (walletsChanged && wallets) await store.setWallets(wallets);
 
-	// 5. Response: pool status, the pool's highest index and the watch list; on pairing, a suggested restore height.
+	// 5. Response: pool status, the current wallet's highest index and watch list (spec change 46: its own indexes, and
+	// empty while the site waits for the probe answer, with the probes); on pairing, a suggested restore height across
+	// every wallet's watched invoices.
 	const watched = (await store.watchCandidates(now)).filter((inv) => isWatched(inv, now));
-	const watch = [...new Set(watched.map((inv) => inv.addrIndex))].sort((a, b) => a - b);
-	const response: SyncSuccess = { ok: true, poolFree: await store.poolFreeCount(), poolTarget: POOL_TARGET, poolTop: await store.poolTop(), watch };
+	const watch = current === null ? [] : [...new Set(watched.filter((inv) => walletOf(inv.addrIndex) === current).map((inv) => ownIndex(inv.addrIndex)))].sort((a, b) => a - b);
+	const response: SyncSuccess = { ok: true, poolFree: await store.poolFreeCount(), poolTarget: POOL_TARGET, poolTop: current === null ? 0 : await store.poolTop(current), watch };
+	if (current === null && wallets) {
+		response.probes = await Promise.all(probeEntries(wallets).map(async (w) => ({ wallet: w.wallet, index: w.probe.index, digest: await addressDigest(w.probe.address) })));
+	}
 	if (paired && watched.length > 0) {
 		response.restoreHeight = Math.max(0, Math.min(...watched.map((inv) => inv.createdHeight)) - RESTORE_MARGIN_BLOCKS);
 	}
 	return { response, events, ...(paired ? { paired, replaced } : {}) };
+}
+
+/** The wallets the probes go out for: those with a probe row, most recent first, at most MAX_PROBES. */
+function probeEntries(state: WalletsState): Array<WalletEntry & { probe: NonNullable<WalletEntry["probe"]> }> {
+	return state.list.filter((w): w is WalletEntry & { probe: NonNullable<WalletEntry["probe"]> } => w.probe !== undefined).slice(0, MAX_PROBES);
+}
+
+async function applySnapshot(store: SyncStore, index: number, transfers: SyncBody["snapshots"][number]["transfers"], at: { seq: number; now: number; chainHeight: number }, events: SyncOutcome["events"]) {
+	const inv = await store.invoiceForIndex(index);
+	if (!inv) return;
+	const merged = mergeSnapshot(inv, transfers, at);
+	if (!merged.applied) return;
+	await store.saveInvoice(merged.invoice);
+	for (const event of merged.events) events.push({ invoiceId: inv.id, event });
 }

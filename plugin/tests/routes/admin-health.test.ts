@@ -6,6 +6,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { GAP_ALERT, UNPAID_RUN_ALERT } from "../../src/core/constants";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
+import { siteIndex } from "../../src/core/walletindex";
 import { KEY_IDS, PUBLIC_KEYS } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
 
@@ -286,6 +287,24 @@ describe("health panel", () => {
 			}
 		});
 	}
+
+	it("[P02] the gap is the current wallet's, in its own numbers (spec change 46): wallet 0's history doesn't count", async () => {
+		const h = await setup({ claimed: [356], paidTop: 300 });
+		await h.fixtures.plugin.kv("state:wallets", { current: { keyId: KEY_IDS.test1, wallet: 1 }, list: [{ wallet: 1, probe: { index: 1, address: ADDR(1) } }, { wallet: 0 }] });
+		await h.fixtures.plugin.kv("state:paidTop:1", 5);
+		const n = siteIndex(1, 5 + GAP_ALERT);
+		await h.fixtures.plugin.storage("pool", String(n), { addrIndex: n, address: ADDR(7), status: "claimed", invoiceId: "inv_w1" });
+		const b = await load();
+		expect(field(b, "Unpaid addresses since the last payment")).toBe(`${GAP_ALERT} (warning at ${GAP_ALERT})`);
+		expect(banners(b).find((x) => x.title === "Your wallet app may miss payments")?.description).toContain(`(address #5)`);
+		expect(banners(b).find((x) => x.title === "Your wallet app may miss payments")?.description).toContain(`up to #${5 + GAP_ALERT},`);
+	});
+
+	it("[P02] while the site waits for the probe answer there's no current wallet, so no gap", async () => {
+		const h = await setup({ claimed: [9 + GAP_ALERT], paidTop: 9 });
+		await h.fixtures.plugin.kv("state:wallets", { current: { keyId: KEY_IDS.test1, wallet: null }, list: [{ wallet: 0, probe: { index: 1, address: ADDR(1) } }] });
+		expect(field(await load(), "Unpaid addresses since the last payment")).toBe(`0 (warning at ${GAP_ALERT})`);
+	});
 
 	it("the highest paid index is worked out once from the invoices when it was never recorded", async () => {
 		const h = await setup({ claimed: [3, 7, 40] });

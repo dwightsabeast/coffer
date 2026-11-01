@@ -13,12 +13,13 @@ import type { MoneroNetwork } from "./core/address";
 import { DUST_ATOMIC, GAP_ALERT, GOODS_ENABLED, LATE_WINDOW_MS, MAX_REQUIRED, PRESETS, RECONFIRM_BLOCKS, SILENT_MS, type Speed, TEST_TIP_REQUIRED, UNPAID_RUN_ALERT } from "./core/constants";
 import { type Invoice, counted, isOpen, newInvoice, totals } from "./core/invoice";
 import { atomicToXmr } from "./core/money";
+import { ownIndex, walletOf, walletRange } from "./core/walletindex";
 import { isWatched } from "./core/watch";
 import { invoiceUri } from "./core/uri";
 import { ensureCron } from "./housekeeping";
 import { CURRENCIES, type Currency, getRate, isCurrency } from "./rates";
-import { KV, SETTING, invoices, pool } from "./store";
-import type { BridgeState, NetworkRecord } from "./sync/handle";
+import { KV, SETTING, invoices, paidTopKey, pool } from "./store";
+import { type BridgeState, type NetworkRecord, type WalletsState, currentWallet } from "./sync/handle";
 import { type PairingState, PAIRING_TTL_MS, isPairingActive, keyId, newPairingCode } from "./sync/pairing";
 import { POOL_TARGET } from "./sync/protocol";
 
@@ -77,15 +78,19 @@ interface Health {
 	watchTruncatedAt: number | null;
 }
 
-/** The highest subaddress index with a counted payment; worked out once from the invoices if it was never recorded. */
-async function paidTop(ctx: PluginContext): Promise<number> {
-	const stored = await ctx.kv.get<number>(KV.paidTop);
+/**
+ * A wallet's highest own index with a counted payment (per wallet since spec change 46). Wallet 0's is worked out once
+ * from the invoices if it was never recorded; another wallet's always is, from its first answer (receivedTop).
+ */
+async function paidTop(ctx: PluginContext, wallet: number): Promise<number> {
+	const stored = await ctx.kv.get<number>(paidTopKey(wallet));
 	if (stored !== null) return stored;
+	if (wallet !== 0) return 0;
 	let top = 0;
 	let cursor: string | undefined;
 	for (let page = 0; page < 10; page++) {
 		const r = await invoices(ctx).query({ limit: 100, ...(cursor ? { cursor } : {}) });
-		for (const { data } of r.items) if (data.addrIndex > top && data.transfers.some((t) => counted(t) && t.amountAtomic !== "0")) top = data.addrIndex;
+		for (const { data } of r.items) if (walletOf(data.addrIndex) === 0 && data.addrIndex > top && data.transfers.some((t) => counted(t) && t.amountAtomic !== "0")) top = data.addrIndex;
 		if (!r.hasMore || !r.cursor) break;
 		cursor = r.cursor;
 	}
@@ -115,10 +120,15 @@ async function health(ctx: PluginContext, now: number, opts: { checkRate: boolea
 		if (data.status !== "expired" || data.transfers.length > 0 || unpaidRun === UNPAID_RUN_ALERT) break;
 		unpaidRun++;
 	}
-	const claimed = await pool(ctx).query({ where: { status: "claimed" }, orderBy: { addrIndex: "desc" }, limit: 1 });
-	const claimedTop = claimed.items[0]?.data.addrIndex ?? 0;
-	const top = await paidTop(ctx);
-	const gap = { value: Math.max(0, claimedTop - top), paidTop: top, claimedTop };
+	// The gap is the current wallet's, in its own numbers (spec change 46); none while the site waits for the probe answer.
+	const wallet = key ? currentWallet(await ctx.kv.get<WalletsState>(KV.wallets), keyId(key)) : 0;
+	let gap = { value: 0, paidTop: 0, claimedTop: 0 };
+	if (wallet !== null) {
+		const claimed = await pool(ctx).query({ where: { status: "claimed", addrIndex: walletRange(wallet) }, orderBy: { addrIndex: "desc" }, limit: 1 });
+		const claimedTop = claimed.items[0] ? ownIndex(claimed.items[0].data.addrIndex) : 0;
+		const top = await paidTop(ctx, wallet);
+		gap = { value: Math.max(0, claimedTop - top), paidTop: top, claimedTop };
+	}
 	let rate: Health["rate"];
 	if (opts.checkRate) {
 		const setting = await ctx.settings.get<string>(SETTING.currency);
@@ -597,7 +607,7 @@ function invoiceItem(inv: Invoice, now: number, opts: { acted: boolean; cursor?:
 		...productLink(inv),
 	];
 	if (elements.length > 0) inner.push({ type: "actions", elements });
-	inner.push({ type: "context", text: `Payment address (#${inv.addrIndex})` }, { type: "code", code: inv.subaddress });
+	inner.push({ type: "context", text: `Payment address (#${ownIndex(inv.addrIndex)})` }, { type: "code", code: inv.subaddress });
 	if (inv.buyer?.refundAddress) inner.push({ type: "context", text: "Buyer's refund address" }, { type: "code", code: inv.buyer.refundAddress });
 	if (inv.buyer?.note) inner.push({ type: "context", text: `Buyer's note: ${inv.buyer.note}` });
 	if (inv.transfers.length === 0) inner.push({ type: "context", text: "No payment reported yet." });

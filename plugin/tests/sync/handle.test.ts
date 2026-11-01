@@ -370,7 +370,10 @@ describe("a new pairing starts the pool afresh (spec change 45)", () => {
 		await send(store, syncBody({ addresses: [1, 2, 3, 4].map((i) => ({ index: i, address: ADDR(i) })) }));
 		store.claim(2, newInvoice({ network: "stagenet", id: "inv_2", token: "t".repeat(22), kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard", subaddress: ADDR(2), addrIndex: 2, now: T0, chainHeight: H0 }));
 		const { out } = await pairWith(store, "test2", T0 + 1000);
-		expect(out.response).toMatchObject({ ok: true, poolFree: 0, poolTop: 2 });
+		// Spec change 46: a site with history waits for the probe answer (poolTop 0), then the matched wallet's top.
+		expect(out.response).toMatchObject({ ok: true, poolFree: 0, poolTop: 0 });
+		const answered = await send(store, syncBody({ seq: T0 + 2000, wallet: { match: 0, receivedTop: 0 } }), { key: "test2", now: T0 + 2000 });
+		expect(answered.response).toMatchObject({ ok: true, poolFree: 0, poolTop: 2 });
 		expect([...store.pool.keys()]).toEqual([2]);
 		expect(store.network).toBeNull();
 		expect(store.invoices.has("inv_2")).toBe(true);

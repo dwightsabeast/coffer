@@ -28,6 +28,8 @@ async function pairTest2(host: RedteamHost): Promise<Reply> {
 const NEW = (i: number, net: keyof typeof TAGS = "stagenet") => fakeAddress(TAGS[net][1], i, "NEWWALLET");
 const newAddresses = (from: number, n: number, net: keyof typeof TAGS = "stagenet") => Array.from({ length: n }, (_, k) => ({ index: from + k, address: NEW(from + k, net) }));
 const byIndex = async (host: RedteamHost) => new Map((await host.pool()).map((p) => [p.addrIndex as number, p]));
+/** Spec change 46: test2's bridge answers the probes; null for a wallet the site hasn't seen. */
+const answer = (host: RedteamHost, match: number | null) => host.sync({ wallet: { match, receivedTop: 0 } }, { key: "test2" });
 
 describe("a new pairing starts the pool afresh (spec change 45)", () => {
 	it("[T20][T03][R08] [RT-29] a re-pair to another wallet on the same network hands out only the new wallet's addresses", async () => {
@@ -36,8 +38,11 @@ describe("a new pairing starts the pool afresh (spec change 45)", () => {
 		expect(first?.address).toBeTruthy(); // index 1, claimed by the old wallet's tip
 
 		const paired = data(await pairTest2(h));
-		expect(paired).toMatchObject({ ok: true, poolFree: 0, poolTop: 1 }); // poolTop falls to the highest claimed row
+		// Spec change 46: the site has history, so it waits for the probe answer; the new wallet then has its own numbers.
+		expect(paired).toMatchObject({ ok: true, poolFree: 0, poolTop: 0 });
+		expect(paired?.probes).toHaveLength(1);
 		expect([...(await byIndex(h)).keys()]).toEqual([1]);
+		expect(data(await answer(h, null))).toMatchObject({ ok: true, poolTop: 0 });
 
 		const fresh = newAddresses(2, 5);
 		expect(data(await h.sync({ addresses: fresh }, { key: "test2" }))).toMatchObject({ ok: true, poolFree: 5 });
@@ -58,6 +63,7 @@ describe("a new pairing starts the pool afresh (spec change 45)", () => {
 		expect(data(await pairTest2(h))?.ok).toBe(true);
 		expect(await h.host.inspect.kv.get("state:network")).toBeNull();
 		expect((await h.pool()).filter((p) => p.status !== "claimed")).toEqual([]);
+		await answer(h, null);
 
 		await h.sync({ addresses: newAddresses(2, 3, "mainnet") }, { key: "test2" });
 		expect(await h.host.inspect.kv.get("state:network")).toEqual({ network: "mainnet", keyId: KEY_IDS.test2 });
@@ -102,7 +108,8 @@ describe("a new pairing starts the pool afresh (spec change 45)", () => {
 		expect(page.find((b) => b.type === "meter")).toMatchObject({ value: 0 });
 		expect(page.filter((b) => b.type === "banner" && String(b.description ?? "").includes(String(GAP_ALERT)))).toEqual([]);
 
-		expect(data(await pairTest2(h))).toMatchObject({ ok: true, poolTop: 5 });
+		expect(data(await pairTest2(h))).toMatchObject({ ok: true, poolTop: 0 }); // waiting for the probe answer
 		expect([...(await byIndex(h)).keys()]).toEqual([5]);
+		expect(data(await answer(h, 0))).toMatchObject({ ok: true, poolTop: 5 });
 	});
 });

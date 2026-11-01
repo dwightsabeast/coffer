@@ -4180,3 +4180,28 @@ Notes on the runs:
 - **After:** 56 invoices; pool 355 rows (306 claimed, 49 free, highest 405). The bridge last synced at 00:52:26 UTC. The dev site was stopped afterwards (ports free); the bridge backs off quietly. The backup `45-before-repair.db` holds the pre-re-pair state, but restoring it would put back the old key, which the bridge no longer has.
 
 **Next step:** RT-08's spec change 46 (write it, get it approved, then build), then RT-20.
+
+## 2026-11-01 · Phase 07b fix sessions · Leftover shells, bundles, spec change 46 written
+
+- **Leftover shells, both stopped:**
+  - One of this session's background wait loops: `until ! pgrep -f "vitest.goods.config"` matched its own command line, so it never ended. It's what Wyatt's status bar showed.
+  - A 28-day-old orphaned shell from phase 01's spike (PPID 1): a `while sleep 1; do free -m …` logger whose `kill` never ran. Its log, `/tmp/claude-1000/-home-dev/a8cbdf86-…/scratchpad/mem.log` (12 MB, an old session's scratchpad), is left in place.
+- **Bundles (Wyatt):** every session now ends with a verified full-history bundle of its branch in `~/xmr-pay-dev-data/bundles/`, named `coffer-<branch>-<UTC date>-<short sha>.bundle`. Its name and SHA-256 go in the closing message, and into the next progress entry, since a bundle can't hold its own hash.
+  - The first, at `3906fc1`: `coffer-redteam-1-2026-11-01-3906fc1.bundle`, SHA-256 `821df4a19ad7b70c1ccbdffd9db9c8f278114d6223bcda52e35e471e9b29ff74`, 1,709,001 bytes, verified (complete history).
+- **Spec change 46 written, proposed** (`ec74a16`):
+  - the honest bridge's pool check (RT-08 detection);
+  - refused syncs shown on Health;
+  - a same-wallet probe at pairing;
+  - per-wallet numbering (`wallet × 2³² + index`, no index change), with the same wallet re-offering its unused subaddresses;
+  - old-wallet open invoices;
+  - RT-24's `seq` bound;
+  - `xmr-bridge pair --code -`.
+
+  Wyatt's test case is in it: the dev site's 306 claimed rows, where a different wallet would start at 357 today. The live check is planned too: a go1.27.3 dev release Wyatt signs, `xmr-bridge update` replacing the 8 October build, then a forged row, a same-wallet re-pair and a different-wallet re-pair with a real stagenet tip.
+- **Two facts corrected while writing it:**
+  - Tips aren't refused while the wallet host is silent; only product checkout is (`checkout.ts:266`). After a pairing, the empty pool is what stops them.
+  - The bridge's catch-up is `bridgeloop.go:443–447`.
+
+No tests run: docs only.
+
+**Next step:** Wyatt decides 46's D1–D7. Then a fresh session builds it, plugin first (tests first), then the bridge, then the dev release and the live check.

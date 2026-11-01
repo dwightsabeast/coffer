@@ -4205,3 +4205,14 @@ Notes on the runs:
 No tests run: docs only.
 
 **Next step:** Wyatt decides 46's D1–D7. Then a fresh session builds it, plugin first (tests first), then the bridge, then the dev release and the live check.
+
+### Wyatt's draft answers for 46 (not yet approved)
+
+D1. wallet × 2^32 + index, split in one helper that every reader uses (poolTop, the gap warning, invoiceForIndex, the sync's index check), with an assert that the value stays a safe integer.
+D2. As recommended for release 1. Note for release 2 (pass 2): a buyer who pays an old wallet's address after a switch gets an expired order, so orders need a "paid to a previous wallet" path.
+D3. As recommended, plus: list only the current wallet's addresses (otherwise a re-pair to a different wallet flags the old wallet's open invoices as foreign); every handed-out address gets checked at least once, including invoices that closed between checks (a thief can report its own invoice paid within seconds); Health shows when the pool check last passed ("never" for a bridge without it). Banner: "Coffer found addresses on this site that aren't from your wallet. Someone may have your wallet host's key. Payments to those addresses don't reach you, so Coffer has stopped handing them out. Re-pair your wallet host now, then check Review."
+D4. Keep it. Wording: "A wallet host using your previous pairing is still contacting this site. If you replaced it, shut the old one down. If you didn't, someone else may have its key; your re-pair has already locked it out."
+D5. No bump.
+D6. Add to T03 and R08.
+D7. A new Feather stagenet wallet I make and hold the seed for, restore height set by hand to the current height.
+Open check: can a wallet's rows all disappear (tip purge, plugin uninstall and reinstall)? If so, a returning wallet looks new and restarts at index 1 over paid addresses; start a new wallet above the highest index it has received on.

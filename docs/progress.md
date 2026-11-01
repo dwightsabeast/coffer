@@ -4243,6 +4243,7 @@ Branch `redteam-1`. Docs only.
   - **Orders paid to a previous wallet:** they need a "paid to a previous wallet" path (D2).
   - **Address reuse after both sides are rebuilt:** a restored wallet hands out unpaid tips' old addresses again, and a late payment settles the new invoice. A known limit for release 1; for orders, free goods.
 - **At build time:** CLAUDE.md's list of stored items gains the previous bridge key (D4), with Wyatt's OK.
+- **Approved by Wyatt as written (same day):** Claude's two additions to 46. One is item 1's "What's left": the 45 s wait protects only while the wallet host runs, and a stopped host's window is listed afterwards. The other is the matching example wording for spec change 44.
 
 No tests run: docs only.
 

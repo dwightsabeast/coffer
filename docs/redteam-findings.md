@@ -15,7 +15,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | open |
 | RT-06 | Low | F01 | 1, 1 | The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature | open |
 | RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | open |
-| RT-08 | High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open |
+| RT-08 | High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open; plugin side of spec change 46 built 2026-11-01 |
 | RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open |
 | RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open |
 | RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | fixed 2026-10-31 (spec change 45) |
@@ -31,7 +31,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-21 | Low | T15 | 1, 2 | With the stagenet-only flag, a mainnet shop is refused only after its view key has been asked for | open |
 | RT-22 | Low | T15 (setup) | 1, 2 | Ctrl-C at an installer prompt is ignored; after it, the install goes on and then fails with a misleading node error | open |
 | RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open |
-| RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | open |
+| RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | fixed 2026-11-01 (spec change 46, item 5) |
 | RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open |
 | RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open |
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | open |
@@ -135,6 +135,10 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Ruling (Wyatt, 2026-10-31): High.** It's gated only by a stolen bridge key, but the outcome is Critical-class.
   - **Fix sessions:** look for detection (for example the honest bridge checking the site's pool against its own wallet) and fast re-pairing.
   - **If nothing holds,** it becomes an accepted limit with honest wording. Draft for T03, the spec and the public report (spec change 44): "A stolen bridge key can't spend from or read your wallet, but until you re-pair it can send new tips to the thief's wallet, and your Tips page may still show them as received. If tips listed there are missing from your wallet app, re-pair."
+- **Plugin side built (2026-11-01, spec change 46, `011f585` and the steps around it):**
+  - **Prevention while the honest host runs:** a new free row waits 45 s before hand-out, and the honest bridge checks every free row in that time. Its mismatch report turns the row "bad", so it's never handed out. The D2 `it.fails` is replaced by a passing test of exactly that.
+  - **The limit while it's stopped:** nothing reports, so after 45 s the thief's row is handed out. A passing test records it, and the 24-hour window and `not_your_wallet` review list the affected tips once the honest host is back.
+  - **Still to do:** the bridge's side of the check (a later session), the live check, then spec change 44's final wording.
 
 ## RT-09 — A forged sync adds a pool row duplicating an address already held
 
@@ -533,7 +537,7 @@ The spec's Privacy list says nothing about remote nodes. Spec change 13 says the
   - **A clock error alone:** can put `seq` at most about 5 minutes ahead. Further, and the freshness check refuses the whole sync.
   - **So it takes a bug:** in how `seq` is made (a unit slip such as micro- for milliseconds, an overflow, a value carried across restarts), or a sync signed by the key, before anything can freeze an invoice for years.
 - **Fix idea (defense in depth):** refuse a sync whose `seq` is more than the freshness window away from `x-xmr-ts` × 1000. Both come from the bridge's clock, so an honest bridge always passes. That bounds the damage of any such bug to the 5-minute window.
-- **Status:** open.
+- **Status:** fixed 2026-11-01 (spec change 46, item 5; `6451809`). The plugin refuses such a sync with `SEQ_OUT_OF_RANGE`, on the pairing path too. The two tests now pass, and a third records what stays: a `seq` at the 300 s edge holds an invoice's snapshots for at most 5 minutes, inside the stolen-key limit.
 
 ## RT-25 — An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides
 

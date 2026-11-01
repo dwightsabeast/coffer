@@ -4248,3 +4248,87 @@ Branch `redteam-1`. Docs only.
 No tests run: docs only.
 
 **Next step:** a fresh session builds spec change 46 from its accepted text: plugin first (failing tests first, tagged T03/R08 and the rest of 46's matrix list), then the bridge, then the dev release and the live check.
+
+## 2026-11-01 · Phase 07b fix sessions · Spec change 46, plugin side built
+
+Branch `redteam-1`, local commits only (`6451809` to `d834c63`, then this docs commit). The plan was approved by Wyatt as written, including its wording and the three choices noted in it. The bridge is untouched.
+
+**Built, step by step** (each step: failing tests first, then code, then both configs green, then a commit):
+1. **`6451809`, steps 1–2, the protocol and the numbering helper:**
+   - an address or snapshot index outside 1..2³²−1 → `INVALID_BODY` (address index 0 was skipped before);
+   - `SEQ_OUT_OF_RANGE` for |seq − ts·1000| > 300 s, on both paths (RT-24);
+   - `checks.pool` and the `wallet` answer are parsed;
+   - `core/walletindex.ts`.
+2. **`e7e394e`, step 3, the probe and per-wallet numbering:**
+   - `state:wallets`;
+   - the wait after a re-pair on a site with history: probes, `poolTop` 0, an empty watch list, no addresses, no snapshots;
+   - the answer, with `receivedTop` as the baseline;
+   - own indexes on the wire and on the admin page;
+   - the gap per wallet;
+   - uninstall deletes each wallet's baseline.
+3. **`acff4e0`, step 4, D2:** another wallet's open invoices go to review or expire with `wallet_changed`, and they aren't watched again. The new review cards and labels use Wyatt's wording.
+4. **`011f585`, step 5, the pool check:**
+   - the `check` list;
+   - the free cap;
+   - `addedAt`;
+   - the report: `bad` rows, `not_your_wallet` review, the sticky mismatch;
+   - the 45 s hand-out wait;
+   - the test address's "being checked" message.
+5. **`2ac40ec`, step 6:** refused current-key syncs and the previous key's requests are recorded, at most once a minute.
+6. **`d834c63`, step 7, the admin page:** the mismatch banner, the refusing line, the previous-host line, and the "Address check" field.
+7. **Docs:**
+   - matrix rows T03, T04, P02, T20 and R08;
+   - RT-24 fixed (29 findings, 25 open), and RT-08's status says the plugin side is built;
+   - 46's status updated.
+
+**Tests**, the last full run, at `d834c63`:
+- **Plugin, default config:** 416 passed, 12 expected fail, 1 skipped (41 files, 485 s).
+- **Plugin, goods config:** 101 passed, 1 skipped (144 s).
+- **Checks:** typecheck, `emdash-plugin validate` and `bundle --validate-only` clean. Bundle 70.0 KB (it was 59.5 KB before 46's build).
+- **New test files:**
+  - `tests/core/walletindex.test.ts`;
+  - `tests/sync/wallets.test.ts`, `poolcheck.test.ts` and `refused.test.ts`;
+  - `tests/routes/handout.test.ts` and `admin-46.test.ts`.
+- **Run outputs:** `~/xmr-pay-dev-data/46-step*-test.txt`.
+
+**Not red first,** reported as it happened:
+- the own-index test in `admin-invoices` (the display change went in with the gap code);
+- the first two `handout.test.ts` tests (written after step 5's checkout code);
+- the two review-card tests in `admin-review` (written before the code but not run before it).
+
+All the others failed before their code.
+
+**Existing tests changed, and why:**
+- **Spec change 45's re-pair tests** (handle, repair) now answer the probe.
+- **Route tests that sync and then check out** age their rows with the harness's new `agePool()`, since a test can't wait 45 s.
+- **Red-team C2:** the skewed sender sends a `seq` from its own clock.
+- **Red-team C3:** "no state change" allows the refusal record and checks it's there.
+- **The row-shape test** includes `addedAt`.
+- **The uninstall fake** has `get`.
+- **The it.fails tests:**
+  - RT-24's two `it.fails` now pass, plus a test of the 5-minute edge;
+  - RT-08's D2 `it.fails` is replaced by two passing tests: prevention while the honest host runs, and the limit while it's stopped.
+
+**Found while building:**
+- **A wrong claim, corrected:** I said the sandbox's `ctx.kv` has no `list()`. The error came from the uninstall test's hand-made fake, not the sandbox. Uninstall now deletes `state:paidTop:<w>` by number from `state:wallets` either way, and doesn't need `list()`.
+- **Wording that differs from the plan's examples, for Wyatt to check:**
+  - The Health field reads "OK, less than a minute ago" (the page's existing `ago()`), not "OK, 12 s ago".
+  - The mismatch banner splits Wyatt's text: its first sentence is the title, the rest the description.
+  - Times are `HH:MM UTC` with no date, as elsewhere on the page.
+
+**Open:**
+- **CLAUDE.md:** its list of what the plugin stores gains "and the previous bridge's public key" (D4). That needs Wyatt's OK; it isn't edited.
+- **Dev scripts to update before the live check** (not in the plugin suite):
+  - `scripts/dev-e2e.mjs` pairs a fake bridge on a site with history, so it must answer the probe, and it checks out a tip seconds after topping up, which the 45 s wait refuses;
+  - the red-team live scripts (`round1-live`, `round2-live`, `backlog-live`) need the same.
+- **Not covered:** the bridge (spec change 46's Go side), `contract/` (the new fields), CI (nothing pushed), the live check.
+- **Phase 09:** a `package.json` version bump, since runtime behaviour changed.
+
+**Next step:** a fresh session builds 46's bridge side (Go, tests first):
+- the pool check by digest and its report, with the immediate re-sync on a mismatch;
+- the probe answer with `receivedTop`;
+- re-offering unused subaddresses after a match, and the no-match start;
+- `pair --code -` and `install --pair -`;
+- the `seq` and timestamp agreement.
+
+Then `contract/` documents the fields, the dev scripts are updated, and the live check follows.

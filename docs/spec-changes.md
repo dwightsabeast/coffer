@@ -1354,7 +1354,7 @@ Decided while building (Wyatt, 2026-10-31):
    - `compareAndDelete` is reachable from the sandbox (sandbox-workerd 0.9.5 bridges `storage/compareAndDelete`) but isn't used.
 4. **Admin wording:** "Paired · stagenet" (or mainnet, testnet), "Paired · network not known yet", "Not paired". No bracket.
 
-## 46. The honest bridge checks the site's pool, and a re-pair knows whether the wallet changed (RT-08, the rest of RT-29)  (status: accepted, 2026-11-01, with Wyatt's decisions below; the proposal text already includes them)
+## 46. The honest bridge checks the site's pool, and a re-pair knows whether the wallet changed (RT-08, the rest of RT-29)  (status: accepted, 2026-11-01, with Wyatt's decisions below; the proposal text already includes them; plugin side built 2026-11-01 on `redteam-1`, bridge and live check pending)
 Found in: 07b pass 1.
 - **RT-08 (High):** a stolen bridge key adds pool addresses that tippers then pay.
 - **RT-24 (Low):** a far-future `seq` freezes an invoice.

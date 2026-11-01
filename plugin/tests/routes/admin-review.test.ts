@@ -143,6 +143,26 @@ describe("Needs a decision", () => {
 		]);
 	});
 
+	it("[T03] not your wallet (spec change 46): red, Expire recommended, saying the payments went to someone else", async () => {
+		await setup([invoice(4, { reviewReason: "not_your_wallet", settledAt: T0, transfers: [transfer()] })]);
+		const b = await load();
+		expect(banner(b, "inv_0004")).toMatchObject({ variant: "error", title: "Address not from your wallet" });
+		const t = toggle(b, "inv_0004") as B;
+		expect(text(t)).toContain("This address wasn't from your wallet: your wallet host found it among addresses someone else added. Payments to it went to them, not to you.");
+		expect(text(t)).toContain("Recommended: expire it; if a buyer paid, they paid the thief.");
+		expect(actions(t)).toEqual([{ type: "button", action_id: "invoice_action", label: "Expire", style: "primary", value: "expire:inv_0004" }, OPEN_PRODUCT(4)]);
+	});
+
+	it("[P02] paid to your previous wallet (spec change 46, D2): yellow; check that wallet's app, then mark it settled or expire it", async () => {
+		await setup([invoice(4, { reviewReason: "wallet_changed", transfers: [transfer()] })]);
+		const b = await load();
+		expect(banner(b, "inv_0004")).toMatchObject({ variant: "alert", title: "Paid to your previous wallet" });
+		const t = toggle(b, "inv_0004") as B;
+		expect(text(t)).toContain("Something arrived before you connected a different wallet, and Coffer can't follow that wallet any more.");
+		expect(text(t)).toContain("Recommended: check your previous wallet's app, then mark it settled or expire it.");
+		expect(actions(t).map((a) => a.label)).toEqual(["Mark settled", "Expire", "Open product"]);
+	});
+
 	it("reversed with the settling transfer still held, now flagged: Received says what was reported", async () => {
 		await setup([invoice(4, { reviewReason: "reversed", settledAt: T0, transfers: [transfer({ doubleSpendSeen: true })] })]);
 		const t = toggle(await load(), "inv_0004") as B;

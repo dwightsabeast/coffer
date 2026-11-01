@@ -17,7 +17,11 @@ import { requiredConfirmations } from "./presets";
 
 export type InvoiceKind = "product" | "tip" | "order";
 export type InvoiceStatus = "new" | "seen" | "confirming" | "settled" | "expired" | "review";
-export type ReviewReason = "late" | "underpaid" | "reorg" | "reversed";
+/**
+ * Spec change 46: `wallet_changed`, something received on an invoice whose wallet is no longer connected (D2);
+ * `not_your_wallet`, an invoice on an address the wallet host found isn't from its wallet (D3).
+ */
+export type ReviewReason = "late" | "underpaid" | "reorg" | "reversed" | "wallet_changed" | "not_your_wallet";
 
 /** One incoming transfer to the invoice's subaddress, as the bridge reported it plus what the plugin added. */
 export interface Transfer {
@@ -65,6 +69,11 @@ export interface Invoice {
 	network?: MoneroNetwork;
 	status: InvoiceStatus;
 	reviewReason?: ReviewReason;
+	/**
+	 * Spec change 46, D2: expired at its deadline by the site's clock, with nothing received, because its wallet is no
+	 * longer connected and no evidence can come from it (a stated exception to "expire on evidence").
+	 */
+	expiredReason?: "wallet_changed";
 	createdAt: number;
 	expiresAt: number;
 	createdHeight: number;

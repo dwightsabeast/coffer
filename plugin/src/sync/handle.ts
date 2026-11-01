@@ -5,7 +5,7 @@
 import { type MoneroNetwork, subaddressNetwork } from "../core/address";
 import { RESTORE_MARGIN_BLOCKS } from "../core/constants";
 import { addressDigest } from "../core/digest";
-import { type Invoice, type InvoiceEvent, counted } from "../core/invoice";
+import { type Invoice, type InvoiceEvent, counted, isOpen } from "../core/invoice";
 import { ownIndex, siteIndex, walletOf } from "../core/walletindex";
 import { isWatched } from "../core/watch";
 import { mergeSnapshot } from "./merge";
@@ -284,8 +284,10 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 	// 5. Response: pool status, the current wallet's highest index and watch list (spec change 46: its own indexes, and
 	// empty while the site waits for the probe answer, with the probes); on pairing, a suggested restore height across
 	// every wallet's watched invoices.
-	const watched = (await store.watchCandidates(now)).filter((inv) => isWatched(inv, now));
-	const watch = current === null ? [] : [...new Set(watched.filter((inv) => walletOf(inv.addrIndex) === current).map((inv) => ownIndex(inv.addrIndex)))].sort((a, b) => a - b);
+	const candidates = await store.watchCandidates(now);
+	if (current !== null) await leaveOtherWallets(store, candidates, current, now, events);
+	const watched = candidates.filter((inv) => isWatched(inv, now));
+	const watch = current === null ? [] : [...new Set(watched.filter((inv) => walletOf(inv.addrIndex) === current && !leftBehind(inv)).map((inv) => ownIndex(inv.addrIndex)))].sort((a, b) => a - b);
 	const response: SyncSuccess = { ok: true, poolFree: await store.poolFreeCount(), poolTarget: POOL_TARGET, poolTop: current === null ? 0 : await store.poolTop(current), watch };
 	if (current === null && wallets) {
 		response.probes = await Promise.all(probeEntries(wallets).map(async (w) => ({ wallet: w.wallet, index: w.probe.index, digest: await addressDigest(w.probe.address) })));
@@ -296,6 +298,31 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 	return { response, events, ...(paired ? { paired, replaced } : {}) };
 }
 
+/** Closed because its wallet was no longer connected (D2): resuming that wallet doesn't reopen it. */
+const leftBehind = (inv: Invoice) => inv.reviewReason === "wallet_changed" || inv.expiredReason === "wallet_changed";
+
+/**
+ * Spec change 46, D2: another wallet's open invoices can't get evidence from this wallet host. Something received goes
+ * to review (wallet_changed) at once; nothing received expires at its deadline by the site's clock (wallet_changed).
+ */
+async function leaveOtherWallets(store: SyncStore, candidates: Invoice[], wallet: number, now: number, events: SyncOutcome["events"]) {
+	for (const inv of candidates) {
+		if (walletOf(inv.addrIndex) === wallet || !isOpen(inv) || inv.adminFinal) continue;
+		const from = inv.status;
+		if (inv.transfers.length > 0) {
+			inv.status = "review";
+			inv.reviewReason = "wallet_changed";
+		} else if (now >= inv.expiresAt) {
+			inv.status = "expired";
+			inv.expiredReason = "wallet_changed";
+		} else continue;
+		delete inv.pendingExpiry;
+		inv.finalAt ??= now;
+		await store.saveInvoice(inv);
+		events.push({ invoiceId: inv.id, event: { type: "status", from, to: inv.status, ...(inv.status === "review" ? { reason: "wallet_changed" as const } : {}) } });
+	}
+}
+
 /** The wallets the probes go out for: those with a probe row, most recent first, at most MAX_PROBES. */
 function probeEntries(state: WalletsState): Array<WalletEntry & { probe: NonNullable<WalletEntry["probe"]> }> {
 	return state.list.filter((w): w is WalletEntry & { probe: NonNullable<WalletEntry["probe"]> } => w.probe !== undefined).slice(0, MAX_PROBES);
@@ -303,7 +330,7 @@ function probeEntries(state: WalletsState): Array<WalletEntry & { probe: NonNull
 
 async function applySnapshot(store: SyncStore, index: number, transfers: SyncBody["snapshots"][number]["transfers"], at: { seq: number; now: number; chainHeight: number }, events: SyncOutcome["events"]) {
 	const inv = await store.invoiceForIndex(index);
-	if (!inv) return;
+	if (!inv || leftBehind(inv)) return;
 	const merged = mergeSnapshot(inv, transfers, at);
 	if (!merged.applied) return;
 	await store.saveInvoice(merged.invoice);

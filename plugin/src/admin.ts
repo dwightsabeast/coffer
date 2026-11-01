@@ -460,8 +460,12 @@ const INVOICE_PAGE = 10;
 /** Payments listed per invoice, to keep one invoice's box well inside the 256 KiB response. */
 const TRANSFERS_LISTED = 50;
 const STATUS_TEXT: Record<Invoice["status"], string> = { new: "New", seen: "Seen", confirming: "Confirming", settled: "Settled", expired: "Expired", review: "Review" };
+/** Spec change 46's reasons in words; the older ones keep their one-word codes. */
+const REASON_TEXT: Partial<Record<NonNullable<Invoice["reviewReason"]>, string>> = { not_your_wallet: "address not from your wallet", wallet_changed: "paid to your previous wallet" };
 const statusText = (inv: Invoice) =>
-	inv.status === "review" ? `Needs decision: ${inv.reviewReason ?? "review"}` : `${STATUS_TEXT[inv.status]}${inv.adminFinal ? " (by admin)" : ""}`;
+	inv.status === "review"
+		? `Needs decision: ${inv.reviewReason ? (REASON_TEXT[inv.reviewReason] ?? inv.reviewReason) : "review"}`
+		: `${STATUS_TEXT[inv.status]}${inv.status === "expired" && inv.expiredReason === "wallet_changed" ? " (wallet changed)" : ""}${inv.adminFinal ? " (by admin)" : ""}`;
 const xmr = (atomic: bigint) => (atomic === 0n ? "0" : atomicToXmr(atomic));
 const fiatText = (inv: Invoice) => (inv.fiat ? `${minorText(BigInt(inv.fiat.amountMinor))} ${inv.fiat.currency}` : "");
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -722,9 +726,9 @@ const REVIEW_STEP = 12;
 const REVIEW_MAX = 60;
 /** Review invoices read for ordering: red first needs the reason, which has no index (adding one is a stop point). */
 const REVIEW_SCAN_PAGES = 5;
-const REVIEW_TITLE: Record<NonNullable<Invoice["reviewReason"]>, string> = { late: "Late payment", underpaid: "Underpaid", reorg: "Payment not re-mined after a reorg", reversed: "Settled payment gone" };
+const REVIEW_TITLE: Record<NonNullable<Invoice["reviewReason"]>, string> = { late: "Late payment", underpaid: "Underpaid", reorg: "Payment not re-mined after a reorg", reversed: "Settled payment gone", not_your_wallet: "Address not from your wallet", wallet_changed: "Paid to your previous wallet" };
 /** Red where the money may be gone, yellow where it arrived and the admin decides (Wyatt, 2026-10-09). */
-const isRed = (inv: Invoice) => inv.reviewReason === "reversed" || inv.reviewReason === "reorg";
+const isRed = (inv: Invoice) => inv.reviewReason === "reversed" || inv.reviewReason === "reorg" || inv.reviewReason === "not_your_wallet";
 const button = (label: string, value: string, style: "primary" | "secondary", confirm?: Record<string, string>): Block => ({ type: "button", action_id: "invoice_action", label, style, value, ...(confirm ? { confirm } : {}) });
 
 /**
@@ -760,6 +764,16 @@ function reviewItem(inv: Invoice, now: number): Block[] {
 		what = `${xmr(t.received)} of ${xmr(expected)} XMR arrived (${pct}%) by the deadline, ${deepest} confirmations${lastChecked(inv, now)}.`;
 		advice = `Recommended: expire it, don't fulfil the order, and refund the buyer from your wallet app.${rowHint("the smaller amount")}`;
 		actions.push(button("Expire", `expire:${inv.id}`, "primary"));
+	} else if (reason === "not_your_wallet") {
+		// Spec change 46, D3: the honest wallet host found this row isn't from its wallet.
+		what = "This address wasn't from your wallet: your wallet host found it among addresses someone else added. Payments to it went to them, not to you.";
+		advice = "Recommended: expire it; if a buyer paid, they paid the thief.";
+		actions.push(button("Expire", `expire:${inv.id}`, "primary"));
+	} else if (reason === "wallet_changed") {
+		// Spec change 46, D2: something arrived, but the wallet it went to is no longer connected.
+		what = "Something arrived before you connected a different wallet, and Coffer can't follow that wallet any more.";
+		advice = "Recommended: check your previous wallet's app, then mark it settled or expire it.";
+		actions.push(button("Mark settled", `settle:${inv.id}`, "secondary"), button("Expire", `expire:${inv.id}`, "secondary"));
 	} else if (reason === "reorg") {
 		what = `A chain reorganisation knocked the payment out of its block, and it wasn't mined again within ${RECONFIRM_BLOCKS} blocks.`;
 		advice = "Recommended: expire it and don't fulfil the order.";

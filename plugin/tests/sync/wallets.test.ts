@@ -192,3 +192,53 @@ describe("the address digest", () => {
 		expect(await addressDigest(OTHER(1))).not.toBe(await addressDigest(a));
 	});
 });
+
+describe("open invoices of a wallet that's no longer connected (spec change 46, D2)", () => {
+	const paid = { txid: TXID(8), amountAtomic: "500000000", confirmations: 0, height: 0, timestamp: 1_790_000_000, doubleSpendSeen: false, unlockTime: "0", seenAt: T0, poolTs: 1_790_000_000 };
+
+	async function switched() {
+		const store = devSite();
+		store.invoices.set("inv_seen", tip("inv_seen", { addrIndex: 305, subaddress: SHOP(305), status: "seen", transfers: [paid], expiresAt: T0 + 3_600_000 }));
+		store.invoices.set("inv_new", tip("inv_new", { addrIndex: 356, subaddress: SHOP(356), status: "new", expiresAt: T0 + 3_600_000 }));
+		await repair(store, "test2");
+		const out = await send(store, body({ seq: T0 + 2000, wallet: { match: null, receivedTop: 0 } }), { key: "test2", now: T0 + 2000 });
+		return { store, out };
+	}
+
+	it("[P02] something received: review with reason wallet_changed, as soon as the new wallet is known", async () => {
+		const { store, out } = await switched();
+		expect(store.invoices.get("inv_seen")).toMatchObject({ status: "review", reviewReason: "wallet_changed" });
+		expect(out.events).toContainEqual({ invoiceId: "inv_seen", event: { type: "status", from: "seen", to: "review", reason: "wallet_changed" } });
+	});
+
+	it("[P02] nothing received: open until its deadline, then expired with wallet_changed (no evidence can come from that wallet)", async () => {
+		const { store } = await switched();
+		expect(store.invoices.get("inv_new")?.status).toBe("new");
+		await send(store, body({ seq: T0 + 3_599_000 }), { key: "test2", now: T0 + 3_599_000 });
+		expect(store.invoices.get("inv_new")?.status).toBe("new");
+		const out = await send(store, body({ seq: T0 + 3_600_000 }), { key: "test2", now: T0 + 3_600_000 });
+		expect(store.invoices.get("inv_new")).toMatchObject({ status: "expired", expiredReason: "wallet_changed", finalAt: T0 + 3_600_000 });
+		expect(out.events).toContainEqual({ invoiceId: "inv_new", event: { type: "status", from: "new", to: "expired" } });
+	});
+
+	it("[P02] while the site waits for the answer, nothing is decided", async () => {
+		const store = devSite();
+		store.invoices.set("inv_seen", tip("inv_seen", { addrIndex: 305, subaddress: SHOP(305), status: "seen", transfers: [paid], expiresAt: T0 + 3_600_000 }));
+		await repair(store, "test2");
+		await send(store, body({ seq: T0 + 2000 }), { key: "test2", now: T0 + 2000 });
+		expect(store.invoices.get("inv_seen")?.status).toBe("seen");
+	});
+
+	it("[P02] resuming that wallet doesn't reopen them: they aren't watched, and its snapshots for them are ignored", async () => {
+		const { store } = await switched();
+		await send(store, body({ seq: T0 + 3_600_000 }), { key: "test2", now: T0 + 3_600_000 });
+		await repair(store, "test1", T0 + 3_601_000);
+		const back = ok(await send(store, body({ seq: T0 + 3_602_000, wallet: { match: 0, receivedTop: 305 } }), { now: T0 + 3_602_000 }));
+		expect(back.watch).not.toContain(305);
+		expect(back.watch).not.toContain(356);
+		const settle = { txid: TXID(8), amount: "500000000", confirmations: 12, height: H0 + 1, timestamp: 1_790_000_000, doubleSpendSeen: false, unlockTime: "0" };
+		await send(store, body({ seq: T0 + 3_603_000, height: H0 + 13, snapshots: [{ index: 305, transfers: [settle] }, { index: 356, transfers: [settle] }] }), { now: T0 + 3_603_000 });
+		expect(store.invoices.get("inv_seen")).toMatchObject({ status: "review", reviewReason: "wallet_changed" });
+		expect(store.invoices.get("inv_new")).toMatchObject({ status: "expired", expiredReason: "wallet_changed" });
+	});
+});

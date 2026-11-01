@@ -102,6 +102,18 @@ describe("invoice list", () => {
 		expect(label("inv_0008")).toBe(`Seen · 12.00 USD · received ${DUE} XMR · 0 confirmations · created 5 min ago`);
 	});
 
+	it("[P02][T03] spec change 46's reasons read as words, not codes", async () => {
+		await setup([
+			invoice(1, { status: "review", reviewReason: "not_your_wallet" }),
+			invoice(2, { status: "review", reviewReason: "wallet_changed", transfers: [transfer({ confirmations: 0, height: 0 })] }),
+			invoice(3, { status: "expired", expiredReason: "wallet_changed" }),
+		]);
+		const b = await load();
+		expect(item(b, "inv_0001").label).toMatch(/^Needs decision: address not from your wallet · /);
+		expect(item(b, "inv_0002").label).toMatch(/^Needs decision: paid to your previous wallet · /);
+		expect(item(b, "inv_0003").label).toMatch(/^Expired \(wallet changed\) · /);
+	});
+
 	it("details: status, amount, Due, Received, confirmations, created, expires (changes 1 and 6)", async () => {
 		await setup([invoice(1, { status: "confirming", transfers: [transfer({ amountAtomic: "40000000000", confirmations: 1 })] })]);
 		const t = item(await load(), "inv_0001");

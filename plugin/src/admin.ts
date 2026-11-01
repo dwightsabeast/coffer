@@ -19,7 +19,7 @@ import { invoiceUri } from "./core/uri";
 import { ensureCron } from "./housekeeping";
 import { CURRENCIES, type Currency, getRate, isCurrency } from "./rates";
 import { KV, SETTING, invoices, paidTopKey, pool } from "./store";
-import { type BridgeState, type NetworkRecord, type WalletsState, currentWallet } from "./sync/handle";
+import { type BridgeState, type NetworkRecord, type PoolCheckState, type RefusedRecord, type WalletsState, currentWallet } from "./sync/handle";
 import { type PairingState, PAIRING_TTL_MS, isPairingActive, keyId, newPairingCode } from "./sync/pairing";
 import { POOL_TARGET } from "./sync/protocol";
 
@@ -76,7 +76,19 @@ interface Health {
 	clientIp: boolean | null;
 	/** When the watch-candidate scan last hit its safety cap (spec change 35), within the last day; else null. */
 	watchTruncatedAt: number | null;
+	/** Spec change 46, item 1: the pool check's last "ok" and its sticky mismatch. */
+	poolCheck: PoolCheckState | null;
+	/** Spec change 46, item 2: the current key's refused syncs, until its next good one. */
+	refused: RefusedRecord | null;
+	/** Spec change 46, item 2 (D4): the previous wallet host, heard within the last day, and when the pairing was. */
+	previousSeenAt: number | null;
+	pairedAt: number | null;
+	/** The Health field's text for the pool check (spec change 46, D3). */
+	addressCheck: string;
 }
+
+/** How long the previous wallet host's line stays after it was last heard (spec change 46, D4). */
+const PREVIOUS_SHOWN_MS = 24 * 3_600_000;
 
 /**
  * A wallet's highest own index with a counted payment (per wallet since spec change 46). Wallet 0's is worked out once
@@ -141,7 +153,13 @@ async function health(ctx: PluginContext, now: number, opts: { checkRate: boolea
 	const watchTruncatedAt = truncatedAt !== null && now - truncatedAt < LATE_WINDOW_MS ? truncatedAt : null;
 	const lastSyncAgo = bridge?.lastSyncAt !== undefined ? now - bridge.lastSyncAt : null;
 	const neverSynced = paired && bridge !== null && lastSyncAgo === null;
-	return { paired, network, bridge, free, silentFor, lastSyncAgo, neverSynced, review, unpaidRun, gap, rate, clientIp, watchTruncatedAt };
+	const poolCheck = paired ? await ctx.kv.get<PoolCheckState>(KV.poolCheck) : null;
+	const refused = paired ? await ctx.kv.get<RefusedRecord>(KV.refused) : null;
+	const seen = paired ? await ctx.kv.get<{ at: number }>(KV.previousSeen) : null;
+	const previousSeenAt = seen && now - seen.at < PREVIOUS_SHOWN_MS ? seen.at : null;
+	const pairedAt = (await ctx.kv.get<{ at: number }>(KV.lastPairing))?.at ?? null;
+	const addressCheck = addressCheckText(poolCheck, now);
+	return { paired, network, bridge, free, silentFor, lastSyncAgo, neverSynced, review, unpaidRun, gap, rate, clientIp, watchTruncatedAt, poolCheck, refused, previousSeenAt, pairedAt, addressCheck };
 }
 
 const minorText = (m: bigint) => `${m / 100n}.${(m % 100n).toString().padStart(2, "0")}`;
@@ -159,6 +177,18 @@ const PAUSED = GOODS_ENABLED
 function problems(h: Health): Array<{ variant: "error" | "alert"; title: string; description: string }> {
 	const out: ReturnType<typeof problems> = [];
 	const checks = h.bridge?.checks;
+	// Spec change 46, item 1 (D3): first, above everything else.
+	if (h.poolCheck?.mismatch) {
+		out.push({
+			variant: "error",
+			title: "Coffer found addresses on this site that aren't from your wallet",
+			description: "Someone may have your wallet host's key. Payments to those addresses don't reach you, so Coffer has stopped handing them out. Connect a new wallet host now (in Settings), on a machine you trust, then check Needs a decision.",
+		});
+	}
+	// Spec change 46, item 2: a sync the current key signed that the site refused.
+	if (h.refused) {
+		out.push({ variant: "error", title: "The site is refusing your wallet host's updates", description: `Since ${utc(h.refused.since)}, with ${h.refused.code}. On the wallet host, run: sudo xmr-bridge status --config /etc/xmr-bridge/config` });
+	}
 	if (h.silentFor !== null && h.neverSynced) {
 		out.push({ variant: "error", title: "Paired, but the wallet host hasn't synced", description: `Nothing has come from it for ${Math.floor(h.silentFor / 60_000)} min. On the wallet host, run: sudo xmr-bridge status --config /etc/xmr-bridge/config` });
 	} else if (h.silentFor !== null) {
@@ -194,6 +224,13 @@ function problems(h: Health): Array<{ variant: "error" | "alert"; title: string;
 	return out;
 }
 
+/** Spec change 46 (D3): a mismatch wins; a thief's forged "ok" can refresh the time too, so it shows only that a check runs. */
+function addressCheckText(poolCheck: PoolCheckState | null, now: number): string {
+	if (poolCheck?.mismatch) return `Failed at ${utc(poolCheck.mismatch.at)}`;
+	if (poolCheck?.lastOkAt !== undefined) return `OK, ${ago(now - poolCheck.lastOkAt)}`;
+	return "Never (your wallet host doesn't check yet; run xmr-bridge update)";
+}
+
 function walletHeightText(h: Health): string {
 	const w = h.bridge?.checks?.wallet;
 	if (w?.state === "starting") return "Starting (opening the wallet)";
@@ -211,6 +248,16 @@ const NODE_CHECK_TEXT = { off: "Off (the wallet host uses your own node)", ok: "
 function bannerBlocks(h: Health): Block[] {
 	const blocks: Block[] = problems(h).map((p) => ({ type: "banner", ...p }));
 	if (h.bridge?.outdated) blocks.push({ type: "banner", variant: "default", title: "Wallet host update available", description: "On the wallet host, run: xmr-bridge update" });
+	// Spec change 46, item 2 (D4): the three cases, in Wyatt's wording.
+	if (h.previousSeenAt !== null && h.pairedAt !== null) {
+		const t = utc(h.pairedAt);
+		blocks.push({
+			type: "banner",
+			variant: "default",
+			title: "Your previous wallet host is still running",
+			description: `Your previous wallet host is still contacting this site; its updates are refused. If you moved to a new wallet host at ${t}, shut the old one down (on it: sudo systemctl disable --now xmr-bridge). If you re-paired the same one, leave it running: someone else has the old key, and the re-pair already locked them out. If you didn't connect a wallet host at ${t}, someone else did: connect yours again now.`,
+		});
+	}
 	return blocks;
 }
 
@@ -231,6 +278,7 @@ function healthBlocks(h: Health): Block[] {
 				{ label: "Review items", value: h.review === 0 ? "None" : `${h.review} need a decision` },
 				{ label: "Unpaid checkouts in a row", value: String(h.unpaidRun) },
 				{ label: "Remote-node cross-check", value: node ? NODE_CHECK_TEXT[node] : "Not reported yet" },
+				{ label: "Address check", value: h.addressCheck },
 				{ label: "Unpaid addresses since the last payment", value: `${h.gap.value} (warning at ${GAP_ALERT})` },
 			],
 		},

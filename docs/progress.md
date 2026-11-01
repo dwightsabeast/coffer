@@ -4414,3 +4414,19 @@ Branch `redteam-1`, local commits only (`4619904` to the docs commit after `2599
 - **Answered (Wyatt's question):** the address digest uses WebCrypto `crypto.subtle.digest("SHA-256")`.
   - `dist/plugin.mjs` holds three `subtle.digest` calls and no SHA-256 round constants, so no SHA-256 code is bundled.
   - The bundle's growth (59.5 to 70.3 KB) is 46's own source. From `8080e6b` to `fad272f`, `handle.ts` went from 10.4 to 28.0 KB, `admin.ts` grew 5.7 KB, `store.ts` 4.2 KB and `protocol.ts` 3.0 KB.
+
+## 2026-11-01 · Phase 07b fix sessions · Live check started: the dev scripts (stopped at the usage limit)
+
+- **Before:** `data.db` backed up to `~/xmr-pay-dev-data/redteam/46-before-scripts.db`: 56 invoices; pool 356 rows (306 claimed, 50 free, highest 406); bridge key `b08969872a2d`. The plugin was built at `1ef3686`, and the dev site ran in `astro dev`.
+- **`dev-e2e.mjs`:** 32 PASS, 0 FAIL, "ALL AS EXPECTED", including the 46 s hand-out wait (`~/xmr-pay-dev-data/46-dev-e2e.txt`).
+  - It needs a clean site, so `--cleanup-only` ran first. The pairing therefore didn't wait for a probe answer; `backlog-live` would cover that path.
+- **`round1-live.mjs`:** 7 PASS, 1 FAIL (`~/xmr-pay-dev-data/46-round1-live.txt`). **Not yet looked into.**
+  - C5: "the drip request ends at or before the 30 s wall" got HTTP 200 after 41,023 ms, with `BAD_SIGNATURE`.
+  - Possibly the dev box's installed bridge interfering, or a timing change; check whether C5 passed in round 1's own run before treating it as a regression.
+- **Not run yet:** `round2-live.mjs` (a8, c6, j1) and `backlog-live.mjs`.
+- **After:** the site was stopped (ports free, no astro running), and `46-before-scripts.db` restored (the state it replaced is in `~/xmr-pay-dev-data/baseline/data.db.before-restore-20261101T200828222Z`). The installed bridge syncs again with its own key once the site runs.
+
+**Next step:**
+1. Look into C5 (compare with round 1's evidence, `~/xmr-pay-dev-data/redteam/round1-*`).
+2. Run `round2-live.mjs` (a8, c6, j1; check for orphaned workerd after j1) and `backlog-live.mjs` (seed with the site stopped), each with a backup first and a restore after.
+3. Then 46's live check steps 1–8.

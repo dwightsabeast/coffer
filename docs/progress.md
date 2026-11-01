@@ -4167,9 +4167,16 @@ Notes on the runs:
 
 **Release note for phase 09:** EmDash's plugin guidance asks for a `package.json` version bump when runtime behaviour changes. This build changes it.
 
-**Live re-pair (pending):**
-1. Wyatt runs `sudo sh ~/xmr-pay-dev-data/45-repair.sh`, right after Claude issues a code to `~/xmr-pay-dev-data/45-pair-code.txt` (mode 600; the script deletes it).
-2. Claude runs the after-check: Health "Paired · stagenet", 50 free rows all with the new key's ID, none dropped, a public tip getting a new-key address.
-3. Expected cost: up to 50 stagenet subaddress numbers skipped (306–355), the "host keeps its wallet" case of spec change 45.
+**Live re-pair: done, all pass** (2026-11-01 00:52 UTC):
+- **The re-pair:** Claude issued a code at 00:52:01 UTC. Wyatt ran `sudo sh ~/xmr-pay-dev-data/45-repair.sh`: pair exited 0, the service stayed active, PASS, and the code file was deleted.
+  - The script's before and after "Bridge key" lines came out empty. The installed bridge (the 8 October dev release) probably predates `status`'s `Bridge key:` line. The key change was checked from the database instead.
+- **The after-check**, a scratch script, output in `~/xmr-pay-dev-data/45-after-repair-output.txt`, 19 s after pairing. Every check passed:
+  - **Key and pairing:** a new key is stored (the fingerprint changed from `2c00d25866f4`), and `lastPairing` says it replaced the old one.
+  - **Network:** `state:network` is stagenet with the new key's ID.
+  - **Pool:** 50 free rows, indexes 356–405, all carrying the new key's ID; no "dropped" row; the 305 claimed rows untouched.
+  - **Health:** "Paired · stagenet", the meter at 50 of 50, the gap at 0.
+  - **A public tip** got index 356, a new-key row (invoice `inv_e266ef9e2e436bd0`, an unpaid stagenet tip left to expire).
+- **The cost was as predicted:** numbers 306–355 were skipped, since the host keeps its wallet (spec change 45's costs; 46 removes it).
+- **After:** 56 invoices; pool 355 rows (306 claimed, 49 free, highest 405). The bridge last synced at 00:52:26 UTC. The dev site was stopped afterwards (ports free); the bridge backs off quietly. The backup `45-before-repair.db` holds the pre-re-pair state, but restoring it would put back the old key, which the bridge no longer has.
 
-**Next step:** the live re-pair above. Then RT-08's spec change 46 (write it, get it approved, then build), then RT-20.
+**Next step:** RT-08's spec change 46 (write it, get it approved, then build), then RT-20.

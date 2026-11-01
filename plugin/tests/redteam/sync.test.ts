@@ -119,7 +119,9 @@ describe("C2: freshness and replay", () => {
 		h = await redteamHost({ pool: 1 });
 		const res: B = {};
 		for (const off of [-3600, -302, -299, 299, 302, 3600, 86_400 * 365]) {
-			const r = await h.sync({}, { nowMs: Date.now() + off * 1000 });
+			// A sender whose clock is off sends a seq from that same clock (spec change 46's seq bound ties the two).
+			const nowMs = Date.now() + off * 1000;
+			const r = await h.sync({ seq: nowMs }, { nowMs });
 			res[off] = ok(r) ? "ok" : code(r);
 		}
 		expect(res).toEqual({ "-3600": "STALE_TIMESTAMP", "-302": "STALE_TIMESTAMP", "-299": "ok", "299": "ok", "302": "STALE_TIMESTAMP", "3600": "STALE_TIMESTAMP", "31536000": "STALE_TIMESTAMP" });

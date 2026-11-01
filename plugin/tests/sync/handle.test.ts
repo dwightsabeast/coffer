@@ -453,3 +453,27 @@ describe("heard, not synced (spec change 29)", () => {
 		expect(store.invoices.get("inv_1")).toEqual(inv);
 	});
 });
+
+describe("the seq bound (spec change 46, item 5; RT-24)", () => {
+	it("[T04] a sync whose seq is more than 300 s from its signed timestamp is refused and changes nothing; 300 s is accepted", async () => {
+		const store = pairedStore();
+		for (const seq of [T0 + 300_001, T0 - 300_001, T0 + 10 * 365 * 86_400_000]) {
+			expect(errorCode(await send(store, syncBody({ seq, addresses: [{ index: 1, address: ADDR(1) }] })))).toBe("SEQ_OUT_OF_RANGE");
+		}
+		expect(store.pool.size).toBe(0);
+		expect(store.bridge).toBeNull();
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 300_000 })))).toBe("ok");
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 1000 - 300_000 }), { now: T0 + 1000 }))).toBe("ok");
+	});
+
+	it("[T04][T13] the pairing path applies it too, and a refused pairing doesn't burn the code", async () => {
+		const store = new MemoryStore();
+		const { code, state } = await newPairingCode(T0);
+		store.pairing = state;
+		const out = await send(store, syncBody({ seq: T0 + 300_001, pair: { code, publicKey: PUBLIC_KEYS.test1 } }));
+		expect(errorCode(out)).toBe("SEQ_OUT_OF_RANGE");
+		expect(store.publicKey).toBeNull();
+		expect(store.pairing?.used).toBe(false);
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 300_000, pair: { code, publicKey: PUBLIC_KEYS.test1 } })))).toBe("ok");
+	});
+});

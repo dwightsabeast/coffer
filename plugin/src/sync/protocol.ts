@@ -3,6 +3,7 @@
  * over the exact bytes, strict UTF-8 decoding, and hand-written validation of the body. No storage here.
  */
 import { subaddressNetwork } from "../core/address";
+import { MAX_WALLET_INDEX } from "../core/walletindex";
 
 /** The bridge protocol version this plugin speaks. It also accepts the previous one (and flags it as outdated). */
 export const PROTOCOL_VERSION = 1;
@@ -17,6 +18,15 @@ export const MAX_SNAPSHOTS = 100;
 export const MAX_TRANSFERS = 32;
 /** The pool size the bridge tops up to. */
 export const POOL_TARGET = 50;
+/**
+ * A wallet's own subaddress indexes are 1..2^32-1 (spec change 46): the site numbers wallet w's rows w * 2^32 + index,
+ * so an index outside this range would land in another wallet's numbers.
+ */
+export { MAX_WALLET_INDEX };
+/** `seq` (the bridge's clock in ms) must be within this of the signed timestamp (spec change 46, item 5; RT-24). */
+export const SEQ_WINDOW_MS = 300_000;
+/** A pool-check report names at most this many bad indexes. */
+export const MAX_POOL_BAD = 20;
 
 export type SyncErrorCode =
 	| "NOT_PAIRED"
@@ -27,7 +37,8 @@ export type SyncErrorCode =
 	| "INVALID_BODY"
 	| "UNSUPPORTED_VERSION"
 	| "PAIRING_NOT_ACTIVE"
-	| "PAIRING_REJECTED";
+	| "PAIRING_REJECTED"
+	| "SEQ_OUT_OF_RANGE";
 
 export type Result<T> = { ok: true; value: T } | { ok: false; code: SyncErrorCode };
 const fail = (code: SyncErrorCode): { ok: false; code: SyncErrorCode } => ({ ok: false, code });
@@ -59,6 +70,9 @@ export function checkHeaders(headers: Record<string, string>, nowMs: number): Re
 	if (Math.abs(Math.floor(nowMs / 1000) - Number(ts)) > TS_WINDOW_S) return fail("STALE_TIMESTAMP");
 	return { ok: true, value: { ts, signature } };
 }
+
+/** An honest bridge's seq and x-xmr-ts both come from its clock, at the same send (spec change 46, item 5). */
+export const seqInRange = (seq: number, ts: string): boolean => Math.abs(seq - Number(ts) * 1000) <= SEQ_WINDOW_MS;
 
 /** Ed25519 over ts + "\n" + the exact body bytes, with WebCrypto. */
 export async function verifySignature(publicKey: Uint8Array<ArrayBuffer>, ts: string, body: Uint8Array, signature: Uint8Array<ArrayBuffer>): Promise<boolean> {
@@ -102,6 +116,8 @@ export interface BridgeChecks {
 	 * isn't ready yet; the message carries no wallet data (spec change 29).
 	 */
 	wallet?: { state: "ok" | "behind" | "unavailable" | "syncing" | "starting"; detail?: string };
+	/** Spec change 46: the bridge's check of the site's `check` list against its wallet; `bad` holds its own indexes. */
+	pool?: { state: "ok" | "mismatch"; bad: number[] };
 }
 
 export interface SyncBody {
@@ -112,12 +128,20 @@ export interface SyncBody {
 	snapshots: Array<{ index: number; transfers: RawTransfer[] }>;
 	pair?: { code: string; publicKey: string };
 	checks?: BridgeChecks;
+	/**
+	 * Spec change 46, item 3: the answer to the site's probes after a pairing. `match` is the site's wallet number
+	 * whose probe matched, or null for a wallet the site hasn't seen; `receivedTop` is the wallet's highest index with a
+	 * transfer.
+	 */
+	wallet?: { match: number | null; receivedTop: number };
 	/** True when the bridge speaks the previous protocol version: the admin page shows "wallet host update available". */
 	outdated: boolean;
 }
 
 const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "object" && v !== null && !Array.isArray(v);
 const nonNegInt = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 0;
+/** A wallet's own subaddress index, 1..2^32-1. */
+const walletIndex = (v: unknown): v is number => Number.isSafeInteger(v) && (v as number) >= 1 && (v as number) <= MAX_WALLET_INDEX;
 const DIGITS_20 = /^\d{1,20}$/;
 const TXID = /^[0-9a-f]{64}$/;
 /** A Monero subaddress: 95 base58 characters, and a subaddress network byte the plugin can read (spec change 36). */
@@ -149,13 +173,28 @@ function parseCheck<S extends string>(c: unknown, states: ReadonlySet<string>): 
 	return { state: c.state as S, ...(typeof c.detail === "string" ? { detail: c.detail.slice(0, MAX_DETAIL) } : {}) };
 }
 
+function parsePoolCheck(c: unknown): BridgeChecks["pool"] {
+	if (!isObject(c) || (c.state !== "ok" && c.state !== "mismatch")) return undefined;
+	if (c.bad !== undefined && !Array.isArray(c.bad)) return undefined;
+	const bad = ((c.bad as unknown[] | undefined) ?? []).filter(walletIndex).slice(0, MAX_POOL_BAD);
+	return { state: c.state, bad };
+}
+
 /** Checks are information for the admin page: anything malformed is dropped, never a reason to refuse the body. */
 function parseChecks(c: unknown): BridgeChecks | undefined {
 	if (!isObject(c)) return undefined;
 	const node = parseCheck<NonNullable<BridgeChecks["node"]>["state"]>(c.node, NODE_STATES);
 	const wallet = parseCheck<NonNullable<BridgeChecks["wallet"]>["state"]>(c.wallet, WALLET_STATES);
-	if (!node && !wallet) return undefined;
-	return { ...(node ? { node } : {}), ...(wallet ? { wallet } : {}) };
+	const pool = parsePoolCheck(c.pool);
+	if (!node && !wallet && !pool) return undefined;
+	return { ...(node ? { node } : {}), ...(wallet ? { wallet } : {}), ...(pool ? { pool } : {}) };
+}
+
+/** The probe answer; malformed is dropped (the site keeps waiting for a well-formed one). */
+function parseWalletAnswer(w: unknown): SyncBody["wallet"] {
+	if (!isObject(w) || !walletIndex(w.receivedTop) && w.receivedTop !== 0) return undefined;
+	if (w.match !== null && !nonNegInt(w.match)) return undefined;
+	return { match: w.match as number | null, receivedTop: w.receivedTop as number };
 }
 
 /**
@@ -178,7 +217,9 @@ export function parseSyncBody(text: string, current: number = PROTOCOL_VERSION):
 
 	const addresses: SyncBody["addresses"] = [];
 	for (const a of json.addresses) {
-		if (isObject(a) && Number.isSafeInteger(a.index) && (a.index as number) >= 1 && typeof a.address === "string" && SUBADDRESS.test(a.address) && subaddressNetwork(a.address) !== null) {
+		// Spec change 46: an integer index outside the wallet's range refuses the body (it would be another wallet's).
+		if (isObject(a) && Number.isSafeInteger(a.index) && !walletIndex(a.index)) return fail("INVALID_BODY");
+		if (isObject(a) && walletIndex(a.index) && typeof a.address === "string" && SUBADDRESS.test(a.address) && subaddressNetwork(a.address) !== null) {
 			addresses.push({ index: a.index as number, address: a.address });
 		}
 	}
@@ -186,7 +227,7 @@ export function parseSyncBody(text: string, current: number = PROTOCOL_VERSION):
 	const snapshots: SyncBody["snapshots"] = [];
 	const seenIndexes = new Set<number>();
 	for (const s of json.snapshots) {
-		if (!isObject(s) || !Number.isSafeInteger(s.index) || (s.index as number) < 1 || seenIndexes.has(s.index as number)) return fail("INVALID_BODY");
+		if (!isObject(s) || !walletIndex(s.index) || seenIndexes.has(s.index as number)) return fail("INVALID_BODY");
 		if (!Array.isArray(s.transfers) || s.transfers.length > MAX_TRANSFERS) return fail("INVALID_BODY");
 		const transfers: RawTransfer[] = [];
 		const txids = new Set<string>();
@@ -203,6 +244,8 @@ export function parseSyncBody(text: string, current: number = PROTOCOL_VERSION):
 	const body: SyncBody = { v: json.v as number, seq: json.seq as number, height: json.height as number, addresses, snapshots, outdated: (json.v as number) < current };
 	const checks = parseChecks(json.checks);
 	if (checks) body.checks = checks;
+	const wallet = parseWalletAnswer(json.wallet);
+	if (wallet) body.wallet = wallet;
 	if (json.pair !== undefined) {
 		const p = json.pair;
 		if (!isObject(p) || typeof p.code !== "string" || !PAIRING_CODE.test(p.code) || typeof p.publicKey !== "string" || !decodeBase64(p.publicKey, 32)) {

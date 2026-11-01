@@ -18,6 +18,7 @@ import {
 	decodeBase64,
 	decodeStrict,
 	parseSyncBody,
+	seqInRange,
 	verifySignature,
 } from "./protocol";
 
@@ -121,6 +122,7 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 		if (text === null) return error("INVALID_ENCODING");
 		const body = parseSyncBody(text);
 		if (!body.ok) return error(body.code);
+		if (!seqInRange(body.value.seq, ts)) return error("SEQ_OUT_OF_RANGE");
 		if (body.value.pair) {
 			if (!(await pairingCodeMatches(pairing, body.value.pair.code, now))) return error("PAIRING_REJECTED");
 			const key = decodeBase64(body.value.pair.publicKey, 32);
@@ -149,6 +151,7 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 		if (text === null) return error("INVALID_ENCODING");
 		const body = parseSyncBody(text);
 		if (!body.ok) return error(body.code);
+		if (!seqInRange(body.value.seq, ts)) return error("SEQ_OUT_OF_RANGE");
 		if (body.value.pair) return error(pairing === null ? "PAIRING_NOT_ACTIVE" : "PAIRING_REJECTED");
 		// Spec change 45: if a pairing replaced the key while this request ran, it's refused as if signed by the old key.
 		// The tags below cover a pairing that lands after this check.

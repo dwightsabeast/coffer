@@ -33,15 +33,15 @@ describe("Far-future seq (C2's untried case; Wyatt: defense in depth, a bridge b
 	// seq is the bridge's clock in ms (bridgeloop.go nextSeq) and x-xmr-ts the same clock in seconds, but the plugin checks
 	// only that seq is a positive safe integer (protocol.ts) and newer than the invoice's (merge.ts). One snapshot with a
 	// seq years ahead makes every later honest snapshot for that invoice "not newer", so it is ignored.
-	it.fails("[T04] [RT-24] a snapshot whose seq is years ahead of its signed timestamp doesn't stop honest snapshots applying", async () => {
+	it("[T04] [RT-24] a snapshot whose seq is years ahead of its signed timestamp doesn't stop honest snapshots applying (spec change 46: refused)", async () => {
 		const { h, inv } = await openTip();
-		await h.sync({ seq: Date.now() + 10 * YEAR_MS, snapshots: [{ index: inv.addrIndex, transfers: [] }] });
+		expect(data(await h.sync({ seq: Date.now() + 10 * YEAR_MS, snapshots: [{ index: inv.addrIndex, transfers: [] }] }))?.error?.code).toBe("SEQ_OUT_OF_RANGE");
 		// The real payment, reported honestly with the bridge's real clock.
 		expect(ok(await h.sync({ height: H0 + 12, snapshots: [{ index: inv.addrIndex, transfers: [tr("500000000", 10)] }] }))).toBe(true);
 		expect((await byId(h, inv.id)).status).toBe("settled");
 	});
 
-	it.fails("[T04] [RT-24] an untouched expired tip isn't dropped from the watch by one far-future seq", async () => {
+	it("[T04] [RT-24] an untouched expired tip isn't dropped from the watch by one far-future seq (spec change 46: refused)", async () => {
 		const { h, inv } = await openTip();
 		await h.host.fixtures.plugin.storage("invoices", inv.id, { ...inv, expiresAt: Date.now() - 3_600_000 });
 		await h.sync({ height: H0 + 2, snapshots: [{ index: inv.addrIndex, transfers: [] }] });
@@ -49,6 +49,15 @@ describe("Far-future seq (C2's untried case; Wyatt: defense in depth, a bridge b
 		expect(data(await h.sync({ height: H0 + 3 }))?.watch).toContain(inv.addrIndex); // inside its 24-hour late window
 		await h.sync({ seq: Date.now() + 10 * YEAR_MS, height: H0 + 4, snapshots: [{ index: inv.addrIndex, transfers: [] }] });
 		expect(data(await h.sync({ height: H0 + 5 }))?.watch).toContain(inv.addrIndex);
+	});
+
+	it("[T04] [RT-24] what's left (inside the stolen-key limit): a seq at the 300 s edge holds an invoice's snapshots for at most 5 minutes", async () => {
+		const { h, inv } = await openTip();
+		const t = Date.now();
+		expect(ok(await h.sync({ seq: t + 299_000, snapshots: [{ index: inv.addrIndex, transfers: [] }] }))).toBe(true);
+		// An honest snapshot inside those 5 minutes isn't newer, so it's ignored; the payment is still unseen.
+		await h.sync({ seq: t + 1000, height: H0 + 12, snapshots: [{ index: inv.addrIndex, transfers: [tr("500000000", 10)] }] });
+		expect((await byId(h, inv.id)).status).toBe("new");
 	});
 });
 

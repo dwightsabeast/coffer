@@ -4216,3 +4216,34 @@ D5. No bump.
 D6. Add to T03 and R08.
 D7. A new Feather stagenet wallet I make and hold the seed for, restore height set by hand to the current height.
 Open check: can a wallet's rows all disappear (tip purge, plugin uninstall and reinstall)? If so, a returning wallet looks new and restarts at index 1 over paid addresses; start a new wallet above the highest index it has received on.
+
+## 2026-11-01 · Phase 07b fix sessions · Spec change 46 accepted
+
+Branch `redteam-1`. Docs only.
+
+- **Spec change 46 accepted.** Wyatt's draft answers (D1–D7 and the open check) were reviewed against the code, four points were put to him, and he amended the rest. The decisions are in 46's "Wyatt's decisions (2026-11-01)", and the proposal text is rewritten to match.
+- **From the review (the code facts behind the questions):**
+  - Today's sync response carries indexes only (`handle.ts:208–209`). So the `check` list and the probes send digests (the first 16 bytes of SHA-256 of the address), not addresses.
+  - An "ok" report can't mark a row as checked, since a thief can send "ok" too. Coverage is a 24-hour window on a new `addedAt`, with a rotation that moves every 30 s.
+  - Rows disappear only on uninstall with "delete data", which also clears KV (`store.ts:153–163`); the 30-day purge clears buyer data only. Hence a re-offer only on a match.
+  - The UI's labels are "Connect a new wallet host" and "Needs a decision".
+- **Wyatt's own additions:**
+  - the index bound in `parseSyncBody`;
+  - the 45 s wait before hand-out (prevention, while the wallet host runs);
+  - the free cap at `POOL_TARGET`;
+  - status `bad`;
+  - every invoice on a bad row to review, closed ones included;
+  - display text for the new reasons;
+  - "on a machine you trust" in the banner;
+  - no addresses, watch list or snapshots before the probe answer, with no fallback;
+  - the three-case D4 wording;
+  - `receivedTop` for the baseline;
+  - live steps 6 (a fresh unpaid tip) and 7 (357 first).
+- **Later work, pass 2:**
+  - **Orders paid to a previous wallet:** they need a "paid to a previous wallet" path (D2).
+  - **Address reuse after both sides are rebuilt:** a restored wallet hands out unpaid tips' old addresses again, and a late payment settles the new invoice. A known limit for release 1; for orders, free goods.
+- **At build time:** CLAUDE.md's list of stored items gains the previous bridge key (D4), with Wyatt's OK.
+
+No tests run: docs only.
+
+**Next step:** a fresh session builds spec change 46 from its accepted text: plugin first (failing tests first, tagged T03/R08 and the rest of 46's matrix list), then the bridge, then the dev release and the live check.

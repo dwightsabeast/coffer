@@ -148,19 +148,34 @@ describe("L6/A5: coexistence and pay-page headers", () => {
 describe("Round 2 (07b pass 1): the tip endpoint behind an https proxy", () => {
 	// Found live on 2026-10-30 (RT-20): behind a proxy that ends https (here a Cloudflare tunnel) the site serves plain
 	// http, so the endpoint's url is http:// while the visitor's browser sends its https:// Origin. EmDash's own CSRF
-	// check also accepts the configured public origin (siteUrl); Coffer's check compares with url alone. The fix session
-	// may need to give this fixture the site's configured URL, however the fix reads it.
-	it.fails("[T17] [RT-20] a post from the site's own https page reaches checkout when the site itself sees plain http", async () => {
+	// check also accepts the configured public origin (siteUrl, getPublicOrigin); the endpoint now does the same
+	// (Wyatt's fix). Every other refusal stays.
+	const proxied = (origin: string | null, siteUrl?: string) => {
 		const calls: Call[] = [];
 		const form = new FormData();
 		form.set("amount", "any");
-		const request = new Request("http://shop.example/pay/coffer/tip", {
-			method: "POST",
-			body: form,
-			headers: { origin: "https://shop.example", "sec-fetch-site": "same-origin", "x-forwarded-proto": "https" },
-		});
-		const res = (await tipEndpoint()({ request, url: new URL(request.url), locals: locals(ok, calls) } as never)) as Response;
-		expect(res.status).toBe(303);
+		const headers: Record<string, string> = { "sec-fetch-site": "same-origin", "x-forwarded-proto": "https" };
+		if (origin !== null) headers.origin = origin;
+		const request = new Request("http://shop.example/pay/coffer/tip", { method: "POST", body: form, headers });
+		const loc = locals(ok, calls) as { emdash: Record<string, unknown> };
+		if (siteUrl) loc.emdash.config = { siteUrl };
+		return { calls, run: async () => (await tipEndpoint()({ request, url: new URL(request.url), locals: loc } as never)) as Response };
+	};
+	it("[T17] [RT-20] a post from the site's own https page reaches checkout when the site itself sees plain http (siteUrl configured)", async () => {
+		const { calls, run } = proxied("https://shop.example", "https://shop.example");
+		expect((await run()).status).toBe(303);
 		expect(calls).toHaveLength(1);
+	});
+	it("[T17] [RT-20] with no siteUrl configured the same post is still refused", async () => {
+		const { calls, run } = proxied("https://shop.example");
+		expect((await run()).status).toBe(403);
+		expect(calls).toHaveLength(0);
+	});
+	it("[T17] [RT-20] siteUrl doesn't widen anything else: another https host, and Origin null, are refused", async () => {
+		for (const origin of ["https://evil.example", "null"]) {
+			const { calls, run } = proxied(origin, "https://shop.example");
+			expect((await run()).status, origin).toBe(403);
+			expect(calls, origin).toHaveLength(0);
+		}
 	});
 });

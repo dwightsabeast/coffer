@@ -15,6 +15,7 @@
  * its `cf` object, so EmDash gives checkout the same client IP for its per-client limit as a direct call.
  */
 import type { APIRoute } from "astro";
+import { getPublicOrigin } from "emdash/api/route-utils";
 import { getPublicPluginApiRouteHandler, type PublicPluginRuntimeLocals } from "emdash/plugin-utils";
 
 import { checkTipAddress, type MoneroNetwork } from "./address";
@@ -43,15 +44,21 @@ const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replac
 
 /**
  * A post from another site. The checkout route itself refuses a cross-site Origin (EmDash's CSRF check), but this
- * endpoint calls it in-process, so it checks first: Sec-Fetch-Site "cross-site", or an Origin for another host (or
- * "null"). No Origin at all, as from curl, passes, as on the route itself. Found live in 7c: Astro didn't refuse it.
+ * endpoint calls it in-process, so it checks first: Sec-Fetch-Site "cross-site", or an Origin that is neither the
+ * request's own origin nor the site's configured public origin (or "null"). No Origin at all, as from curl, passes, as
+ * on the route itself. Found live in 7c: Astro didn't refuse it.
+ *
+ * RT-20 (Wyatt's fix): behind a proxy that ends https the request's own URL is http://, while the visitor's Origin is
+ * https://. EmDash's own CSRF check also accepts the configured public origin (`siteUrl`, then EMDASH_SITE_URL or
+ * SITE_URL), through the same getPublicOrigin, so this check now matches it. Nothing else is accepted.
  */
-function crossSite(request: Request, url: URL): boolean {
+function crossSite(request: Request, url: URL, config: { siteUrl?: string } | undefined): boolean {
 	if (request.headers.get("sec-fetch-site") === "cross-site") return true;
 	const origin = request.headers.get("origin");
 	if (origin === null) return false;
 	try {
-		return new URL(origin).host !== url.host || new URL(origin).protocol !== url.protocol;
+		const o = new URL(origin).origin;
+		return o !== url.origin && o !== getPublicOrigin(url, config);
 	} catch {
 		return true;
 	}
@@ -127,7 +134,8 @@ export function tipEndpoint(options: TipEndpointOptions = {}): APIRoute {
 	if (fallback && !fallback.ok) console.error(`[coffer] ${fallback.reason}`);
 
 	return async ({ request, url, locals }) => {
-		if (crossSite(request, url)) return errorPage(403, "This tip didn't come from this site's own page.", "/");
+		const config = (locals as { emdash?: { config?: { siteUrl?: string } } }).emdash?.config;
+		if (crossSite(request, url, config)) return errorPage(403, "This tip didn't come from this site's own page.", "/");
 		const form = await request.formData().catch(() => new FormData());
 		// The way back (spec change 39): the page the tip came from, checked; its error pages link "/" otherwise.
 		const returnTo = safeReturn(form.get("returnTo"), url.origin);

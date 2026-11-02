@@ -4852,3 +4852,19 @@ Runbook:
   - **Run 2026-11-02:** 6 of 6 pairs ok at block 3,797,792, confirmations 20 → 20 (`~/xmr-pay-dev-data/mainnet-second-nodes-live-2026-11-02.txt`).
   - **A first version** picked the second node at random and never used `ravfx` as a voucher, hence the pairwise form.
   - **In the live runbook:** step 0, re-run at the session, before the signing.
+
+## 2026-11-02 · Phase 07b fix sessions · Combined live session: steps 1 and 0
+
+- **CI on `6dd4ef6`:** run 41523399005 (`pull_request`) passed: plugin, bridge (race detector included) and theme.
+- **Step 1, the release:**
+  - Wyatt signed `0.0.202611022057-dev.1df3c4d`. `check-dev-signature.sh` verified it with the public key only, and `release.json` is unchanged since the build (`6519625a…3f60`).
+  - Served on 127.0.0.1:8099 (tmux `release`) from 21:07:10 UTC.
+  - **The self-update:**
+    - **21:07:41:** the release server logged the installed bridge fetching `release.json`, its signature and the amd64 binary.
+    - **21:07:41:** "updating the bridge from `0.0.202611021505-dev.37742ab` to `0.0.202611022057-dev.1df3c4d`", exit 75.
+    - **21:07:52:** systemd restarted it, "starting version=…1df3c4d" on `127.0.0.1:38081`, and wallet-rpc was ready 7 s later (Wyatt's journal: `~/xmr-pay-dev-data/live-step1-update.txt`).
+  - **Not yet "update confirmed":** the dev site is stopped, so syncs get "connection refused". `selfupdate.Decide` waits in that state. It rolls back only on a wallet that never opened or a site that refuses, so the update confirms at the first sync once the site is up.
+  - **Observation:** one "wallet-rpc refused the login" 7 s after start, right after "wallet-rpc ready". The next attempts got past the wallet to the site, so it was transient. Not looked into further.
+- **Step 0, the mainnet second-node check** (read-only, `TestLiveMainnetSecondNodes`): 6 of 6 pairs ok at block 3,797,800, confirmations 20 → 20 (`~/xmr-pay-dev-data/live-step0-mainnet-seconds.txt`).
+
+**Next:** step 2 (step 6's rerun). Back up `data.db`, build the plugin at `01f6f08`, and start the dev site in `astro dev`; the bridge's update confirms at its first sync. Then the phase 05 wallet with `--restore-height 2230020`, with Wyatt at the terminal and the pairing code issued then.

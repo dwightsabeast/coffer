@@ -4830,3 +4830,5 @@ Runbook:
 5. **Back to the shop wallet on the own node,** as in step 7.
 
 **Note for 3c:** while the second nodes are blocked, an inflated site height can't heal, because the bridge reports none and the pairing carries none. A tip created then has an inflated floor, so an honest payment to it would be ignored until 3d's pairing. That's fail-closed by design. It's why 3e makes its payment only after the height has healed.
+
+**CI (2026-11-02):** Wyatt opened the PR for `redteam-1`. Run 41518972271 on `77d52ea` passed: the theme, plugin and bridge jobs, the bridge's race-detector tests included (`python3 -I scripts/ci-status.py`).

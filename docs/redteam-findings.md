@@ -33,12 +33,12 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open |
 | RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | fixed 2026-11-01 (spec change 46, item 5) |
 | RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open |
-| RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open |
+| RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open; **release 1, with RT-31's floor** |
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | fixed 2026-11-01 (spec change 46, bridge side) |
 | RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | fixed 2026-10-31 |
 | RT-29 | Medium | T20, T03, R08 | 1, fix planning | A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first | fixed 2026-10-31 with RT-11 (spec change 45) |
 | RT-30 | Medium (Wyatt, 2026-11-02) | P02, R09 | 1, fix sessions (46 live) | The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool | open; **blocks release 1** |
-| RT-31 | High (Wyatt, 2026-11-02) | P02, T14 | 1, fix sessions (46 live) | A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice | open |
+| RT-31 | High (Wyatt, 2026-11-02) | P02, T14 | 1, fix sessions (46 live) | A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice | open; **release 1, with RT-26's fix** |
 
 ---
 
@@ -800,7 +800,7 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 
 ## RT-31 — A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice
 
-- **Rows:** P02, T14. **Severity:** High (Wyatt, 2026-11-02): a product whose price an old payment meets would be fulfilled with no new payment. **Pass 1, fix sessions** (46's live check, step 6). Test: none yet (no code changes this session).
+- **Rows:** P02, T14. **Severity:** High (Wyatt, 2026-11-02): a product whose price an old payment meets would be fulfilled with no new payment. **Release 1** (Wyatt, 2026-11-02, option A): the height floor and RT-26's fix both land in release 1. **Pass 1, fix sessions** (46's live check, step 6). Test: none yet (no code changes this session).
 - **What I did:** the same live step. The invoice's stored transfers sit at heights 2,230,085, 2,230,165 and 2,240,100; its `createdHeight` is 2,242,155.
 - **What the code does:** a transfer counts when it isn't a double spend and its `unlockTime` is "0" (`plugin/src/core/invoice.ts:182`, `counted`). Nothing compares its height with the invoice's `createdHeight` (`sync/merge.ts`, `mergeSnapshot`). So any payment the address ever received counts, however old.
 - **Why it matters beyond RT-30:** the site's guarantee is "a fresh subaddress per invoice" (P02), checked only against other invoices on the site. An address the wallet used before Coffer, or under another site or install, isn't fresh, and the plugin can't see that. A height floor would have made RT-30 harmless here: the tip would have stayed unpaid, waiting for a real payment.

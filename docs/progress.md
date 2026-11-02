@@ -4579,7 +4579,7 @@ Then step 6's payment proof with a truly new wallet.
 
 1. **Site data:** keep it as is, no restore. It holds the RT-31 tip and the bad rows, and the installed bridge is paired with key `+ckxCG2o…`.
 2. **Severities:** RT-31 High. RT-30 Medium, and it **blocks release 1**: until RT-31's height floor exists, RT-30's fix is the only thing stopping an honest admin's switch to a used wallet from crediting old payments.
-3. **RT-31's floor and RT-26: not decided yet.** The message carried the two options without a choice:
+3. **RT-31's floor and RT-26: option A, both in release 1** (Wyatt, asked separately after the decisions message arrived without a choice). The two options were:
    - **A:** both in release 1.
    - **B:** both before release 2 (orders). Release 1 records RT-31 as a known limit, for tips only: a false "Tip received" and an old payment counted twice, no goods, no lost funds.
 4. **The wallet:** `58WW…eSZP` is the phase 05 setup-test wallet. 2,230,020 is the restore height Feather gave it in run A attempt 2, and Wyatt passed it.
@@ -4593,9 +4593,9 @@ Then step 6's payment proof with a truly new wallet.
 
    That tests RT-30's fix and the payment proof together.
 
-**Next step:** once decision 3 is made, a fix session, tests first:
+**Next step:** a fix session, tests first:
 - RT-30: the bridge answers the probe only after the wallet has scanned to its node's height;
 - 5b's previous-key race test (and the grace period if it fails);
-- under option A, RT-31's height floor with RT-26's fix.
+- RT-31's height floor with RT-26's fix (option A: both in release 1).
 
 Then step 6's rerun as in decision 6.

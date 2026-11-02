@@ -4505,3 +4505,7 @@ Backup before the live check: `~/xmr-pay-dev-data/redteam/46-before-live.db` (as
      - **16:09:26:** wallet 0 matched, and free rows 358–407 re-offered (`addedAt` 16:09:25), nothing skipped above `claimedTop` 357.
      - **`previousSeen` none, so no "previous wallet host" line.** The old service stopped at 16:09:20.83, within about 4 s of the pairing.
      - Rows 306 and 100,356 stay `bad`.
+   - **5b, `sudo xmr-bridge pair --code -` (code on stdin only), service left running:** PASS (`46-live-step5b-pair-output.txt`, `46-live-step5b-output.txt`, `46-live-step5b-site.txt`, `46-live-watch-2.txt`).
+     - **The bridge:** pair took 16:14:22.23–.43 and exited 0, with the service's PID unchanged. Its next sync (16:14:26.3) used the new key `Bq93c58Q…`: `match=true receivedTop=305`, then a re-offer `from=358 count=50`. `status`: "Address check: ok".
+     - **The site:** waiting from the pairing, wallet 0 matched at 16:14:26.6, and free rows 358–407 (`addedAt` 16:14:26), nothing skipped. Health "Address check: OK", `previousSeen` none, so **no "previous wallet host" line**.
+     - **Not proven:** the pool banner had already cleared at 5a, so 5b only shows that none appeared. The old-key race (a sync signed in the ~0.2 s before the key swap, arriving after it) wasn't hit: the last old-key sync was 16:14:13.3, about 9 s before the pair. That's roughly a 1–2% chance per pair, so its absence here isn't evidence against it.

@@ -4447,3 +4447,21 @@ Branch `redteam-1`, local commits only (`4619904` to the docs commit after `2599
 - **After:** the site was stopped (ports free, no astro or workerd left) and `46-before-round2.db` restored; counts as above.
 
 **Next step:** spec change 46's live check with Wyatt, steps 1–8, as amended on 2026-11-02 (plan `~/.claude/plans/phase-07b-fix-sessions-jaunty-sifakis.md`).
+
+## 2026-11-02 · Phase 07b fix sessions · Spec change 46 live check: before step 2
+
+- **Built:** dev release `0.0.202611021505-dev.37742ab` (go1.27.3) in `~/xmr-pay-dev-data/dev-release/`; unsigned until Wyatt signs it.
+  - `build-dev-release.sh` wipes the folder first, so 30 October's `f4/` and `redteam/` went with it. They were filled copies for the `coffer-test` red-team run; the masters `~/xmr-pay-dev-data/07b-f1.sh` and `07b-f4.sh` are kept, so nothing is lost.
+- **Live evidence for the open self-update admin-copy question (decide before phase 09):** a self-update never refreshes the admin copy.
+  - The dev box's service runs `/var/lib/xmr-bridge/bin/xmr-bridge`.
+  - Root's `/usr/local/bin/xmr-bridge` is still the 8 October install's `0.0.202610082327-dev.0d66a34` (go1.27.1), through every self-update since.
+  - So that copy doesn't know `pair --code -` or `install --pair -`, and its `status` doesn't print 46's "Address check" or the bridge key. The state format is still 1, so it runs without the format refusal and just shows less.
+  - Its only refresh is re-running the installer, which needs a new pairing code (the bridge's own `CheckFormat` message says so).
+- **Spec change 46's live check named a command that doesn't exist:** step 2's `sudo xmr-bridge update`. No build has an `update` subcommand. Dev builds check `127.0.0.1:8099` 20 s after starting and every minute after that, and a newer signed release swaps itself in (3g's V2 path).
+- **Wyatt's choice (2026-11-02), steps 2–5:**
+  - **Step 2:** Wyatt only signs; the service updates itself. Before step 3, the journal must show the service running the new version.
+  - **Steps 3–4:** checked from the site's database and the journal. The bridge logs "created pool addresses", "catching the wallet up…" and "the site holds addresses that aren't from this wallet" with the indexes.
+  - **Step 5a:** re-run `install.sh` from the new release with a code. It's the same wallet, it refreshes the admin copy, and the code goes in as `--pair -`.
+    - If the installer restores the view-only wallet from keys, check that the bridge answers "match" and catches up to `claimedTop` without creating anything past it (a preview of step 7).
+  - **Step 5b:** `sudo xmr-bridge pair --config /etc/xmr-bridge/config --code -` with the refreshed copy, then status's Address check line.
+  - **Both 5a and 5b:** the pool banner clears at the pairing, and no "previous wallet host" line appears. If one does, that's a finding.

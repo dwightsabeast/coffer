@@ -605,7 +605,26 @@ func TestKeyReadEachSync(t *testing.T) {
 }
 
 // fakeCheck stands in for the cross-check: it zeroes every mined transfer's confirmations and reports a mismatch.
-type fakeCheck struct{ calls int }
+// fakeCheck is a remote node's cross-check. second, when set, is the second node's height (ok false: none answers);
+// unset, the second node is far ahead, so the height is never clamped (the tests from before RT-26's fix).
+type fakeCheck struct {
+	calls       int
+	second      func() (uint64, bool)
+	secondCalls int
+	payment     *crosscheck.Report // the payment check's outcome; nil: a block mismatch, as before
+}
+
+func (f *fakeCheck) SecondHeight(context.Context) (uint64, string, bool) {
+	f.secondCalls++
+	if f.second == nil {
+		return 1 << 40, "second.example:38089", true
+	}
+	h, ok := f.second()
+	if !ok {
+		return 0, "", false
+	}
+	return h, "second.example:38089", true
+}
 
 func (f *fakeCheck) Check(_ context.Context, ts []walletrpc.Transfer) ([]walletrpc.Transfer, crosscheck.Report) {
 	f.calls++
@@ -614,6 +633,9 @@ func (f *fakeCheck) Check(_ context.Context, ts []walletrpc.Transfer) ([]walletr
 		if out[i].Height > 0 {
 			out[i].Confirmations = 0
 		}
+	}
+	if f.payment != nil {
+		return ts, *f.payment
 	}
 	return out, crosscheck.Report{State: crosscheck.Mismatch, Detail: "block 100 differs", Node: "second.example:38089"}
 }

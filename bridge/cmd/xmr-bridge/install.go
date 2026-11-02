@@ -81,11 +81,7 @@ func installSteps(log *slog.Logger) installer.Steps {
 		InstallWalletRPC: func(ctx context.Context, binDir string) error { return installWalletRPC(ctx, binDir, log) },
 		CreateWallet:     createWallet,
 		Pair: func(ctx context.Context, cfg config.Config, code string) (uint64, error) {
-			var height uint64
-			if info, err := noderpc.GetInfo(ctx, cfg.Node, nil); err == nil {
-				height = info.Height
-			}
-			return pairing.Pair(ctx, siteClient(cfg), code, keyFile(cfg), height, time.Now())
+			return pairing.Pair(ctx, siteClient(cfg), code, keyFile(cfg), pairHeight(ctx, cfg), time.Now())
 		},
 	}
 }

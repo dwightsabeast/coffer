@@ -2,8 +2,9 @@
 // before the bridge reports confirmations (spec, Bridge service, duty 6; spec change 13). For each mined transfer it
 // asks a second node for the whole block at the transfer's height: that block's hash must equal the configured
 // node's, and the txid must be in its transaction list. The second node learns a height, never a txid.
-// Confirmations become the smaller of the two nodes' counts. A mismatch holds the transfer at 0 confirmations; no
-// second node answering leaves confirmations as they are and reports the check as unavailable. A second node is
+// Confirmations become the smaller of the two nodes' counts. A mismatch holds the transfer at 0 confirmations; so does
+// no second node answering (spec change 13 as amended for RT-26, Wyatt 2026-11-02: nothing then bounds the depth the
+// configured node claims), reported as unavailable. A second node is
 // never on the configured node's host (any scheme or port), and is used only while it says it has caught up with
 // the network.
 package crosscheck
@@ -145,7 +146,7 @@ func (c *Checker) Check(ctx context.Context, ts []walletrpc.Transfer) ([]walletr
 	}
 	second, secondHeight, ok := c.pickSecond(ctx)
 	if !ok {
-		return out, Report{State: Unavailable, Detail: "no second node answered; confirmations are reported as the configured node gives them"}
+		return held(ts), Report{State: Unavailable, Detail: "no second node answered, so mined payments are held at 0 confirmations until one does. Use your own node, or one you trust"}
 	}
 	host := hostOf(second)
 	rep := Report{State: OK, Node: host}
@@ -172,13 +173,13 @@ func (c *Checker) Check(ctx context.Context, ts []walletrpc.Transfer) ([]walletr
 			if !ok {
 				h, err := noderpc.BlockHash(ctx, c.primary, c.hc, t.Height)
 				if err != nil {
-					return ts, Report{State: Unavailable, Node: host, Detail: "the configured node didn't give the block hash at height " + fmt.Sprint(t.Height)}
+					return held(ts), Report{State: Unavailable, Node: host, Detail: fmt.Sprintf("the configured node didn't give the block hash at height %d, so mined payments are held at 0 confirmations", t.Height)}
 				}
 				ph, primaryHashes[t.Height] = h, h
 			}
 			b, err := noderpc.GetBlock(ctx, second, c.hc, t.Height)
 			if err != nil {
-				return ts, Report{State: Unavailable, Node: host, Detail: fmt.Sprintf("%s didn't give block %d", host, t.Height)}
+				return held(ts), Report{State: Unavailable, Node: host, Detail: fmt.Sprintf("%s didn't give block %d, so mined payments are held at 0 confirmations", host, t.Height)}
 			}
 			switch {
 			case b.Hash != ph:
@@ -197,6 +198,31 @@ func (c *Checker) Check(ctx context.Context, ts []walletrpc.Transfer) ([]walletr
 		out[i].Confirmations = min(t.Confirmations, secondConf)
 	}
 	return out, rep
+}
+
+// HeightTolerance is how far the configured node's chain may run above a second node's before the bridge reports the
+// second node's height instead (spec change 47, D2). It must stay below the plugin's floor margin (30 blocks).
+const HeightTolerance = 10
+
+// held is ts with every mined transfer at 0 confirmations (unavailable: nothing bounds the configured node's count).
+func held(ts []walletrpc.Transfer) []walletrpc.Transfer {
+	out := append([]walletrpc.Transfer{}, ts...)
+	for i := range out {
+		if out[i].Height > 0 {
+			out[i].Confirmations = 0
+		}
+	}
+	return out
+}
+
+// SecondHeight is a second node's height (RT-26, spec change 47): the bridge reports no more than this plus a small
+// tolerance with a remote node. host is the node's host only; ok is false when no second node answers.
+func (c *Checker) SecondHeight(ctx context.Context) (height uint64, host string, ok bool) {
+	n, h, ok := c.pickSecond(ctx)
+	if !ok {
+		return 0, "", false
+	}
+	return h, hostOf(n), true
 }
 
 // pickSecond returns the first second node, in random order, that answers on the right network and has caught up
@@ -220,4 +246,37 @@ func hostOf(nodeURL string) string {
 		return u.Host
 	}
 	return ""
+}
+
+// BoundedHeight is the chain height a pairing request may carry (spec change 47, part 4): the site resets its height
+// to it, so it must be one a single node can't push up or down. 0 (the site keeps its own) unless the node answers
+// synchronized and online; with a remote node, the second node's height when the two differ by more than
+// HeightTolerance either way, and 0 when no second node answers. The shop's own node is trusted as is.
+func BoundedHeight(ctx context.Context, nodeURL, network string, hc *http.Client) uint64 {
+	ictx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	info, err := noderpc.GetInfo(ictx, nodeURL, hc)
+	cancel()
+	own, oerr := IsOwnNode(ctx, nodeURL)
+	if oerr != nil {
+		own = false
+	}
+	c := New(nodeURL, network, DefaultNodes(network), hc)
+	return boundedHeight(ctx, info, err, own, c.SecondHeight)
+}
+
+func boundedHeight(ctx context.Context, info noderpc.Info, err error, own bool, second func(context.Context) (uint64, string, bool)) uint64 {
+	if err != nil || !info.Synchronized || info.Offline || info.Height == 0 {
+		return 0
+	}
+	if own {
+		return info.Height
+	}
+	h, _, ok := second(ctx)
+	if !ok {
+		return 0
+	}
+	if info.Height > h+HeightTolerance || info.Height+HeightTolerance < h {
+		return h
+	}
+	return info.Height
 }

@@ -5,7 +5,6 @@ import (
 	"errors"
 	"reflect"
 	"testing"
-	"time"
 
 	"github.com/dwightsabeast/coffer/bridge/internal/walletrpc"
 )
@@ -13,27 +12,39 @@ import (
 // Phase 07b pass 1, round 2 (Step 3, white box). An attack that lands is committed with t.Skip("RT-nn open") until
 // the fix session flips it.
 
-// RT-26: the height the bridge reports is wallet-rpc's get_height, sent unchecked (SyncOnce). wallet-rpc's height is
-// the length of the chain its node served (wallet2.h:1230), and wallet2 appends a node's blocks without checking proof
-// of work (wallet2.cpp:3023-3056), so a dishonest remote node can make it as high as it likes. The site keeps the
-// highest height it has seen (plugin handle.ts), and a re-pair's suggested restore height follows it (whitebox E4).
+// RT-26: the height the bridge reports was wallet-rpc's get_height, sent unchecked. wallet-rpc's height is the length
+// of the chain its node served (wallet2.h:1230), and wallet2 appends a node's blocks without checking proof of work
+// (wallet2.cpp:3023-3056), so a dishonest remote node could make it as high as it liked; the site keeps the highest
+// height it has seen. Spec change 47 (Wyatt, D1): with a remote node the bridge reports no more than the second node's
+// height plus 10 blocks, from the first sync that is further ahead; with the shop's own node, as is. (The first form of
+// this test bounded the rise by elapsed time, which D1 rejected.)
 func TestRedteamReportedHeightJump(t *testing.T) {
-	t.Run("[T14][R09] [RT-26] a wallet height a million blocks ahead seconds later isn't reported as is", func(t *testing.T) {
-		t.Skip("RT-26 open")
+	t.Run("[T14][R09] [RT-26] a wallet height a million blocks ahead of the second node is reported as the second node's", func(t *testing.T) {
 		l, w, s, _ := setup(t)
-		clock := time.Unix(1790000000, 0)
-		l.o.Now = func() time.Time { return clock }
+		l.o.CrossCheck = &fakeCheck{second: func() (uint64, bool) { return 2222000, true }}
 		ctx := context.Background()
 		if err := l.SyncOnce(ctx); err != nil {
 			t.Fatal(err)
 		}
-		before := s.last().Height
+		if got := s.last().Height; got != 2222000 {
+			t.Fatalf("level with the second node: reported %d", got)
+		}
 		w.height += 1_000_000
-		clock = clock.Add(15 * time.Second)
-		l.SyncOnce(ctx)
-		// Two minutes a block: 15 s can't add more than a handful, whatever the node says.
-		if got := s.last().Height; got > before+100 {
-			t.Fatalf("reported %d, %d blocks after %d, 15 s later", got, got-before, before)
+		if err := l.SyncOnce(ctx); err != nil {
+			t.Fatal(err)
+		}
+		if got := s.last().Height; got != 2222000 {
+			t.Fatalf("reported %d, %d blocks above the second node", got, got-2222000)
+		}
+	})
+	t.Run("[T14] with the shop's own node the height is reported as is", func(t *testing.T) {
+		l, w, s, _ := setup(t) // CrossCheck nil: the configured node is the shop's own
+		w.height += 1_000_000
+		if err := l.SyncOnce(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if got := s.last().Height; got != w.height {
+			t.Fatalf("reported %d, the wallet is at %d", got, w.height)
 		}
 	})
 }

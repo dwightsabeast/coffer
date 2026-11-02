@@ -16,7 +16,6 @@ import (
 	"github.com/dwightsabeast/coffer/bridge/internal/config"
 	"github.com/dwightsabeast/coffer/bridge/internal/crosscheck"
 	"github.com/dwightsabeast/coffer/bridge/internal/installer"
-	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
 	"github.com/dwightsabeast/coffer/bridge/internal/pairing"
 	"github.com/dwightsabeast/coffer/bridge/internal/selfupdate"
 	"github.com/dwightsabeast/coffer/bridge/internal/syncclient"
@@ -39,6 +38,12 @@ var (
 
 func siteClient(cfg config.Config) *syncclient.Client {
 	return &syncclient.Client{Site: cfg.Site, UserAgent: "xmr-bridge/" + version}
+}
+
+// pairHeight is the chain height a pairing request carries (spec change 47, part 4): the site resets its height to it,
+// so only a bounded one (crosscheck.BoundedHeight), else 0, which leaves the site's height as it is.
+func pairHeight(ctx context.Context, cfg config.Config) uint64 {
+	return crosscheck.BoundedHeight(ctx, cfg.Node, string(cfg.Network), nil)
 }
 
 // cmdPair pairs with the site using the one-time code from the admin page's Connect wallet host button. The
@@ -70,13 +75,7 @@ func cmdPair(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
 		return 1
 	}
-	var height uint64
-	nctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	if info, err := noderpc.GetInfo(nctx, cfg.Node, nil); err == nil {
-		height = info.Height
-	}
-	cancel()
-	suggested, err := pairing.Pair(ctx, siteClient(cfg), pairCode, keyFile(cfg), height, time.Now())
+	suggested, err := pairing.Pair(ctx, siteClient(cfg), pairCode, keyFile(cfg), pairHeight(ctx, cfg), time.Now())
 	if err != nil {
 		fmt.Fprintf(stderr, "xmr-bridge: pairing failed: %v\n", err)
 		return 1

@@ -44,6 +44,10 @@ const (
 	// its height at most every nodeHeightEvery.
 	walletBehind    = 5
 	nodeHeightEvery = time.Minute
+	// RT-26 (spec change 47, D2): Health's node check says "mismatch" once the wallet has been above the second node for
+	// this long (the height is bounded from the first sync); while ahead, the second node is asked again at most this often.
+	heightMismatchAfter = 5 * time.Minute
+	secondAgainAfter    = 10 * time.Second
 	// maxPool is the spec's fixed pool size (RT-27): a site's poolTarget above it is treated as this, and the catch-up
 	// goes no further than claimedTop + maxPool (spec change 46, Wyatt's review).
 	maxPool = 50
@@ -68,6 +72,8 @@ type Wallet interface {
 // shop's own.
 type CrossChecker interface {
 	Check(ctx context.Context, ts []walletrpc.Transfer) ([]walletrpc.Transfer, crosscheck.Report)
+	// SecondHeight is a second node's height, which bounds the height reported (RT-26, spec change 47).
+	SecondHeight(ctx context.Context) (height uint64, host string, ok bool)
 }
 
 // Sender posts one request to the site (*syncclient.Client).
@@ -179,6 +185,17 @@ type Loop struct {
 	nodeErr  error
 	// RT-30: when the "waiting for the wallet to scan" line was last logged (zero once the probe is answered).
 	scanLoggedAt time.Time
+	// RT-26 (spec change 47): the second node's last height and when it was asked, and since when the wallet has been
+	// more than crosscheck.HeightTolerance blocks above it (zero when it isn't).
+	secondAt     time.Time
+	secondHeight uint64
+	secondHost   string
+	secondOK     bool
+	aheadSince   time.Time
+	// payCheck is the payment cross-check's last outcome and heightCheck the height bound's (nil: nothing to say);
+	// Status.NodeCheck is the two combined.
+	payCheck    crosscheck.Report
+	heightCheck *crosscheck.Report
 	// stateKey is the key the per-pairing state above was built under (46's step 5b, Wyatt): the watch list, the
 	// answer, the pool report and the re-offer belong to one pairing and never go out under another.
 	stateKey string
@@ -207,6 +224,7 @@ func New(o Options) (*Loop, error) {
 	if o.CrossCheck != nil {
 		l.st.NodeCheck = crosscheck.Report{State: crosscheck.OK, Detail: "no mined payments checked yet"}
 	}
+	l.payCheck = l.st.NodeCheck
 	if err := os.MkdirAll(l.runDir(), 0o700); err != nil {
 		return nil, err
 	}
@@ -448,12 +466,15 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("wallet: %w", err)
 	}
+	// RT-26: the height sent is bounded by a second node's with a remote node; height stays the wallet's own, for the
+	// wallet check, the probe and the status file.
+	reported := l.boundHeight(ctx, height)
 	// Spec change 46 (Wyatt's review): a mismatch goes out as soon as it's found, before any catch-up work.
 	l.mu.Lock()
 	reportNow := l.reportNow
 	l.mu.Unlock()
 	if reportNow {
-		return l.sendReport(ctx, key, height)
+		return l.sendReport(ctx, key, reported)
 	}
 	l.mu.Lock()
 	target := l.catchup
@@ -510,7 +531,7 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 		return err
 	}
 	for {
-		body := syncclient.Body{V: syncclient.ProtocolV, Seq: l.nextSeq(), Height: height, Addresses: addresses, Snapshots: snapshots[:sent], Checks: checks, Wallet: answer, ProbeDigest: probeDigest}
+		body := syncclient.Body{V: syncclient.ProtocolV, Seq: l.nextSeq(), Height: reported, Addresses: addresses, Snapshots: snapshots[:sent], Checks: checks, Wallet: answer, ProbeDigest: probeDigest}
 		resp, err = l.o.Site.Send(ctx, key, body)
 		if errors.Is(err, syncclient.ErrTooLarge) && sent > 1 {
 			sent /= 2
@@ -1139,7 +1160,8 @@ func (l *Loop) snapshots(ctx context.Context, w Wallet, chunk []uint32) ([]syncc
 		var rep crosscheck.Report
 		all, rep = l.o.CrossCheck.Check(ctx, all)
 		l.mu.Lock()
-		l.st.NodeCheck = rep
+		l.payCheck = rep
+		l.combineNodeCheck()
 		l.mu.Unlock()
 		if rep.State == crosscheck.Mismatch || rep.State == crosscheck.Unavailable {
 			l.o.Log.Warn("node cross-check", "state", rep.State, "detail", rep.Detail)
@@ -1190,6 +1212,60 @@ func less(a, b string) bool {
 		return len(a) < len(b)
 	}
 	return a < b
+}
+
+// boundHeight is the height to report (RT-26, spec change 47, D1 and D2). With the shop's own node, the wallet's.
+// With a remote node: the wallet's while it is at most crosscheck.HeightTolerance blocks above a second node's, else
+// the second node's, from the first such sync; the node check says "mismatch" after heightMismatchAfter of it. With no
+// second node answering, 0, which the site reads as no new height, and the node check says "unavailable". The second
+// node is asked at most once a minute, and again (at most every secondAgainAfter) before a height is clamped, so a
+// stale answer doesn't hold honest progress back.
+func (l *Loop) boundHeight(ctx context.Context, wallet uint64) uint64 {
+	if l.o.CrossCheck == nil {
+		return wallet
+	}
+	now := l.o.Now()
+	l.mu.Lock()
+	age := now.Sub(l.secondAt)
+	ask := l.secondAt.IsZero() || age >= nodeHeightEvery || (l.secondOK && wallet > l.secondHeight+crosscheck.HeightTolerance && age >= secondAgainAfter)
+	l.mu.Unlock()
+	if ask {
+		h, host, ok := l.o.CrossCheck.SecondHeight(ctx)
+		l.mu.Lock()
+		l.secondAt, l.secondHeight, l.secondHost, l.secondOK = now, h, host, ok
+		l.mu.Unlock()
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	defer l.combineNodeCheck()
+	second, host := l.secondHeight, l.secondHost
+	switch {
+	case !l.secondOK:
+		l.aheadSince = time.Time{}
+		l.heightCheck = &crosscheck.Report{State: crosscheck.Unavailable, Detail: "no second node answered, so the bridge reports no chain height and mined payments are held at 0 confirmations until one does. Use your own node, or one you trust"}
+		return 0
+	case wallet <= second+crosscheck.HeightTolerance:
+		l.aheadSince, l.heightCheck = time.Time{}, nil
+		return wallet
+	}
+	if l.aheadSince.IsZero() {
+		l.aheadSince = now
+		l.o.Log.Warn("the configured node's chain is ahead of a second node's; reporting the second node's height", "wallet", wallet, "second", second, "node", host)
+	}
+	l.heightCheck = nil
+	if now.Sub(l.aheadSince) >= heightMismatchAfter {
+		l.heightCheck = &crosscheck.Report{State: crosscheck.Mismatch, Node: host, Detail: fmt.Sprintf("the configured node reports block %d, %d blocks above %s's %d, so the bridge reports %d. Use your own node, or one you trust", wallet, wallet-second, host, second, second)}
+	}
+	return second
+}
+
+// combineNodeCheck sets the node check from the payment check and the height bound: a payment-block mismatch first,
+// then anything the height bound has to say, then the payment check. Called with l.mu held.
+func (l *Loop) combineNodeCheck() {
+	l.st.NodeCheck = l.payCheck
+	if l.heightCheck != nil && l.payCheck.State != crosscheck.Mismatch {
+		l.st.NodeCheck = *l.heightCheck
+	}
 }
 
 // walletCheck compares the wallet's height with its node's (asked at most every nodeHeightEvery), and says when

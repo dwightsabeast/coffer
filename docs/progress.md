@@ -4832,3 +4832,12 @@ Runbook:
 **Note for 3c:** while the second nodes are blocked, an inflated site height can't heal, because the bridge reports none and the pairing carries none. A tip created then has an inflated floor, so an honest payment to it would be ignored until 3d's pairing. That's fail-closed by design. It's why 3e makes its payment only after the height has healed.
 
 **CI (2026-11-02):** Wyatt opened the PR for `redteam-1`. Run 41518972271 on `77d52ea` passed: the theme, plugin and bridge jobs, the bridge's race-detector tests included (`python3 -I scripts/ci-status.py`).
+
+**Wyatt's second-node rules (2026-11-02), built in `1162b8f`, recorded in `36ec6bb`:**
+- **Mainnet is https only,** with the certificate checked and redirects refused. The three that made the list: `node.monerodevs.org:18089`, `xmr-node.cakewallet.com:18081`, `ravfx.its-a-node.org:18081`. The other four, sethforprivacy, rucknium, stormycloud and monero.love, use self-signed certificates.
+- **Second nodes are skipped by operator,** taken as the host's last two labels.
+- **On a mismatch,** one more node from a different operator is asked before the payment is held.
+- **Stagenet: not applied.** An https probe of the six built-in hosts (`~/xmr-pay-dev-data/stagenet-second-nodes-https-probe-2026-11-02.txt`) found a verifying certificate only on `stagenet.xmr.kernal.eu`, the public-node step's configured node. An https-only list would leave that step with no second node.
+  - The operator skip and the second opinion do apply on stagenet. With kernal configured, the second nodes are five hosts from four operators (monerodevs counts once), and step 3b blocks all five.
+- **Release checklist** (phase 09): the mainnet list is ticked, and "Grow the HTTPS second-node list" is added.
+- **Tests:** `operators_test.go`, 9 cases: 7 failed on the old code, and 2 are guards that pass either way. Bridge gofmt, vet, `go test ./...`, `go test -race ./...` and the static build pass.

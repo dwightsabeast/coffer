@@ -4509,3 +4509,19 @@ Backup before the live check: `~/xmr-pay-dev-data/redteam/46-before-live.db` (as
      - **The bridge:** pair took 16:14:22.23–.43 and exited 0, with the service's PID unchanged. Its next sync (16:14:26.3) used the new key `Bq93c58Q…`: `match=true receivedTop=305`, then a re-offer `from=358 count=50`. `status`: "Address check: ok".
      - **The site:** waiting from the pairing, wallet 0 matched at 16:14:26.6, and free rows 358–407 (`addedAt` 16:14:26), nothing skipped. Health "Address check: OK", `previousSeen` none, so **no "previous wallet host" line**.
      - **Not proven:** the pool banner had already cleared at 5a, so 5b only shows that none appeared. The old-key race (a sync signed in the ~0.2 s before the key swap, arriving after it) wasn't hit: the last old-key sync was 16:14:13.3, about 9 s before the pair. That's roughly a 1–2% chance per pair, so its absence here isn't evidence against it.
+6. **Step 6, the switch to a second wallet: stopped before the payment** (Wyatt, 2026-11-02). Evidence: `46-live-step6-*.txt`.
+   - **The procedure:** the installer refuses another address, so step 6 became `sudo xmr-bridge uninstall --delete-data` (16:20:44) and then a fresh install (16:28:09–16:29:31). That leaves no "re-run": step 7 will be the same pair.
+   - **Before it:** shop-wallet tip `inv_0eebd504fb0ec85f` (index 358, 0.001 XMR, unpaid) opened at 16:20:12, expiring 16:50:12, for D2's `wallet_changed` check.
+   - **The switch as designed:**
+     - "no match", so wallet 1, with its own probe;
+     - its pool is 2³²+1 to 2³²+50, its own index 1 (not 359);
+     - Health's gap "0";
+     - "Address check: OK";
+     - no banner, `previousSeen` none.
+   - **Found:**
+     - **The second wallet wasn't new.** `58WW…eSZP` is very likely phase 05's setup-test shop wallet: three earlier test tips on its index 1.
+     - The probe was answered 35 ms after the wallet opened, at wallet height 579,994 against the node's 2,242,155, so `receivedTop=0`. Index 1 went into the pool.
+     - A test tip handed 2³²+1 at 16:30:41 **settled at 16:30:42 on those three old transfers** (heights 2,230,085 to 2,240,100; its `createdHeight` 2,242,155), with nothing paid.
+     - Filed as **RT-30** (bridge: answer the probe only after the wallet has scanned; proposed Medium) and **RT-31** (plugin: old transfers count toward a new invoice; a height floor needs RT-26's fix first; proposed High). Wyatt rules on both. No code changes this session.
+   - **579,994 isn't a restore height:** the dev box's 8 October install logged the same "wallet open" height. The restore height actually used is in `/etc/xmr-bridge/config` (Wyatt to read; no `--restore-height` was passed).
+   - **The payment proof waits** for the fix and a wallet that's truly new.

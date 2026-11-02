@@ -37,6 +37,8 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | fixed 2026-11-01 (spec change 46, bridge side) |
 | RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | fixed 2026-10-31 |
 | RT-29 | Medium | T20, T03, R08 | 1, fix planning | A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first | fixed 2026-10-31 with RT-11 (spec change 45) |
+| RT-30 | Proposed Medium (Wyatt rules) | P02, R09 | 1, fix sessions (46 live) | The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool | open |
+| RT-31 | Proposed High (Wyatt rules) | P02, T14 | 1, fix sessions (46 live) | A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice | open |
 
 ---
 
@@ -765,3 +767,41 @@ Not Coffer code: tier 1 keeps it out of everything Coffer ships. But it's the tr
     - So on a "no match" for a wallet with history (both sides rebuilt, or a reused wallet paired as new), `create_address` can hand out addresses that already received payments, and `receivedTop` can be far too low.
     - A match is fine: the catch-up creates up to `claimedTop` and rescans.
     - The install docs will say to use a wallet made for this shop (phase 09). It's on pass 2's list.
+
+---
+
+# Pass 1 (phase 07b), fix sessions: spec change 46's live check
+
+Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a second wallet). Evidence in `~/xmr-pay-dev-data/`: `46-live-step6-invoice.txt` (the invoice and its pool row), `46-live-step6-status.txt` (the status route), `46-live-step6-output.txt` (installer log, journal, `status`), `46-live-step6-site.txt` and `46-live-watch-2.txt` (the site's state). No code changed this session (Wyatt); each fix session writes the failing test first.
+
+**What happened.** The second wallet installed for step 6 was `58WW…eSZP`, not a new wallet. Its index 1 had received three 0.0001 XMR payments: txids `fbb401a3…` (height 2,230,085, 2026-10-15 23:23 UTC), `e413ea6e…` (2,230,165, 2026-10-16 02:15) and `1419df9d…` (2,240,100, 2026-10-30 18:40). They match the test tips of phase 05's runs A and B and the 30 October `coffer-test` run, each sent to a fresh install's index 1, so it is very likely phase 05's setup-test shop wallet (Wyatt to confirm in Feather's History). Then:
+- 16:29:35.521 UTC: the new service opened the wallet at height 579,994 (wallet-rpc's own chain right after `generate_from_keys`; the dev box's 8 October install logged the same) while the node was at 2,242,155.
+- 16:29:35.556, 35 ms later: "answering the site's wallet probe" `match=false receivedTop=0`. Index 1 had been created to answer the probe.
+- 16:29:35.713: "created pool addresses" `count=49`; the site took index 1 to 50 as wallet 1's 2³²+1 to 2³²+50.
+- 16:30:07–16:30:15: four `notified` lines, wallet-rpc's `--tx-notify` as its catch-up found the old payments.
+- 16:30:41.410: a test tip (0.002 XMR suggested, `minAtomic` 0.0001) was handed 2³²+1, the wallet's index 1, `createdHeight` 2,242,155.
+- 16:30:42.614, the next sync: the three old transfers arrived for it (2,055 to 12,070 confirmations) and it **settled** with 0.0003 XMR received. Nobody paid. The pay page has shown "Tip received: 0.0003 XMR. Thank you!" since Wyatt first opened it.
+
+## RT-30 — The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool
+
+- **Rows:** P02, R09. **Severity:** proposed Medium; Wyatt rules. **Pass 1, fix sessions** (46's live check, step 6). Test: none yet (no code changes this session); the fix session writes it first.
+- **What I did:** the live step above, a wallet with history installed on a site with history (46's "no match" path).
+- **What happened:**
+  - The probe answer came 35 ms after the wallet opened, with the wallet 1.66 million blocks behind its node. `ReceivedIndexes` could only return what the wallet had scanned, nothing, so `receivedTop` was 0.
+  - So the no-match start (above max(created, `receivedTop`)) began at 1, and index 1, created to answer the probe, went into the pool although it had been paid three times.
+  - The catch-up found the payments 30–40 s later, after the addresses were already on the site.
+- **What the spec says:** 46's no-match start skips indexes up to `receivedTop`, the wallet's highest received index. The known limit recorded under RT-29 (a restored wallet stops at the first 200-address gap) is a different, narrower gap: here the payments were on index 1, inside any lookahead, and only the timing hid them.
+- **Reach:** any "no match" pairing of a wallet that isn't new and hasn't finished scanning: a reused wallet, a fresh install restored from keys with a restore height below its old payments, or a wallet behind its node for any reason. Every fresh install starts unscanned, so the condition is the normal case for a wallet with history, not a rare one. With RT-31 the first new invoice on such an address settles at once (seen live).
+- **Fix idea (Wyatt decides):** answer the probe, and send any addresses, only once the wallet has scanned to the node's height (the bridge already compares the two for Health's "in step with its node"); until then keep the site waiting, as it already does for a bridge that hasn't answered.
+- **Status:** open.
+
+## RT-31 — A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice
+
+- **Rows:** P02, T14. **Severity:** proposed High (a product whose price an old payment meets would be fulfilled with no new payment); Wyatt rules. **Pass 1, fix sessions** (46's live check, step 6). Test: none yet (no code changes this session).
+- **What I did:** the same live step. The invoice's stored transfers sit at heights 2,230,085, 2,230,165 and 2,240,100; its `createdHeight` is 2,242,155.
+- **What the code does:** a transfer counts when it isn't a double spend and its `unlockTime` is "0" (`plugin/src/core/invoice.ts:182`, `counted`). Nothing compares its height with the invoice's `createdHeight` (`sync/merge.ts`, `mergeSnapshot`). So any payment the address ever received counts, however old.
+- **Why it matters beyond RT-30:** the site's guarantee is "a fresh subaddress per invoice" (P02), checked only against other invoices on the site. An address the wallet used before Coffer, or under another site or install, isn't fresh, and the plugin can't see that. A height floor would have made RT-30 harmless here: the tip would have stayed unpaid, waiting for a real payment.
+- **Fix idea (Wyatt decides):** ignore a *confirmed* transfer whose height is below `createdHeight` minus a small margin (`createdHeight` can run a little high, spec change 17's `RESTORE_MARGIN_BLOCKS`); unconfirmed ones (no height yet) still count. Show ignored old transfers to the admin rather than dropping them silently.
+- **Checked against RT-26:** `createdHeight` is the site's last reported chain height (`checkout.ts:275`, `checkoutHeight`), which RT-26 lets a dishonest remote node push up for good. With a floor, an inflated height would move the floor above real payments: honest payments to new invoices would be ignored, and the invoices would expire unpaid (lost sales, the money still in the shop's wallet). So the floor needs RT-26's fix first, or a floor from something a node can't inflate (for example the cross-checked height, or the height when the address was handed out bounded by elapsed time). Without RT-26's fix, the floor trades this finding for a remote denial of service.
+- **Status:** open.
+

@@ -1354,7 +1354,7 @@ Decided while building (Wyatt, 2026-10-31):
    - `compareAndDelete` is reachable from the sandbox (sandbox-workerd 0.9.5 bridges `storage/compareAndDelete`) but isn't used.
 4. **Admin wording:** "Paired · stagenet" (or mainnet, testnet), "Paired · network not known yet", "Not paired". No bracket.
 
-## 46. The honest bridge checks the site's pool, and a re-pair knows whether the wallet changed (RT-08, the rest of RT-29)  (status: accepted, 2026-11-01, with Wyatt's decisions below; the proposal text already includes them; plugin and bridge sides built 2026-11-01 on `redteam-1`, with Wyatt's review of the bridge plan below; live check 2026-11-02: steps 1–5 and 7 pass, step 6's switch passes but its payment proof waits for RT-30 and RT-31, found there)
+## 46. The honest bridge checks the site's pool, and a re-pair knows whether the wallet changed (RT-08, the rest of RT-29)  (status: accepted, 2026-11-01, with Wyatt's decisions below; the proposal text already includes them; plugin and bridge sides built 2026-11-01 on `redteam-1`, with Wyatt's review of the bridge plan below; live check 2026-11-02: steps 1–5 and 7 pass, step 6's switch passes but its payment proof waits for RT-30 and RT-31, found there; RT-30 and step 5b's race fixed in code 2026-11-02, D4 amended with a 60 s grace, see "Fix sessions" below)
 Found in: 07b pass 1.
 - **RT-08 (High):** a stolen bridge key adds pool addresses that tippers then pay.
 - **RT-24 (Low):** a far-future `seq` freezes an invoice.
@@ -1545,6 +1545,17 @@ Evidence:
 - **Step 6's second wallet had history:** RT-30 (the probe answered before the scan) and RT-31 (old transfers count toward a new invoice). D2's `wallet_changed` expiry passed; the payment proof waits for the fixes and a truly new wallet.
 - **Step 7 expected `claimedTop` + 1 (359)**, not a fixed 357: earlier steps claimed rows.
 
+**Fix sessions (2026-11-02, after the live check; Wyatt's rules):**
+- **RT-30 (`73781ec`):** item 3's probe is answered only once the wallet has scanned to its node's height. The node must also be synchronized and online, and is read fresh. Until then the site keeps waiting. Answering drops pending addresses that have received, and index 1, created to answer, is one of them.
+- **D4 amended, step 5b's race (`307c104`):** the test was red. A sync the previous key signed just before a same-machine re-pair, arriving just after it, raised "Your previous wallet host is still running".
+  - Now the previous key's requests in the first 60 s after a pairing are refused but not recorded. An old host still running is recorded at its first sync after that.
+  - `state:previousKey` holds `{ publicKey, pairedAt }` in one write. A string from before reads as `pairedAt` 0, so it gets no grace.
+- **The bridge side of 5b (`b33fc21`):** a body built under the old pairing is never sent, under either key.
+  - A key changed mid-sync drops the body, and a fresh sync follows under the new key.
+  - The old pairing's pool report, probe answer, re-offer and watch list are dropped at a new key. Pending addresses stay.
+  - Otherwise a stale "mismatch" would raise item 1's sticky banner on the new pairing.
+- **Spec text to fold in (Wyatt):** item 2's previous-key line: "… is recorded as 'the previous wallet host is still running', except in the first minute after a pairing, when a sync already on its way from the same machine can still arrive."
+
 Effect on the admin budget: none for setup. The new Health lines appear only when something is wrong, and no setting, step or upkeep is added. Switching wallets needs no lookahead change any more, so the doc note planned in spec change 45 isn't needed.
 
 Effect on the trust contract:
@@ -1612,3 +1623,103 @@ Also found while building the bridge:
 - **A response that says the site is waiting** took no addresses, so the bridge keeps the addresses it carried pending, rather than dropping them as delivered.
 - **The bridge sends `probeDigest` only once its wallet has index 1.** It creates index 1 only to answer a probe; a fresh wallet's first top-up creates it, and the next sync carries the digest.
 
+## 47. A chain height a remote node can't inflate, and payments older than the invoice don't count (RT-26, RT-31)  (status: proposed, 2026-11-02; a draft for Wyatt's decisions; nothing built)
+Found in: 07b pass 1. RT-26 came from round 2's white box (Step 3); RT-31 from the fix sessions, in 46's live step 6.
+
+Spec says:
+- **Invoice lifecycle:**
+  - Only counted transfers move an invoice: `unlockTime` "0" and not `doubleSpendSeen`.
+  - A transfer is on time if it's mined at or below `expiresHeight` (spec change 5).
+  - Expire on evidence.
+- **P02:** a fresh subaddress per invoice.
+- **Spec change 16:** the site keeps the highest height it has been sent.
+- **Spec change 17:** a re-pair's suggested restore height is the lowest watched `createdHeight` minus `RESTORE_MARGIN_BLOCKS` (720).
+- **Spec change 13:** with a remote node, the bridge cross-checks payment blocks against a second node from a built-in list. With the shop's own node, it doesn't.
+
+Evidence:
+- **RT-26** (`docs/redteam-findings.md`):
+  - The bridge reports wallet-rpc's `get_height` unchecked.
+  - wallet-rpc's height is the length of the chain its node served, and `wallet2` appends blocks without checking proof of work. So a dishonest remote node can raise the reported height at will.
+  - The site keeps it for good (`handle.ts:312`, `Math.max`), so every later invoice gets a future `createdHeight` and `expiresHeight`.
+  - A re-pair's suggested restore height can then be in the future. The installer uses it as given (`install.go:342–343`).
+  - Test: Go `[T14][R09] [RT-26]`, skipped while open.
+- **RT-31:**
+  - `counted` (`plugin/src/core/invoice.ts:182`) never looks at a transfer's height.
+  - Live: tip `createdHeight` 2,242,155 settled on three transfers mined at 2,230,085 to 2,240,100, before the tip existed.
+- **Why the two go together:** `createdHeight` is the site's stored height at checkout (`checkout.ts:49`), the value RT-26 inflates. A floor taken from an inflated height would ignore honest payments to new invoices: a remote denial of sales, with the money still in the shop's wallet.
+- **RT-30's fix (2026-11-02) closes the path seen live,** an honest admin switching to a used wallet, but not every path to an address that has received before:
+  - payments past a restored wallet's 200-address gap (46's known limit);
+  - a wallet used by another site or app at the same indexes;
+  - old payments a later catch-up rescan finds.
+
+  The floor is the backstop for these.
+
+Constraints the design must keep:
+1. **An honest payment is mined at or above `createdHeight`.**
+   - `createdHeight` is the last height the wallet reported, which trails the real chain: a sync every 12–15 s, and checkout refuses while the host is silent or its node is syncing.
+   - So a payment made after checkout is mined at or above it.
+   - The only exception is a reorg whose fork point lies below `createdHeight`. A reorg deeper than the invoice's `required` confirmations (at most 10, the Strict preset) already breaks fulfilment, whatever the floor.
+2. **Honest heights can rise fast:**
+   - a fresh restore climbing from its restore height;
+   - a bridge back after hours of silence;
+   - a wallet that was behind catching up.
+3. **A stored height that lags the real one is harmful too.** `expiresHeight` comes from it, and `onTime` (`invoice.ts:189`) judges a payment late when it's mined above `expiresHeight`. So a cap that makes the site's height trail the chain would send honest payments to review as late, spec change 20 item 5's problem again.
+4. **The trust contract stays frozen:** the plugin calls no node. Any check against a second node is the bridge's.
+
+Proposal: three parts. Each choice is in the decisions below, with my recommendation.
+1. **RT-26: a height a single node can't inflate.**
+   - **The bridge, with a remote node:** before reporting, it compares the wallet's height with the cross-check's second node (`pickSecond` already reads a synchronized second node's height, `crosscheck.go:204–212`).
+     - A wallet height more than a few blocks above the second node's isn't reported as is: the bridge sends the second node's height instead.
+     - The node check turns "mismatch" with a plain detail, so Health says to use the shop's own node or one the admin trusts.
+     - If no second node answers, the bridge keeps the last height it reported, and the node check says "unavailable".
+   - **With the shop's own node:** unchanged. It's trusted, as in spec change 13.
+   - **The plugin:** an optional backstop, a loose rise limit by elapsed time, set wide enough not to break constraint 2.
+2. **The restore height:**
+   - The installer never takes a suggested restore height above its node's height (or a second node's, with a remote node). Above it, it uses the node's height minus spec change 17's margin, and says so in one line.
+   - The plugin never suggests a restore height above its own stored height.
+3. **RT-31's floor:**
+   - **The rule:** a confirmed transfer (`height > 0`) mined below `createdHeight − margin` doesn't count toward that invoice. An unconfirmed one counts as today, until it's mined.
+   - **Where:** applied where `counted` is used for an invoice's sums, settlement and paid-top. `counted` itself stays as it is, since it describes money, not invoices.
+   - **The ignored transfer is kept on the invoice,** marked, so the record is complete and the admin can see it.
+
+### Decisions for Wyatt
+- **D1. Where the height is bounded (RT-26).**
+  - **(a)** The bridge, against the second node, with a remote node only.
+  - **(b)** The plugin, by elapsed time.
+  - **(c)** Both.
+  - Recommended: **(c), with (a) carrying the defence and (b) only as a loose backstop.** For example, at most twice the time-implied block count plus 30 blocks since the last stored height, and never below the reported height on a first sync. (b) alone has no baseline on a first pairing, and if it were tight it would break constraints 2 and 3.
+- **D2. What the bridge does when its wallet runs ahead of the second node:**
+  - send the second node's height;
+  - send its last reported height;
+  - or send no height until they agree.
+  - Recommended: **the second node's height**, with the node check "mismatch". The site's height stays current, and the admin is told.
+- **D3. The restore-height clamp (part 2).** Recommended: **yes, both sides.**
+- **D4. Healing a site already holding an inflated height:**
+  - **(a)** A pairing resets the stored height to the new bridge's first (bounded) report. Today's `Math.max` stays between pairings.
+  - **(b)** Leave it as it is.
+  - Recommended: **(a).** It matches spec change 45's "a pairing starts afresh". The only thing lowered is the base for new invoices; open invoices keep their own heights.
+- **D5. The floor's margin (RT-31).**
+  - **10 blocks:** equal to the deepest `required` preset (Strict). Any reorg deeper than that already breaks fulfilment.
+  - **30 blocks (about an hour):** recommended, three times the deepest preset. It still refuses anything older than about an hour, which would have refused all three of step 6's transfers (the newest was 2,055 blocks old).
+  - **720 blocks (a day, spec change 17's margin):** a day-old payment to a reused address would still count.
+- **D6. Showing ignored old transfers:**
+  - **(a)** One line on the invoice in the admin page: "An older payment to this address was ignored: it was mined before this invoice." This is a wording addition to an existing page; no new page or widget.
+  - **(b)** Not shown: the ignored transfer stays on the invoice record only. The floor runs in the plugin, so the bridge doesn't know.
+  - Never to the buyer: the status route and pay page are unchanged.
+  - Recommended: **(a).**
+- **D7. Order and tests (Wyatt's option A: both in release 1).** RT-26's bound lands first or in the same build as the floor.
+  - **Tests first:**
+    - unskip `[T14][R09] [RT-26]`;
+    - plugin: the floor at the margin's edge, an unconfirmed transfer counted, the RT-31 live shape as a test, and an inflated `createdHeight` with RT-26's bound in place;
+    - installer: the clamp;
+    - live: step 6's rerun covers the floor too.
+
+Effect on the admin budget:
+- No new setting, prompt or upkeep.
+- One installer line, only when it clamps.
+- Health lines only when a node disagrees.
+
+Effect on the trust contract:
+- **None** to capabilities, hosts, routes, collections or indexes.
+- **The plugin:** an optional `at` beside its stored height (KV), and a mark on an ignored transfer inside an invoice row (no new index).
+- **The bridge:** already reads the second node's `get_info`.

@@ -105,6 +105,7 @@ Made by Wyatt between Sep 30 and Oct 1, 2026, before any code was written. The r
 
 | Question | When |
 | --- | --- |
+| Spec change 47 (RT-26's height bound and RT-31's floor, drafted 2026-11-02): D1 where the height is bounded, D2 the bridge's answer to a disagreeing second node, D3 the restore-height clamp, D4 healing an inflated height at a pairing, D5 the floor's margin (10, 30 or 720 blocks), D6 showing ignored old transfers | Before the RT-26/RT-31 fix session (release 1) |
 | Spec change 14 (the Coffer rename): fold the listed lines into the live spec; decide the unit's `Description=xmr-pay wallet host` and the proof-of-concept page | Any time |
 | The manual step behind the unpaid-address gap warning (spec change 9): how an admin raises the wallet app's subaddress lookahead (which apps allow it, and the exact steps), and whether that occasional step fits the admin budget or the feature must change | Phase 05 (wallet-app check). The phase 04 warning text uses phase 03's remedy (Wyatt, 2026-10-08, Admin experience) |
 | The built-in mainnet second nodes for the cross-check (spec change 13). Candidates from monero.fail's HTTPS list, not probed from the dev box (no mainnet use in development): `xmr-node.cakewallet.com:18081`, `mainnet.xmr.kernal.eu:18089`, `xmr-lim.tari.com`, `xmr-bhs.tari.com`, `node.monero.fail` | Before phase 09 (release) |

@@ -33,12 +33,12 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open |
 | RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | fixed 2026-11-01 (spec change 46, item 5) |
 | RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open |
-| RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open; **release 1, with RT-31's floor** |
+| RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open; **release 1, with RT-31's floor**; spec change 47 drafted |
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | fixed 2026-11-01 (spec change 46, bridge side) |
 | RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | fixed 2026-10-31 |
 | RT-29 | Medium | T20, T03, R08 | 1, fix planning | A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first | fixed 2026-10-31 with RT-11 (spec change 45) |
-| RT-30 | Medium (Wyatt, 2026-11-02) | P02, R09 | 1, fix sessions (46 live) | The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool | open; **blocks release 1** |
-| RT-31 | High (Wyatt, 2026-11-02) | P02, T14 | 1, fix sessions (46 live) | A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice | open; **release 1, with RT-26's fix** |
+| RT-30 | Medium (Wyatt, 2026-11-02) | P02, R09 | 1, fix sessions (46 live) | The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool | fixed in code 2026-11-02 (`73781ec`); live at step 6's rerun; **blocks release 1** until then |
+| RT-31 | High (Wyatt, 2026-11-02) | P02, T14 | 1, fix sessions (46 live) | A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice | open; **release 1, with RT-26's fix**; spec change 47 drafted |
 
 ---
 
@@ -143,6 +143,9 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
   - **The limit while it's stopped:** nothing reports, so after 45 s the thief's row is handed out. A passing test records it, and the 24-hour window and `not_your_wallet` review list the affected tips once the honest host is back.
   - **Bridge side built (2026-11-01):** the bridge checks each `check` list by digest and reports a mismatch at once, before any catch-up; numbering follows `claimedTop` only, so a thief's free rows can't move the honest bridge.
   - **Still to do:** the live check, then spec change 44's final wording.
+- **46's step 5b's unproven case (2026-11-02, `307c104`, `b33fc21`):** a sync the previous key signed just before a same-machine re-pair, arriving just after it, *did* raise "Your previous wallet host is still running" (the test was red).
+  - **The site:** the previous key's requests in the first 60 s after a pairing are refused but not recorded. An old host still running is recorded at its first sync after that.
+  - **The bridge (Wyatt's rule):** a body built under the old pairing is never sent. A key changed mid-sync drops the body, and a fresh sync follows under the new key. The old pairing's report, answer, re-offer and watch list are dropped at a new key, so a stale "mismatch" can't raise the sticky banner on the new pairing.
 
 ## RT-09 — A forged sync adds a pool row duplicating an address already held
 
@@ -787,7 +790,7 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 
 ## RT-30 — The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool
 
-- **Rows:** P02, R09. **Severity:** Medium (Wyatt, 2026-11-02), and it **blocks release 1**: until RT-31's height floor exists, RT-30's fix is the only thing stopping an honest admin's switch to a used wallet from crediting old payments. **Pass 1, fix sessions** (46's live check, step 6). Test: none yet (no code changes this session); the fix session writes it first.
+- **Rows:** P02, R09. **Severity:** Medium (Wyatt, 2026-11-02), and it **blocks release 1**: until RT-31's height floor exists, RT-30's fix is the only thing stopping an honest admin's switch to a used wallet from crediting old payments. **Pass 1, fix sessions** (46's live check, step 6). Tests: Go `internal/bridgeloop/rt30_test.go`, `TestProbeWaitsForTheScan` (six cases, "[P02][R09] [RT-30] …"; five failed against the old code, and the sixth, a wallet ahead of its node, passes either way).
 - **What I did:** the live step above, a wallet with history installed on a site with history (46's "no match" path).
 - **What happened:**
   - The probe answer came 35 ms after the wallet opened, with the wallet 1.66 million blocks behind its node. `ReceivedIndexes` could only return what the wallet had scanned, nothing, so `receivedTop` was 0.
@@ -796,7 +799,14 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 - **What the spec says:** 46's no-match start skips indexes up to `receivedTop`, the wallet's highest received index. The known limit recorded under RT-29 (a restored wallet stops at the first 200-address gap) is a different, narrower gap: here the payments were on index 1, inside any lookahead, and only the timing hid them.
 - **Reach:** any "no match" pairing of a wallet that isn't new and hasn't finished scanning: a reused wallet, a fresh install restored from keys with a restore height below its old payments, or a wallet behind its node for any reason. Every fresh install starts unscanned, so the condition is the normal case for a wallet with history, not a rare one. With RT-31 the first new invoice on such an address settles at once (seen live).
 - **Fix idea (Wyatt decides):** answer the probe, and send any addresses, only once the wallet has scanned to the node's height (the bridge already compares the two for Health's "in step with its node"); until then keep the site waiting, as it already does for a bridge that hasn't answered.
-- **Status:** open.
+- **Fix (2026-11-02, `73781ec`; Wyatt's rule, with an offline node as not ready):**
+  - **When it answers:** only once the node has answered, is synchronized and online, and the wallet's height has reached the node's (no slack).
+  - **The node's height:** read fresh while the site waits, not from the wallet check's one-minute cache. Without a node to ask, the bridge never answers.
+  - **Until then:** the site keeps waiting, with no addresses, no index 1 created and no `ReceivedIndexes`. Syncs keep their normal pace. Health shows the wallet check ("behind", or "syncing"), and the bridge logs why, at most once a minute.
+  - **Found while building:** index 1, created to answer the probe, sat in the bridge's pending list and would still have been sent. Answering now drops pending addresses that have received, and after a no-match every pending one at or below `receivedTop`.
+- **Known limit:** a node that says "not synchronized" forever stalls the answer. Recorded, not fixed: a dishonest remote node can already stop payments showing in other ways.
+- **Still to do:** the live check, at step 6's rerun (decision 6: the phase 05 wallet with `--restore-height 2230020`).
+- **Status:** fixed in code; blocks release 1 until the live check passes.
 
 ## RT-31 — A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice
 

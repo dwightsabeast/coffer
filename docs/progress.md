@@ -4430,3 +4430,20 @@ Branch `redteam-1`, local commits only (`4619904` to the docs commit after `2599
 1. Look into C5 (compare with round 1's evidence, `~/xmr-pay-dev-data/redteam/round1-*`).
 2. Run `round2-live.mjs` (a8, c6, j1; check for orphaned workerd after j1) and `backlog-live.mjs` (seed with the site stopped), each with a backup first and a restore after.
 3. Then 46's live check steps 1–8.
+
+## 2026-11-02 · Phase 07b fix sessions · Spec change 46: the dev-script runs finished
+
+**State at the start** (after the 2026-11-01 usage-limit stop): tree clean at `2d959ee`, no leftover vitest, astro, workerd or node processes. Swap was full (511/512 MB); all of it is `monerod`'s (about 503 MB, the system service), with about 4.9 GB available. Wyatt approved the plan with changes (C5's label narrowed; two forged rows in live step 4; steps 5–7's expectations; see the steps below).
+
+**Done:**
+- **`42379e6`:** `round1-live.mjs` prints C5's wall check as `KNOWN RT-13`, not FAIL, only for RT-13's exact result (HTTP 200 `BAD_SIGNATURE`, past 33 s). Any other failing result stays FAIL; the check's PASS cases are unchanged. `isKnownRt13Drip` in `lib.mjs` and the label name RT-13, so both go when RT-13 is fixed.
+- **Last session's C5 FAIL is RT-13, not a regression:** round 1 (2026-10-26) got the same 41 s and `BAD_SIGNATURE`.
+- **Live runs** on the dev site in `astro dev`, plugin built after `fad272f`; backup `~/xmr-pay-dev-data/redteam/46-before-round2.db` (56 invoices; pool 356 rows, 306 claimed and 50 free, highest 406; bridge key `b08969872a2d`), restored after each:
+  - `round2-live a8`: 6 PASS (`46-round2-a8.txt`).
+  - `round2-live c6`: 6 FAIL, RT-07 (open) reproduced 3 of 3, as on 2026-10-29. The winning key varied this time (1, 2, 1), where 10-29 always kept the second: a race either way (`46-round2-c6.txt`).
+  - `round2-live j1`: 8 PASS (`46-round2-j1.txt`). The killed astro's `workerd` was left behind (parent pid 1); I stopped it.
+  - `backlog-live seed` (20,100 settled tips and one open probe), then `run`: all PASS, including "answered the wallet probe", the path `dev-e2e` didn't cover (`46-backlog-seed.txt`, `46-backlog-run.txt`, `redteam/h1-2026-11-02T150028940Z.txt`). Times are as in RT-15 (open): pair 28.4 s, first backlog sync 28.0 s, the sync under L7's checkouts 28.9 s (10-26: 27.7, 27.9 and 28.6 s; 10-30: 27.4, 27.1 and 27.3 s). L7: 32 of 40 checkouts got an address (10-26: 35, 10-30: 40); the check passes.
+- **Script tests:** `node --test scripts/*.test.mjs scripts/redteam/*.test.mjs` 49 passed, 0 failed.
+- **After:** the site was stopped (ports free, no astro or workerd left) and `46-before-round2.db` restored; counts as above.
+
+**Next step:** spec change 46's live check with Wyatt, steps 1–8, as amended on 2026-11-02 (plan `~/.claude/plans/phase-07b-fix-sessions-jaunty-sifakis.md`).

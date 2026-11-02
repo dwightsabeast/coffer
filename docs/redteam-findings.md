@@ -37,8 +37,10 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | fixed 2026-11-01 (spec change 46, bridge side) |
 | RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | fixed 2026-10-31 |
 | RT-29 | Medium | T20, T03, R08 | 1, fix planning | A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first | fixed 2026-10-31 with RT-11 (spec change 45) |
-| RT-30 | Medium (Wyatt, 2026-11-02) | P02, R09 | 1, fix sessions (46 live) | The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool | fixed in code 2026-11-02 (`73781ec`); live at step 6's rerun; **blocks release 1** until then |
+| RT-30 | Medium (Wyatt, 2026-11-02) | P02, R09 | 1, fix sessions (46 live) | The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool | fixed 2026-11-02 (`73781ec`); live check passed at the combined session's step 2 (2026-11-02) |
 | RT-31 | High (Wyatt, 2026-11-02) | P02, T14 | 1, fix sessions (46 live) | A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice | fixed in code 2026-11-02 (spec change 47); live at the combined session; **release 1** |
+| RT-32 | Medium, proposed (waiting on Wyatt) | F08, R08 | 1, fix sessions (combined live, step 2) | A re-pair of a wallet paid above the site's `claimedTop` starts an endless address loop and a false "not from your wallet" warning | open; proposed **release-1 blocker** |
+| RT-33 | Low, proposed (waiting on Wyatt) | R10, T14 | 1, fix sessions (combined live, step 2) | The height floor moves a tip settled before the floor existed to review as "reversed", with an alert | open |
 
 ---
 
@@ -819,8 +821,12 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
   - **Until then:** the site keeps waiting, with no addresses, no index 1 created and no `ReceivedIndexes`. Syncs keep their normal pace. Health shows the wallet check ("behind", or "syncing"), and the bridge logs why, at most once a minute.
   - **Found while building:** index 1, created to answer the probe, sat in the bridge's pending list and would still have been sent. Answering now drops pending addresses that have received, and after a no-match every pending one at or below `receivedTop`.
 - **Known limit:** a node that says "not synchronized" forever stalls the answer. Recorded, not fixed: a dishonest remote node can already stop payments showing in other ways.
-- **Still to do:** the live check, at step 6's rerun (decision 6: the phase 05 wallet with `--restore-height 2230020`).
-- **Status:** fixed in code; blocks release 1 until the live check passes.
+- **Live check (2026-11-02, combined session step 2, dev release `0.0.202611022057-dev.1df3c4d`):** the phase 05 wallet with `--restore-height 2230020`.
+  - **The wait:** the wallet opened at 579,994 at 22:56:35 UTC. The bridge logged "waiting for the wallet to scan before answering the site's wallet probe" (node 2,242,369) and didn't answer; the site showed the new key with no wallet and no addresses.
+  - **The answer:** after 54 s of scanning (22:57:29 UTC), a match with wallet 1 and `receivedTop` 2.
+  - **Paid indexes kept out:** the pool started at index 3, so neither index 1 nor index 2, both paid, went into it.
+  - The same step found RT-32 and RT-33.
+- **Status:** fixed; live check passed.
 
 ## RT-31 — A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice
 
@@ -836,6 +842,40 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
   - **The admin page** shows the ignored transfers with their amount, under the tip in Newest tips and on the invoice and review views. The buyer's status route never does.
   - **Derived when needed, not stored,** so settled invoices from before the floor show the line too (Wyatt's answer 1). The dev site's `inv_f7ea94de1471f114` keeps its "settled" status as history.
   - **Tests:** `tests/redteam/floor.test.ts`, "[P02][T14] [RT-31] …", among them the live shape and the margin's edge.
-- **Still to do:** the live session. The old tip `inv_f7ea94de1471f114` is the live view of the admin line, and a fresh tip shows nothing received until Wyatt pays.
+- **Still to do:** the live session. The old tip `inv_f7ea94de1471f114` is the live view of the admin line, and a fresh tip shows nothing received until Wyatt pays. Step 2 (2026-11-02) didn't get that far: the floor moved the old tip to review instead (RT-33), and RT-32 stopped the step. Both checks wait for step 2's rerun.
 - **Status:** fixed in code; release 1 waits for the live session.
 
+
+## RT-32 — A re-pair of a wallet paid above the site's `claimedTop` starts an endless address loop and a false "not from your wallet" warning
+
+- **Rows:** F08, R08. **Severity:** Medium, proposed (Claude, 2026-11-02), and proposed to **block release 1**; waiting on Wyatt. **Pass 1, fix sessions** (the combined live session, step 2, on dev release `0.0.202611022057-dev.1df3c4d`). Test: none yet (no code changes this session).
+- **What I did:** step 2, step 6's rerun. The phase 05 wallet installed with `--restore-height 2230020` on the dev site, where it's wallet 1 with one claimed row (index 1, the old RT-31 tip). Index 2 had also been paid, in the phase 05 setup test, but the site never had a row for it.
+- **What happened** (times UTC, from the site's database; evidence below):
+  - 22:57:29.801: the probe answer matched wallet 1, with `receivedTop` 2 (stored as `state:paidTop:1` 2). The bridge sent 50 addresses, indexes 3 to 52.
+  - 22:57:30.104: the bridge's pool check reported index 52 as bad. The site marked it bad and raised the sticky pool-check mismatch for the new key.
+  - The site, now one free address short, asked for one more. The bridge created 53, reported it bad on the next sync, and so on. By 22:58:26.094, 137 rows (52 to 188) were bad. The free rows were 3 to 51 and 189.
+  - 22:58:30: I stopped the dev site, which ended the loop. The bridge backs off while the site is down.
+  - No invoice was affected: all the bad rows were free (0 invoices with `not_your_wallet`).
+- **Cause:** `checkPool` (`bridge/internal/bridgeloop/bridgeloop.go`) reports any check-list row above `claimedTop + maxPool` as bad at once, with nothing created (RT-27's bound). With `claimedTop` 1, that bound is 51. But the top-up starts above `receivedTop`, 2, so a full pool of 50 ends at 52, past the bound. Every address the bridge creates to refill is past it too, so the loop never ends.
+- **Reach:** any re-pair whose matched wallet has received at an index above the site's highest claimed row: a wallet used by another install or another site, a site restored from an older backup, or a payment to an address the site never handed out. The shop wallet's re-pairs in 46's live check didn't hit it, because its `claimedTop` (358) was above its highest paid index (305).
+- **Harm:**
+  - The bridge creates subaddresses without limit, about two a second, and syncs about every 0.4 s while it does.
+  - The site's pool fills with bad rows, and the admin sees the sticky "addresses not from your wallet" warning, which is false here.
+  - No money is at risk. A bad row is never handed out, and the bad rows here had no invoices.
+- **Fix idea (Wyatt decides; next session's plan, tests first):** take the bound from the same base as the top-up, `max(claimedTop, receivedTop) + maxPool`, or report as bad only a row whose address the wallet holds with a different digest, or doesn't hold. Either way, an address the bridge created itself must never come back bad.
+- **Evidence:** the site's database as the loop left it, `~/xmr-pay-dev-data/redteam/live-step2-loop.db` (SHA-256 `a0e7a7b991159462f1e23266cf60497257134eaedc0b3bb1b76b374ad5a57616`, `integrity_check` ok); the watcher's log `~/xmr-pay-dev-data/live-step2-watch.txt`; the collection script's output `~/xmr-pay-dev-data/live-step2-output.txt`. The bridge's journal for the window is Wyatt's to save (sudo), to `~/xmr-pay-dev-data/redteam/live-step2-bridge-journal.txt`.
+- **Status:** open.
+
+## RT-33 — The height floor moves a tip settled before the floor existed to review as "reversed", with an alert
+
+- **Rows:** R10, T14. **Severity:** Low, proposed (Claude, 2026-11-02); waiting on Wyatt. Proposed Low because only invoices settled before the floor existed can hit it, no released site holds one, and the result is a visible review, not lost money. **Pass 1, fix sessions** (the combined live session, step 2). Test: none yet.
+- **What I did:** the same step. The old RT-31 tip `inv_f7ea94de1471f114` (`createdHeight` 2,242,155) was settled at 2026-11-02 16:30:42 UTC, before the floor existed, on three transfers mined at 2,230,085, 2,230,165 and 2,240,100.
+- **What happened:** at the probe answer (22:57:29.801 UTC), wallet 1 became current. The tip went from settled to review with reason `reversed`, and the site raised a "reversed" alert. Wyatt's answer 1(a) to the 47 build plan was that it stays "settled" as history, with the ignored-payment line worked out when the page is shown.
+- **Cause:**
+  - The build plan said syncs never look at a settled tip like this one again. That was wrong.
+  - `isWatched` (`plugin/src/core/watch.ts`) keeps a settled invoice watched until its counted depth reaches 10 (`FINAL_DEPTH`), for at most 24 hours after settling. With the floor, all three transfers stop counting, so the counted depth is 0 and the tip, 6.5 hours after settling, is watched again.
+  - While wallet 0 was current, it wasn't reported. Once wallet 1 matched, the snapshot was evaluated with the floor: the counted total fell to 0, which is the "reversed" rule (R10).
+- **Reach:** invoices settled before the floor shipped, inside 24 hours of settling, whose transfers sit below the floor. On the dev site, only this tip. A site upgrading from a pre-floor development build could hold others.
+- **Fix idea (Wyatt decides):** judge a settled invoice's depth and reversal on the transfers that settled it (no floor for an invoice settled before the floor), or leave the floor out of the settled branch of `isWatched` and the reversal check.
+- **Evidence:** as RT-32 (the loop database holds the tip in review and the alert; `live-before-step2.db` holds it settled).
+- **Status:** open.

@@ -4868,3 +4868,47 @@ Runbook:
 - **Step 0, the mainnet second-node check** (read-only, `TestLiveMainnetSecondNodes`): 6 of 6 pairs ok at block 3,797,800, confirmations 20 → 20 (`~/xmr-pay-dev-data/live-step0-mainnet-seconds.txt`).
 
 **Next:** step 2 (step 6's rerun). Back up `data.db`, build the plugin at `01f6f08`, and start the dev site in `astro dev`; the bridge's update confirms at its first sync. Then the phase 05 wallet with `--restore-height 2230020`, with Wyatt at the terminal and the pairing code issued then.
+
+## 2026-11-02 · Phase 07b fix sessions · Combined live session: step 2 (stopped), then wrap-up for the night
+
+**Step 2, step 6's rerun** (the phase 05 wallet with `--restore-height 2230020`, own node, dev release `0.0.202611022057-dev.1df3c4d`):
+- **Before:** backup `~/xmr-pay-dev-data/redteam/live-before-step2.db`. The bridge's first sync on the site at 21:15:44 UTC confirmed the self-update ("update confirmed", 21:15:52). Wyatt uninstalled with `--delete-data` (22:54 UTC), and I issued the code then, with him at the terminal. The install ran at 22:55:14 UTC.
+- **What it proved (RT-30, live):**
+  - **The wait:** the wallet opened at 579,994 at 22:56:35. 28 ms later the bridge logged "waiting for the wallet to scan before answering the site's wallet probe" (reason "the wallet is still scanning", node 2,242,369). On the site, the new key `UZK9rV9a…` showed `wallet: null` and no addresses while it scanned.
+  - **The answer:** at 22:57:29, after 54 s of scanning, a match with **wallet 1** (its stored probe), with `receivedTop` 2 (`state:paidTop:1` 2). So the phase 05 wallet had also been paid at index 2.
+  - **Paid indexes kept out of the pool:** the pool started at index 3, above both paid indexes, 1 and 2.
+- **What it found:**
+  - **RT-32 (proposed Medium, release-1 blocker):** a re-pair started an endless address loop. `checkPool`'s bound, `claimedTop + 50` = 51, is below where the top-up's 50 addresses end (52), so each new address came back bad. 137 rows (52 to 188) were bad by 22:58:26, with a false sticky "not from your wallet" warning. I stopped the dev site at 22:58:30, which ended it.
+  - **RT-33 (proposed Low):** the height floor moved the settled old tip `inv_f7ea94de1471f114` to review as "reversed", with an alert, against Wyatt's answer 1(a). The build plan's premise was wrong (corrected in `docs/decisions.md`): a settled invoice stays watched until its payment is 10 blocks deep, for up to 24 hours, and with the floor its counted depth was 0.
+- **Not done:** the old tip's "ignored" line (it went to review instead) and the fresh tip. Both wait for step 2's rerun.
+- **Evidence:**
+  - the loop's database, `~/xmr-pay-dev-data/redteam/live-step2-loop.db`, SHA-256 `a0e7a7b991159462f1e23266cf60497257134eaedc0b3bb1b76b374ad5a57616` (`integrity_check` ok);
+  - `~/xmr-pay-dev-data/live-step2-watch.txt` (the watcher) and `~/xmr-pay-dev-data/live-step2-output.txt` (service, installer log, journal to 22:56:42, status);
+  - the uninstall's output, `~/xmr-pay-dev-data/live-step2-uninstall-output.txt`.
+  - **Not saved yet:** the bridge's journal for the whole window needs sudo, so it's Wyatt's: `sudo journalctl -u xmr-bridge --since "2026-11-02 22:54:00 UTC" --until "2026-11-02 23:10:00 UTC" --no-pager -o short-iso-precise > ~/xmr-pay-dev-data/redteam/live-step2-bridge-journal.txt`.
+
+**Wrap-up (Wyatt: stop for the night; no step 3, no fixes, no dev site):**
+- **Stopped:** the watcher (tmux `watch`), the release server (tmux `release`, 127.0.0.1:8099), the leftover tmux `site` shell and the wait loop. `astro dev status` reports none running. 4321, 4322 and 8099 are free.
+- **The database restored:** with the site stopped, `setup-test-reset.mjs --restore ~/xmr-pay-dev-data/redteam/live-before-step2.db`.
+  - **Before:** `data.db` `83708c2983d544fd512ae9c17c987b91e601544b1f63acd68eb45f1409b5c383`, `data.db-wal` `9e622e1c900fe1143cabf8dc926ee5b582aff1ea378eff5388712207841eb72b`, `data.db-shm` `bc007fd4ae321bd62bf0287b125330ad6e6560b5463cbe6706847d7cf8cf15df`; the backup `a46a7baa0dde0a8f55c8faaf0738603ecdd2d4dc2bcf9c8d982116582e8b0f69`.
+  - **After:** `data.db` `a46a7baa0dde0a8f55c8faaf0738603ecdd2d4dc2bcf9c8d982116582e8b0f69`, the same as the backup, which is unchanged. No `-wal` or `-shm` files.
+  - The state it replaced (the loop's, with its WAL) is saved again at `~/xmr-pay-dev-data/baseline/data.db.before-restore-20261102T230616612Z`.
+- **Checks for the push:** since `6dd4ef6` (CI run 41523399005 passed), the only changes are a test file (`live_mainnet_test.go`), `CLAUDE.md` and docs. Bridge gofmt, vet and `go test ./...` pass at HEAD, as does `go test -race ./internal/crosscheck/`; the live mainnet test skips without its variable. Plugin and theme are unchanged since `6dd4ef6`.
+
+**The state I leave:**
+- **The site is stopped.** The live database is the restore of `live-before-step2.db`.
+  - It holds the shop wallet's key `+ckxCG2o…`, with wallet 0 current, the previous key `/w+5RXvB…`, and both wallets' probes.
+  - The old tip is settled, and there's no pool-check mismatch.
+  - The pool: wallet 0 has 308 claimed, 50 free (359–408) and 2 bad; wallet 1 has 1 claimed (index 1).
+- **The installed bridge is still running.** It holds key `UZK9rV9a…` and the **phase 05 wallet** (wallet 1), whose view-only copy now has subaddresses up to 189 from the loop. With the site down it backs off. The release server is stopped, so its update checks fail quietly.
+  - If the site starts before step 3's uninstall, the bridge's key is unknown to the restored site, so its syncs are refused (no loop; the site may record a refusal).
+  - **Step 3 starts where it did:** Wyatt's `uninstall --delete-data`. The release server has to be served again first.
+- **Commits:** this entry's commit and the three before it (`1df3c4d`, `01f6f08`, `321715b`) are pushed to `origin/redteam-1` at wrap-up: the tree was clean and the checks above passed. CI for the pushed HEAD was started and its result is left for next session (`python3 -I scripts/ci-status.py <HEAD's full SHA>`).
+
+**Next session, in order:**
+1. Serve the release again (`tmux new -d -s release 'cd ~/xmr-pay-dev-data/dev-release && python3 -m http.server 8099 --bind 127.0.0.1'`). Read the CI result for the pushed HEAD, if it was pushed. Back up `data.db`, build the plugin and start the dev site, with the watcher on (stop the site at once if any bad row appears).
+2. **Step 3** (the public node; runbook above, 3a–3e). Wyatt runs the uninstall.
+3. **Step 4** (RT-20 live, the built copy with `EMDASH_SITE_URL=https://dev.wyattdilley.com`).
+4. **Step 5** (back to the shop wallet on the own node).
+5. Wyatt rules on RT-32's and RT-33's severity. Then plan both fixes, tests first: RT-32's live shape (`claimedTop` 1, `receivedTop` 2) and RT-33's (a settled tip from before the floor stays settled).
+6. One dev release, which Wyatt signs, then **step 2's rerun**: the old tip's "ignored" line, and a fresh tip that shows nothing received until Wyatt pays it.

@@ -83,6 +83,7 @@ func installSteps(log *slog.Logger) installer.Steps {
 		Pair: func(ctx context.Context, cfg config.Config, code string) (uint64, error) {
 			return pairing.Pair(ctx, siteClient(cfg), code, keyFile(cfg), pairHeight(ctx, cfg), time.Now())
 		},
+		BoundedHeight: pairHeight,
 	}
 }
 

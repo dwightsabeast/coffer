@@ -58,7 +58,13 @@ type Steps struct {
 	CreateWallet     func(ctx context.Context, cfg config.Config, view secret.String, cred *syscall.Credential) error
 	// Pair pairs with the site and returns its suggested restore height for a new wallet (0: none).
 	Pair func(ctx context.Context, cfg config.Config, code string) (uint64, error)
+	// BoundedHeight is the node's height bounded by a second node (crosscheck.BoundedHeight; 0: none).
+	BoundedHeight func(ctx context.Context, cfg config.Config) uint64
 }
+
+// restoreMarginBlocks is spec change 17's margin (the plugin's RESTORE_MARGIN_BLOCKS), used when the installer caps a
+// suggested restore height at the node's (spec change 47, D3).
+const restoreMarginBlocks = 720
 
 // Options are the install command's arguments.
 type Options struct {
@@ -339,15 +345,26 @@ func install(ctx context.Context, o Options, sys System, tty Prompter, st Steps,
 			if w := RestoreHeightWarning(cfg.RestoreHeight, suggested); w != "" {
 				tty.Say("%s", w)
 			}
-		case suggested != 0:
-			cfg.RestoreHeight = suggested
-			tty.Say("The site has open invoices from about block %d on: the new wallet scans from there.", suggested)
 		default:
-			info, err := st.NodeInfo(ctx, cfg.Node)
-			if err != nil {
-				return fmt.Errorf("reading the Monero node's height: %w", err)
+			// Spec change 47, D3 (RT-26): never above the node's height, bounded by a second node where there is one.
+			top := st.BoundedHeight(ctx, cfg)
+			if top == 0 {
+				info, err := st.NodeInfo(ctx, cfg.Node)
+				if err != nil {
+					return fmt.Errorf("reading the Monero node's height: %w", err)
+				}
+				top = info.Height
 			}
-			cfg.RestoreHeight = info.Height
+			switch {
+			case suggested == 0:
+				cfg.RestoreHeight = top
+			case suggested > top:
+				cfg.RestoreHeight = top - min(top, restoreMarginBlocks)
+				tty.Say("The site suggested scanning from block %d, above the node's height %d; the new wallet scans from block %d instead.", suggested, top, cfg.RestoreHeight)
+			default:
+				cfg.RestoreHeight = suggested
+				tty.Say("The site has open invoices from about block %d on: the new wallet scans from there.", suggested)
+			}
 		}
 		// Written down, so a later run or re-pairing can tell whether this wallet sees the site's invoices.
 		if err := config.Save(p.Config(), cfg); err != nil {

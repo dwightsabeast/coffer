@@ -1624,7 +1624,7 @@ Also found while building the bridge:
 - **A response that says the site is waiting** took no addresses, so the bridge keeps the addresses it carried pending, rather than dropping them as delivered.
 - **The bridge sends `probeDigest` only once its wallet has index 1.** It creates index 1 only to answer a probe; a fresh wallet's first top-up creates it, and the next sync carries the digest.
 
-## 47. A chain height a remote node can't inflate, and payments older than the invoice don't count (RT-26, RT-31)  (status: proposed, 2026-11-02; a draft for Wyatt's decisions; nothing built)
+## 47. A chain height a remote node can't inflate, and payments older than the invoice don't count (RT-26, RT-31)  (status: accepted, 2026-11-02, with Wyatt's decisions below; the proposal text includes them; nothing built yet)
 Found in: 07b pass 1. RT-26 came from round 2's white box (Step 3); RT-31 from the fix sessions, in 46's live step 6.
 
 Spec says:
@@ -1674,14 +1674,27 @@ Proposal: three parts. Each choice is in the decisions below, with my recommenda
      - The node check turns "mismatch" with a plain detail, so Health says to use the shop's own node or one the admin trusts.
      - If no second node answers, the bridge keeps the last height it reported, and the node check says "unavailable".
    - **With the shop's own node:** unchanged. It's trusted, as in spec change 13.
-   - **The plugin:** an optional backstop, a loose rise limit by elapsed time, set wide enough not to break constraint 2.
+   - **The plugin:** no rise limit (D1). It would guard only against a stolen key or a bridge bug, and with D4's reset it could pin the site's height far below the chain.
+   - **Tolerance and persistence (D2):**
+     - "A few blocks" is 10, which must stay below D5's margin.
+     - The node check turns "mismatch" only after the disagreement has lasted a few minutes, so a briefly lagging public node doesn't make Health flap. The exact span goes in the build plan.
 2. **The restore height:**
    - The installer never takes a suggested restore height above its node's height (or a second node's, with a remote node). Above it, it uses the node's height minus spec change 17's margin, and says so in one line.
    - The plugin never suggests a restore height above its own stored height.
 3. **RT-31's floor:**
    - **The rule:** a confirmed transfer (`height > 0`) mined below `createdHeight − margin` doesn't count toward that invoice. An unconfirmed one counts as today, until it's mined.
-   - **Where:** applied where `counted` is used for an invoice's sums, settlement and paid-top. `counted` itself stays as it is, since it describes money, not invoices.
-   - **The ignored transfer is kept on the invoice,** marked, so the record is complete and the admin can see it.
+   - **The formula (D4):** the floor is `min(createdHeight, the site's current height) − 30`. So an open invoice created under an inflated height heals when a pairing heals the site's height.
+   - **Where:** applied to an invoice's sums and settlement only.
+     - **Not to the paid-top** behind the gap warning (D6): the wallet app sees old payments too.
+     - `counted` itself stays as it is, since it describes money, not invoices.
+   - **The ignored transfer is kept on the invoice,** marked, so the record is complete. The admin page shows it in one line, with the amount (D6).
+4. **Healing at a pairing (D4):**
+   - **What a pairing sets:** the site's stored height becomes the pairing request's height, but only if that's the node's bounded height. It's never set from a wallet still scanning. Between pairings, `Math.max` stays.
+   - **Today's pairing height:** `install.go:84–88` and `pairstatus.go:74–79` send the node's `get_info` height. That reading isn't checked for being synchronized or against a second node, and it's 0 when the node doesn't answer.
+   - **So the build has to:**
+     - bound that reading as in part 1;
+     - send it only from a synchronized, online node;
+     - leave the site's height unchanged when the request carries none (0) or an unbounded one.
 
 ### Decisions for Wyatt
 - **D1. Where the height is bounded (RT-26).**
@@ -1715,12 +1728,29 @@ Proposal: three parts. Each choice is in the decisions below, with my recommenda
     - installer: the clamp;
     - live: step 6's rerun covers the floor too.
 
+Wyatt's decisions (2026-11-02):
+- **D1: (a) only, the bridge against the second node. No plugin rise limit.**
+  - A rise limit only guards against a stolen key or a bridge bug, and with D4's reset it could pin the site's height far below the chain.
+  - A just-created wallet reports about 579,994 and climbs while it scans. A rise limit would take months to recover, sending every order's payment to review as late (constraint 3).
+- **D2: the second node's height, with a tolerance of 10 blocks.** It must stay below D5's margin.
+  - "Mismatch" only if the disagreement lasts a few minutes, so a briefly lagging public node doesn't make Health flap.
+  - **Release-2 note (pass 2):** while the height is held because no second node answers, product checkout refuses, as when the node is syncing.
+- **D3: yes, both sides.**
+- **D4: (a), a pairing resets the site's height**, but only to the pairing request's height, and only if that's the node's bounded height, never a wallet still scanning.
+  - Also: the floor uses `min(createdHeight, the site's current height) − margin`, so open invoices created under an inflated height heal with the site.
+- **D5: 30 blocks.**
+- **D6: (a), with the amount in the line.** The floor applies to an invoice's sums and settlement, not to the paid-top the gap warning uses: the wallet app sees old payments too.
+- **D7: as drafted, plus these tests:**
+  - a re-pair with a wallet still scanning doesn't lower the site's height;
+  - a payment at the edge of D2's tolerance and D5's margin still counts;
+  - an open invoice created under an inflated height counts honest payments once a pairing has healed the height.
+
 Effect on the admin budget:
 - No new setting, prompt or upkeep.
 - One installer line, only when it clamps.
-- Health lines only when a node disagrees.
+- Health lines only when a node disagrees for a few minutes.
 
 Effect on the trust contract:
 - **None** to capabilities, hosts, routes, collections or indexes.
-- **The plugin:** an optional `at` beside its stored height (KV), and a mark on an ignored transfer inside an invoice row (no new index).
+- **The plugin:** a mark on an ignored transfer inside an invoice row (no new index).
 - **The bridge:** already reads the second node's `get_info`.

@@ -18,6 +18,7 @@ Made by Wyatt between Sep 30 and Oct 1, 2026, before any code was written. The r
 | Time-locked and double-spend-flagged transfers never count | Coins the shop can't spend are not payment |
 | Pairing with a one-time code | No required settings; rebuilding the wallet host is one button and one command |
 | A generic payment contract (create, get, five statuses, no webhooks, no shared secret) | Coffer should work with any EmDash store and be the pattern other payment methods copy |
+| The chain height and old payments (spec change 47, Wyatt 2026-11-02): with a remote node the bridge reports at most the second node's height + 10 blocks, "mismatch" only after a few minutes; no plugin rise limit; installer and plugin never suggest a restore height above the node's; a pairing resets the site's height only to a bounded node height; a confirmed transfer below min(createdHeight, site height) - 30 doesn't count toward an invoice's sums or settlement (the paid-top keeps it), and the admin page shows it with its amount | A single dishonest remote node can't push the height, and an old payment to a reused address can't settle a new invoice, without making an honest site's height lag the chain (lateness is judged by height) |
 
 ## Admin experience
 
@@ -105,7 +106,6 @@ Made by Wyatt between Sep 30 and Oct 1, 2026, before any code was written. The r
 
 | Question | When |
 | --- | --- |
-| Spec change 47 (RT-26's height bound and RT-31's floor, drafted 2026-11-02): D1 where the height is bounded, D2 the bridge's answer to a disagreeing second node, D3 the restore-height clamp, D4 healing an inflated height at a pairing, D5 the floor's margin (10, 30 or 720 blocks), D6 showing ignored old transfers | Before the RT-26/RT-31 fix session (release 1) |
 | Spec change 14 (the Coffer rename): fold the listed lines into the live spec; decide the unit's `Description=xmr-pay wallet host` and the proof-of-concept page | Any time |
 | The manual step behind the unpaid-address gap warning (spec change 9): how an admin raises the wallet app's subaddress lookahead (which apps allow it, and the exact steps), and whether that occasional step fits the admin budget or the feature must change | Phase 05 (wallet-app check). The phase 04 warning text uses phase 03's remedy (Wyatt, 2026-10-08, Admin experience) |
 | The built-in mainnet second nodes for the cross-check (spec change 13). Candidates from monero.fail's HTTPS list, not probed from the dev box (no mainnet use in development): `xmr-node.cakewallet.com:18081`, `mainnet.xmr.kernal.eu:18089`, `xmr-lim.tari.com`, `xmr-bhs.tari.com`, `node.monero.fail` | Before phase 09 (release) |

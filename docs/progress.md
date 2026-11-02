@@ -4662,3 +4662,25 @@ Then step 6's rerun as in decision 6.
 4. **The RT-26 + RT-31 build** once 47 is decided (option A: both in release 1).
 
 **Wyatt, after the session (2026-11-02):** confirmed the extension of his key rule. The per-pairing state is tagged with its key and dropped on any key change, between syncs as well as mid-sync, as built in `b33fc21`. No code change; recorded in spec change 46's "Fix sessions" note. The closing bundle follows this commit.
+
+**Wyatt's decisions on spec change 47 (2026-11-02, recorded the same day; nothing built):**
+- **D1:** the bridge against the second node only; no plugin rise limit.
+- **D2:** the second node's height, a 10-block tolerance, "mismatch" only after a few minutes.
+- **D3:** the clamp on both sides.
+- **D4:** a pairing resets the height only to a bounded node height, and the floor uses `min(createdHeight, site height) − 30`.
+- **D5:** 30 blocks.
+- **D6:** the admin line with the amount; the floor doesn't apply to the paid-top.
+- **D7:** as drafted, plus three tests.
+
+Full text in 47's "Wyatt's decisions". `decisions.md` gains a Design row, and its still-to-decide row is gone.
+- **Found while recording D4:** both pairing paths (`install.go:84–88`, `pairstatus.go:74–79`) send the node's `get_info` height, which isn't checked for being synchronized or against a second node, and is 0 when the node doesn't answer. The build bounds it first, and the site leaves its height alone for a 0 or unbounded one (47's part 4).
+- **Pass 2's list (release-2 note, D2):** while the height is held because no second node answers, product checkout refuses, as when the node is syncing.
+- **Open for the build plan:** D2's "few minutes" as an exact span.
+
+**Next step:** unchanged, with 47 decided:
+1. step 6's rerun (dev release, Wyatt signs);
+2. RT-20;
+3. the RT-26 + RT-31 build, tests first, from 47 as accepted.
+
+The closing bundle follows this commit.
+

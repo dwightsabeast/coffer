@@ -31,6 +31,7 @@ func probeFor(wallet int, address string) syncclient.Probe {
 func TestProbeAnswer(t *testing.T) {
 	t.Run("[T03][P02] a fresh wallet answering a probe creates only index 1, and answers no match with its index-1 digest", func(t *testing.T) {
 		l, w, s, _ := setup(t)
+		syncedNode(l, w) // RT-30: the probe is answered only with a synchronized node level with the wallet
 		s.probes = []syncclient.Probe{probeFor(0, thief)}
 		syncN(t, l, 1)
 		if w.created != 1 || w.next != 1 || w.probedMax > 1 {
@@ -46,6 +47,7 @@ func TestProbeAnswer(t *testing.T) {
 	})
 	t.Run("[T03][P02] the same wallet with history matches, with its highest received index", func(t *testing.T) {
 		l, w, s, _ := setup(t)
+		syncedNode(l, w) // RT-30: the probe is answered only with a synchronized node level with the wallet
 		w.next = 405
 		w.transfers[300] = []walletrpc.Transfer{tr('a', "1000", 2221990)}
 		s.probes = []syncclient.Probe{probeFor(1, thief), probeFor(0, fakeAddr(1))}
@@ -59,7 +61,8 @@ func TestProbeAnswer(t *testing.T) {
 	})
 	t.Run("[T03][P02] the same wallet restored from keys with nothing received still matches", func(t *testing.T) {
 		l, w, s, _ := setup(t)
-		w.next = 0 // a fresh restore: no subaddresses yet
+		syncedNode(l, w) // RT-30: the probe is answered only with a synchronized node level with the wallet
+		w.next = 0       // a fresh restore: no subaddresses yet
 		s.probes = []syncclient.Probe{probeFor(0, fakeAddr(1))}
 		syncN(t, l, 1)
 		if w.created != 1 {
@@ -72,6 +75,7 @@ func TestProbeAnswer(t *testing.T) {
 	})
 	t.Run("[T03][P02] while the site waits: no addresses sent or created, pending kept, no catch-up", func(t *testing.T) {
 		l, w, s, _ := setup(t)
+		syncedNode(l, w) // RT-30: the probe is answered only with a synchronized node level with the wallet
 		l.pending = []syncclient.Address{{Index: 7, Address: fakeAddr(7)}}
 		w.next = 7
 		s.probes, s.keepWaiting = []syncclient.Probe{probeFor(0, thief)}, true
@@ -90,6 +94,7 @@ func TestProbeAnswer(t *testing.T) {
 	})
 	t.Run("[P02] after a match, the wallet's unused addresses above the matched wallet's claimedTop are re-offered first", func(t *testing.T) {
 		l, w, s, _ := setup(t)
+		syncedNode(l, w) // RT-30: the probe is answered only with a synchronized node level with the wallet
 		w.next = 405
 		w.transfers[360] = []walletrpc.Transfer{tr('b', "1000", 2221990)}
 		for i := uint32(1); i <= 356; i++ {

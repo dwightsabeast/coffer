@@ -177,6 +177,8 @@ type Loop struct {
 	nodeAt   time.Time
 	nodeInfo noderpc.Info
 	nodeErr  error
+	// RT-30: when the "waiting for the wallet to scan" line was last logged (zero once the probe is answered).
+	scanLoggedAt time.Time
 }
 
 // New loads any pending addresses from a previous run.
@@ -505,9 +507,20 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 	l.st.WalletHeight, l.st.PoolFree, l.st.PoolTarget, l.st.Watching, l.st.Warnings = height, resp.PoolFree, resp.PoolTarget, len(resp.Watch), warnings
 
 	// Spec change 46, item 3: the site waits for this wallet's answer. Nothing is created, sent or caught up meanwhile.
+	// RT-30: and nothing is answered until the wallet has scanned to its node's height, on a node that has caught up.
 	if resp.Probes != nil {
 		l.waiting = true
 		l.mu.Unlock()
+		if ok, why := l.probeReady(ctx, height); !ok {
+			l.mu.Lock()
+			defer l.mu.Unlock()
+			l.soon = false
+			if now := l.o.Now(); l.scanLoggedAt.IsZero() || now.Sub(l.scanLoggedAt) >= time.Minute {
+				l.scanLoggedAt = now
+				l.o.Log.Info("waiting for the wallet to scan before answering the site's wallet probe", why...)
+			}
+			return nil
+		}
 		ans, err := l.answerProbes(ctx, w, resp.Probes)
 		l.mu.Lock()
 		defer l.mu.Unlock()
@@ -732,7 +745,34 @@ func (l *Loop) index1Digest(ctx context.Context, w Wallet, create bool) (string,
 	return d, nil
 }
 
+// probeReady says whether the wallet may answer the site's probe (RT-30): its node answered, is synchronized and
+// online, and the wallet has scanned to the node's height, so ReceivedIndexes sees every payment the chain holds. The
+// node is read fresh, not from the wallet check's one-minute cache, and the cache takes the new answer. Without a node
+// to ask, never (fail closed; the service always has one). why holds log attributes for a no.
+func (l *Loop) probeReady(ctx context.Context, wallet uint64) (ok bool, why []any) {
+	if l.o.NodeInfo == nil {
+		return false, []any{"reason", "no node to compare the wallet with"}
+	}
+	info, err := l.o.NodeInfo(ctx)
+	l.mu.Lock()
+	l.nodeAt, l.nodeInfo, l.nodeErr = l.o.Now(), info, err
+	l.mu.Unlock()
+	switch {
+	case err != nil:
+		return false, []any{"reason", "the node didn't answer", "err", err}
+	case info.Offline:
+		return false, []any{"reason", "the node is offline"}
+	case !info.Synchronized:
+		return false, []any{"reason", "the node is still catching up with the network", "node", info.Progress()}
+	case wallet < info.Height:
+		return false, []any{"reason", "the wallet is still scanning", "wallet", wallet, "node", info.Height}
+	}
+	return true, nil
+}
+
 // answerProbes compares the wallet's index-1 digest with each probe (spec change 46, item 3): the first match, or none.
+// RT-30: a pending address that has received (index 1, created to answer, among them) is dropped, and after no match
+// so is every one at or below receivedTop, the rule the top-up already applies to new addresses.
 func (l *Loop) answerProbes(ctx context.Context, w Wallet, probes []syncclient.Probe) (*syncclient.WalletAnswer, error) {
 	d, err := l.index1Digest(ctx, w, true)
 	if err != nil {
@@ -753,8 +793,24 @@ func (l *Loop) answerProbes(ctx context.Context, w Wallet, probes []syncclient.P
 			break
 		}
 	}
+	paid := make(map[uint32]bool, len(received))
+	for _, i := range received {
+		paid[i] = true
+	}
 	l.mu.Lock()
 	l.receivedTop = ans.ReceivedTop
+	l.scanLoggedAt = time.Time{}
+	kept := l.pending[:0:0]
+	for _, a := range l.pending {
+		if paid[a.Index] || (ans.Match == nil && a.Index <= ans.ReceivedTop) {
+			continue
+		}
+		kept = append(kept, a)
+	}
+	if len(kept) != len(l.pending) {
+		l.pending = kept
+		l.savePending()
+	}
 	l.mu.Unlock()
 	l.o.Log.Info("answering the site's wallet probe", "match", ans.Match != nil, "receivedTop", ans.ReceivedTop)
 	return ans, nil

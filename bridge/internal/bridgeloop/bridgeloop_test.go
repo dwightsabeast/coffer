@@ -44,6 +44,8 @@ type fakeWallet struct {
 	// Spec change 46: reads of addresses by index, and the highest index HasSubaddress was asked about.
 	addressReads int
 	probedMax    uint32
+	// RT-30: how often ReceivedIndexes was called.
+	receivedReads int
 }
 
 func (w *fakeWallet) GetHeight(context.Context) (uint64, error) { return w.height, nil }
@@ -97,6 +99,7 @@ func (w *fakeWallet) SubaddressAddresses(_ context.Context, idx []uint32) (map[u
 func (w *fakeWallet) ReceivedIndexes(context.Context) ([]uint32, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	w.receivedReads++
 	var out []uint32
 	for i, ts := range w.transfers {
 		if len(ts) > 0 {

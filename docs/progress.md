@@ -4771,3 +4771,62 @@ RT-20 followed, at Wyatt's request.
 5. **Back to the shop wallet**, as in step 7.
 
 The closing bundle follows this commit.
+
+**Wyatt, before the live session (2026-11-02):**
+- **Pushed:** `redteam-1` to GitHub at `9cb9bd3`, a new branch.
+  - **CI didn't run:** `ci.yml` runs only on pushes to `main` and on pull requests, and there's no PR for `redteam-1`.
+  - Opening one (GitHub offered `https://github.com/dwightsabeast/coffer/pull/new/redteam-1`) runs CI. Then `python3 -I scripts/ci-status.py <full SHA>` in the background.
+- **The 13 expected-fail tests** (12 plugin, 1 theme). The release gate (`docs/phases/07b-adversarial-testing.md`): no Critical or High open, and each Medium fixed or accepted in `decisions.md`; Lows have no gate.
+
+  | Test | RT | Severity | Release target |
+  | --- | --- | --- | --- |
+  | `ipcap` L2 (IPv6 /64) | RT-05 | Medium | release 1: fix or accept |
+  | `sync` C6 (two pair requests, one code) | RT-07 | Medium | release 1: fix or accept |
+  | `stolen-key` D2b (duplicate pool address) | RT-09 | Low | not set |
+  | `whitebox` I3 (review keeps buyer data) | RT-25 | Low | not set |
+  | `sync` C3 × 3 (duplicate keys, out-of-range values, unknown fields) | RT-06 | Low | not set |
+  | `admin` B2 (forged Mark settled/Expire on a tip) | RT-14 | Low | not set |
+  | `checkout` A0 (product wording in release 1) | RT-01 | Low | not set |
+  | `checkout` A2 (Kraken pair) | RT-02 | Low | not set |
+  | `checkout` A3 (lone surrogate) | RT-03 | Low | not set |
+  | `checkout` A8 (30 concurrent tips) | RT-04 | Low | not set |
+  | theme A9 (prefixes case-insensitive) | RT-10 | Low | not set |
+
+  Two other open Mediums have no expected-fail test: RT-12 (one slow request blocks the Node runner) and RT-15 (backlog sync near the 30 s wall). The same gate applies.
+- **`getPublicOrigin` isn't documented.** `emdash/api/route-utils` is in the package's `exports` and typed, but the docs never mention it or that entry point. Added to `docs/emdash-upgrade-checklist.md` (`0842f25`).
+- **Mismatch, from the code:** no, the bridge doesn't try another second node before holding. Each sync picks one second node, in random order, and checks every transfer against it.
+  - A mismatch holds that transfer at 0 for this sync, and a failed block fetch makes the whole check "unavailable".
+  - A mismatched transfer isn't cached as verified, so the next sync checks it again, possibly against another node. One lagging or lying second node therefore holds a payment for a sync or two, and a dishonest one flips the result each time it's picked.
+  - The height bound asks one second node at most once a minute.
+- **Mainnet candidates, probed read-only at Wyatt's request:**
+  - An exception to "never mainnet": daemon RPC only (`get_info`, `get_block` by height), no wallet, nothing sent but a height. Evidence: `~/xmr-pay-dev-data/mainnet-second-nodes-probe-2026-11-02.txt`.
+  - **All seven** were mainnet, synchronized and restricted, at height 3,797,801 with no spread, with the same block hash at 3,797,781. `get_block` works in restricted mode on every one.
+  - **Valid TLS:** monerodevs, cakewallet, ravfx. **Self-signed, so http only:** sethforprivacy, rucknium, stormycloud, monero.love.
+  - **Seven operators, one host each.** Proposal in `decisions.md`'s row.
+  - **Open, found while checking "skip the configured node's operator":** the bridge skips only the configured node's exact host. The stagenet list already holds `node.` and `node2.monerodevs.org`, one operator.
+
+**The live session, revised:**
+- **Step 3's node:** the dev box's own stagenet node, `127.0.0.1:38081`. There the clamp can't show: the pairing carries that node's bounded height, the site resets to it (D4), and the suggestion it returns is already below the node's height.
+- **The clamp shows only when the pairing carries no bounded height.** So it moves into a new public-node step.
+
+Runbook:
+1. **The dev release, and Wyatt signs.** The installed bridge updates itself.
+2. **Step 6's rerun** (own node, the phase 05 wallet, `--restore-height 2230020`):
+   - the probe is answered after the scan, and `receivedTop` covers index 1;
+   - the first pool address is above every paid index;
+   - the old tip `inv_f7ea94de1471f114` shows the ignored line;
+   - a fresh tip shows nothing received, then Wyatt pays and it settles.
+3. **New: the bridge on a public stagenet node** (configured `https://stagenet.xmr.kernal.eu:38089`; its second nodes are then the other five built-in ones):
+   - **a. Inflate the site's height (Claude):** with the site stopped, back up `data.db`, then set `state:bridge.height` 1,000,000 above the real one through the KV shortcut. Start the site and open one tip, so its `createdHeight` is inflated.
+   - **b. Block the second nodes (Wyatt, sudo):** a script adds `/etc/hosts` lines sending the five other built-in hosts to 127.0.0.1 and saves a copy first. The configured node stays reachable.
+   - **c. Install on the public node (Wyatt):** uninstall with `--delete-data`, then install with `--node https://stagenet.xmr.kernal.eu:38089` and no `--restore-height`. Expected:
+     - the pairing carries no height, and the site keeps the inflated one;
+     - **step 3's clamp line:** "The site suggested scanning from block S, above the node's height H; the new wallet scans from block H − 720 instead.";
+     - Health shows "Remote-node cross-check unavailable", with the bridge's detail that it reports no chain height and holds mined payments at 0 confirmations.
+   - **d. Unblock, then re-pair the same wallet** (`pair --code -`): the pairing carries the bounded height, the site's height heals, and the inflated tip's floor heals with it.
+   - **e. Payments held:** block again, and Wyatt pays a fresh tip. It stays at 0 confirmations while Health shows the held message. Unblock, and it settles.
+   - **Restore:** `/etc/hosts` from its copy, and `data.db` if Wyatt wants the pre-step state.
+4. **RT-20 live:** the tip button on `https://dev.wyattdilley.com` through the tunnel, with the built copy started with `EMDASH_SITE_URL=https://dev.wyattdilley.com`.
+5. **Back to the shop wallet on the own node,** as in step 7.
+
+**Note for 3c:** while the second nodes are blocked, an inflated site height can't heal, because the bridge reports none and the pairing carries none. A tip created then has an inflated floor, so an honest payment to it would be ignored until 3d's pairing. That's fail-closed by design. It's why 3e makes its payment only after the height has healed.

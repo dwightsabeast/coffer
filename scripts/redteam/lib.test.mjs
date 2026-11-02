@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { sign, verify } from "node:crypto";
 import { after, describe, it } from "node:test";
 
-import { backupDatabase, cookieOf, evidencePath, fakeAddress, flood, loopbackUrl, magicTokenFrom, memAvailableMiB, rfc8032Key, route, send, signedHeaders, syncBody } from "./lib.mjs";
+import { backupDatabase, C5_WALL_MS, cookieOf, evidencePath, fakeAddress, flood, isKnownRt13Drip, loopbackUrl, magicTokenFrom, memAvailableMiB, rfc8032Key, route, send, signedHeaders, syncBody } from "./lib.mjs";
 
 const { DatabaseSync } = await import("node:sqlite");
 const scratch = mkdtempSync(join(tmpdir(), "redteam-lib-"));
@@ -179,5 +179,26 @@ describe("spec change 46 helpers", async () => {
 	});
 	it("the hand-out wait is past the plugin's 45 s", () => {
 		assert.ok(HANDOUT_WAIT_MS > 45_000 && HANDOUT_WAIT_MS < 60_000);
+	});
+});
+
+describe("C5's known-finding label (RT-13)", () => {
+	const rt13 = { status: 200, ms: 41_023, text: '{"success":true,"data":{"error":{"code":"BAD_SIGNATURE"}}}' };
+
+	it("matches round 1's RT-13 result: 200 BAD_SIGNATURE, past the wall", () => {
+		assert.equal(isKnownRt13Drip(rt13), true);
+		assert.equal(isKnownRt13Drip({ ...rt13, ms: C5_WALL_MS + 1 }), true);
+	});
+
+	it("matches nothing else", () => {
+		for (const r of [
+			{ ...rt13, ms: C5_WALL_MS }, // within the wall: the check's own PASS, not RT-13
+			{ ...rt13, status: 413 },
+			{ ...rt13, status: 500 },
+			{ ...rt13, text: '{"success":true,"data":{"error":{"code":"MALFORMED"}}}' },
+			{ ...rt13, text: '{"success":true,"data":{"ok":true}}' },
+			{ ...rt13, status: "error", text: "TypeError: fetch failed" },
+			{ ...rt13, text: undefined },
+		]) assert.equal(isKnownRt13Drip(r), false, JSON.stringify(r));
 	});
 });

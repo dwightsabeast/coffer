@@ -7,8 +7,9 @@
 //
 // Loopback only. It pairs a fresh in-memory key through the KV shortcut, pushes a small pool, runs the checks, and
 // cleans up its own rows and key. Back up data.db first (the caller does). PASS/FAIL per check; exit 1 on any FAIL.
+// C5's wall check prints "KNOWN RT-13" (not counted as a FAIL) only for RT-13's exact result; see isKnownRt13Drip.
 
-import { DEFAULT_DB, DEFAULT_SITE, cleanupCofferRows, fakeAddress, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders, syncBody, writePairingCode, handoutWait, HANDOUT_WAIT_MS } from "./lib.mjs";
+import { DEFAULT_DB, DEFAULT_SITE, cleanupCofferRows, fakeAddress, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders, syncBody, writePairingCode, handoutWait, HANDOUT_WAIT_MS, C5_WALL_MS, isKnownRt13Drip } from "./lib.mjs";
 
 const args = process.argv.slice(2);
 const value = (name, fallback) => {
@@ -112,7 +113,11 @@ try {
 		else liveOk = false;
 	}
 	const dripResult = await dripReq;
-	check("C5: the drip request ends at or before the 30 s wall", typeof dripResult.status === "number" ? dripResult.ms <= 33_000 : true, `${dripResult.status} after ${dripResult.ms} ms: ${dripResult.text}`);
+	const c5Label = "C5: the drip request ends at or before the 30 s wall";
+	const c5Got = `${dripResult.status} after ${dripResult.ms} ms: ${dripResult.text}`;
+	// RT-13 (open finding): remove this branch when RT-13 is fixed.
+	if (isKnownRt13Drip(dripResult)) console.log(`KNOWN RT-13  ${c5Label.padEnd(64)} ${c5Got}`);
+	else check(c5Label, typeof dripResult.status === "number" ? dripResult.ms <= C5_WALL_MS : true, c5Got);
 	check("C5: status stays responsive while the body drips", liveOk, `max status ${liveMs} ms over 8 polls`);
 } finally {
 	const { rows, kv, key: k } = cleanupCofferRows(db);

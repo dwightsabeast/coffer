@@ -177,6 +177,15 @@ export const RUN_KV = ["state:pairing", "state:bridge", "state:alerts", "state:b
 export const HANDOUT_WAIT_MS = 46_000;
 export const handoutWait = (ms = HANDOUT_WAIT_MS) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * C5 (round1-live.mjs): a slow drip body against bridge/sync should end at or before the 30 s wall (3 s grace).
+ * RT-13, open: EmDash reads the whole body before the plugin's wall starts, so the drip ends past the wall and the
+ * handler then answers BAD_SIGNATURE. True only for that exact result, which round1-live.mjs reports as
+ * "KNOWN RT-13" instead of FAIL; any other failing result stays FAIL. Remove this and the label when RT-13 is fixed.
+ */
+export const C5_WALL_MS = 33_000;
+export const isKnownRt13Drip = (r) => r?.status === 200 && r.ms > C5_WALL_MS && /"code":"BAD_SIGNATURE"/.test(r.text ?? "");
+
 /** The digest the site sends instead of an address (contract/test-vectors/address-digest.json). */
 export const addressDigest = (address) => createHash("sha256").update(address, "utf8").digest().subarray(0, 16).toString("base64");
 

@@ -1553,6 +1553,7 @@ Evidence:
 - **The bridge side of 5b (`b33fc21`):** a body built under the old pairing is never sent, under either key.
   - A key changed mid-sync drops the body, and a fresh sync follows under the new key.
   - The old pairing's pool report, probe answer, re-offer and watch list are dropped at a new key. Pending addresses stay.
+  - That state is tagged with its key and dropped on any key change, mid-sync or between syncs (Wyatt confirmed, 2026-11-02).
   - Otherwise a stale "mismatch" would raise item 1's sticky banner on the new pairing.
 - **Spec text to fold in (Wyatt):** item 2's previous-key line: "… is recorded as 'the previous wallet host is still running', except in the first minute after a pairing, when a sync already on its way from the same machine can still arrive."
 

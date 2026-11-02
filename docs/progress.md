@@ -4660,3 +4660,5 @@ Then step 6's rerun as in decision 6.
    - Wyatt's Feather payment settles.
 3. **RT-20** (blocks release 1): accept an `Origin` equal to EmDash's `siteUrl` in the tip endpoint, with its twin test.
 4. **The RT-26 + RT-31 build** once 47 is decided (option A: both in release 1).
+
+**Wyatt, after the session (2026-11-02):** confirmed the extension of his key rule. The per-pairing state is tagged with its key and dropped on any key change, between syncs as well as mid-sync, as built in `b33fc21`. No code change; recorded in spec change 46's "Fix sessions" note. The closing bundle follows this commit.

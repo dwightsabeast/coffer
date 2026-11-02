@@ -4599,3 +4599,64 @@ Then step 6's payment proof with a truly new wallet.
 - RT-31's height floor with RT-26's fix (option A: both in release 1).
 
 Then step 6's rerun as in decision 6.
+
+## 2026-11-02 · Phase 07b fix sessions · RT-30's fix, 5b's race test and grace, spec change 47 drafted
+
+**Plan:** `~/.claude/plans/phase-07b-fix-sessions-agile-whistle.md`, approved by Wyatt with his decisions:
+- an offline node counts as not ready;
+- a 60 s grace;
+- the bridge's key reload, with his change: a body built under the old pairing is dropped, never re-signed;
+- `go test -race`, now that the box has gcc 14.2.0 and libc6-dev.
+
+**Done:**
+- **`73781ec`, RT-30 (bridge):**
+  - **When it answers:** the probe is answered only once the node has answered, is synchronized and online, and the wallet's height has reached the node's (no slack).
+  - **The node:** read fresh while the site waits, not from the wallet check's 60 s cache. With no node to ask, there's no answer.
+  - **Until then:** the site keeps waiting, syncs keep their normal pace, and the bridge logs why at most once a minute.
+  - **Found while building:** index 1, created to answer the probe, sat in pending and would still have been sent. Answering now drops pending addresses that have received, and after a no-match every pending one at or below `receivedTop`.
+- **`307c104`, 5b (plugin):**
+  - **The race test** (old-key sync signed 0.2 s before the pairing, arriving 0.1 s and 28 s after it) **was red:** `previousSeen` was recorded at +0.1 s, so the "previous wallet host is still running" line would show.
+  - **The fix:** a 60 s grace (`PREVIOUS_GRACE_MS`). `state:previousKey` becomes `{ publicKey, pairedAt }` in one write. A legacy string reads as `pairedAt` 0, so it gets no grace.
+  - **D4's existing tests** moved past the grace.
+- **`b33fc21`, 5b (bridge, Wyatt's rule):**
+  - The per-pairing state (watch list, answer, pool report, re-offer) is tagged with its key and dropped when the key differs at a sync's start.
+  - The key is re-read just before the main send and the mismatch fast path. If it changed, the body is dropped (nothing counts as delivered) and a fresh sync follows at once.
+  - Pending addresses stay. The "starting" message holds nothing from a pairing, so it goes out under the current key.
+- **`4df39ca`, docs:**
+  - **Spec change 46:** a "Fix sessions" note, and D4 amended, with a spec line to fold in.
+  - **Spec change 47** (proposed, nothing built), with decisions D1–D7 and recommendations, and a still-to-decide row in `decisions.md`:
+    - RT-26's height bound: the bridge against the cross-check's second node, plus a loose plugin backstop;
+    - the restore-height clamp;
+    - healing an inflated height at a pairing;
+    - RT-31's floor and its margin (10, 30 recommended, or 720 blocks);
+    - showing ignored transfers.
+  - **Findings:** RT-30 "fixed in code; live at step 6's rerun", with its known limit (a node that says "not synchronized" forever stalls the answer). 5b's result is under RT-08.
+  - **Matrix:** P02, R09, T03 and R08.
+
+**Results (this session's output):**
+- **Red first:**
+  - **RT-30:** 5 of the 6 new Go cases failed on the old code. The wallet-ahead-of-node case passes either way, as it should.
+  - **5b:** the plugin race test failed (`previousSeen` `{ at: 1790000000100 }`).
+  - **The key change:** all 3 new Go cases failed on the old code (old-key body sent after the pairing; the stale report and answer sent under the new key).
+- **Bridge, at `b33fc21`:** gofmt and vet clean; `go test ./...` and **`go test -race ./...`** pass in every package (the first `-race` run on this box; go1.27.3). The static build is fine.
+- **Plugin, at `307c104`:** typecheck clean, validate passed, bundle 70.4 KB.
+  - `pnpm test`, default: 424 passed, 12 expected fail, 1 skipped (last session 422: plus the 5b race and legacy-string tests).
+  - `pnpm test`, goods: 101 passed, 1 skipped.
+
+**Not covered:**
+- live: RT-30 on the dev box's installed bridge (step 6's rerun), and the 5b race on a real same-machine `pair`;
+- CI (nothing pushed);
+- mainnet.
+
+**Bundles:** the newest in `~/xmr-pay-dev-data/bundles/` is `coffer-redteam-1-2026-11-01-e7ff9ae.bundle` (2026-11-01). The 2026-11-02 sessions before this one made none. This session's bundle follows this commit; its name and SHA-256 are in the closing message.
+
+**Next step:**
+1. **Wyatt's decisions on spec change 47** (D1–D7).
+2. **Step 6's rerun** (decision 6): a dev release with `73781ec`–`b33fc21`, signed by Wyatt; the phase 05 wallet with `--restore-height 2230020`. Expected:
+   - the probe is answered only after the scan;
+   - `receivedTop` covers index 1;
+   - the first pool address is above every paid index;
+   - a fresh tip shows nothing received;
+   - Wyatt's Feather payment settles.
+3. **RT-20** (blocks release 1): accept an `Origin` equal to EmDash's `siteUrl` in the tip endpoint, with its twin test.
+4. **The RT-26 + RT-31 build** once 47 is decided (option A: both in release 1).

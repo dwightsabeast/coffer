@@ -4696,3 +4696,78 @@ The closing bundle follows this commit.
 
 **Next step:** plan the RT-26 + RT-31 build session (plan mode; the matrix rows T14, R09, P02 and their new tests first). The closing bundle follows this commit.
 
+
+## 2026-11-02 · Phase 07b fix sessions · RT-26 and RT-31 built (spec change 47), then RT-20
+
+**Plan:** `~/.claude/plans/phase-07b-rt26-rt31-build.md`, with Wyatt's answers:
+1. **(a):** the ignored-payment line is derived when shown, and the old RT-31 tip is its live view.
+2. **Fail closed with no second node,** with two additions: the refusal covers tips too, and spec change 13 item 4 is amended to hold confirmations. The mainnet list is a release-1 blocker.
+3. **The pairing height** is bounded both ways.
+
+RT-20 followed, at Wyatt's request.
+
+**Done:**
+- **`4615ceb`, the bridge (RT-26):**
+  - **The height bound:** with a remote node, the bridge reports the wallet's height while it's at most 10 blocks above a second node's, else the second node's, from the first sync. Health shows "mismatch" after 5 minutes.
+  - **No second node:** height 0 and "unavailable", with mined transfers held at 0 confirmations. The same holds when a block can't be fetched (spec change 13 amended).
+  - **Pairing:** both pairing paths send `crosscheck.BoundedHeight`.
+- **`889d652`, the installer:**
+  - A suggested restore height above the bounded height becomes that height − 720, with one line.
+  - With nothing suggested, a new wallet starts at the bounded height. The raw node height was also an RT-26 path.
+- **`300fa80`, the plugin (RT-31 and the site side of RT-26):**
+  - **The floor:** `min(createdHeight, site height) − 30`, through `totals(inv, siteHeight)`.
+  - **D6's admin line**, with the amount: under Newest tips and on the invoice and review views.
+  - **The reset at a pairing,** and the healed restore suggestion.
+  - **Checkout at height 0:** refused, tips included when the host has reported without a height.
+  - Admin fallback wording for "unavailable".
+- **`de558a1`, the theme (RT-20):** the tip endpoint also accepts an `Origin` equal to EmDash's configured public origin, through EmDash's own `getPublicOrigin` from `emdash/api/route-utils` (an existing peer, no new package). Every other refusal stays.
+- **`853dded`, `2c6f39e`, the docs:**
+  - spec change 47's "Built" note, and spec change 13 item 4 amended;
+  - findings RT-26, RT-31 and RT-20 marked "fixed in code; live at the combined session";
+  - matrix rows T14, R09, P02 and T17.
+
+**Results (this session's output):**
+- **Red first:**
+
+  | What | On the old code |
+  | --- | --- |
+  | crosscheck | 7 failed (3 existing Unavailable tests now expecting 0 confirmations, and 4 new) |
+  | bridge loop | RT-26's reshaped test and 4 of 5 new cases failed |
+  | `pair` command | sent 94,954 from a node still catching up |
+  | installer clamp | 3 of 4 failed |
+  | plugin floor tests | 6 of 10 failed; the other 4 are guards that pass on either version |
+  | theme RT-20 | the main case answered 403 |
+
+  `BoundedHeight`'s table test was written together with the function, which had no earlier version to fail against.
+- **Bridge, at `889d652`:** gofmt and vet clean; `go test ./...` and `go test -race ./...` pass; the static build is fine.
+- **Plugin, at `300fa80`:**
+  - typecheck clean, validate passed, bundle 71.4 KB;
+  - `pnpm test`, default: 434 passed, 12 expected fail, 1 skipped;
+  - `pnpm test`, goods: 101 passed, 1 skipped.
+  - The first full run had 5 failures in existing tests, and they changed:
+    - **Three platform tests and R12's "never synced" case:** the tip refusal now applies only when the bridge has reported with height 0. A never-synced site still answers `NO_ADDRESS_AVAILABLE`.
+    - **`handle.test.ts`'s restore-height pairing** now carries a height above its invoices.
+- **Theme, at `de558a1`:** `COFFER_REQUIRE_ZBAR=1 pnpm test` 76 passed, 1 expected fail (RT-10), 1 skipped (was 73 passed, 2 expected fail); typecheck clean.
+
+**Not covered:**
+- live: everything below;
+- CI (nothing pushed);
+- mainnet: the second-node list is still empty, so a remote mainnet node now holds every payment, a release-1 blocker.
+
+**Found while building:**
+- **The installer's no-suggestion path** used the node's raw height.
+- **Visitor tips** skip checkout's height rule (spec change 33). Height 0 is now their one exception.
+- **The dev site's `astro.config.mjs` sets no `siteUrl`.** RT-20's fix relies on `EMDASH_SITE_URL`, which the public built copy already sets.
+
+**Next step: one dev release and one live session with Wyatt (one signing round):**
+1. **Build and sign:** `scripts/build-dev-release.sh` at `2c6f39e` or later. It wipes `~/xmr-pay-dev-data/dev-release/`. Wyatt signs it, and the installed bridge updates itself.
+2. **Step 6's rerun** (decision 6): the phase 05 wallet with `--restore-height 2230020`. Expected:
+   - the probe is answered only after the scan, and `receivedTop` covers index 1;
+   - the first pool address is above every paid index;
+   - the old tip `inv_f7ea94de1471f114` shows "Older payments to this address were ignored: 0.003 XMR in 3 transfers, …";
+   - a fresh tip shows nothing received until Wyatt pays from Feather, then it settles.
+3. **The installer's clamp,** shown on a run where it applies.
+4. **RT-20 live:** the tip button on `https://dev.wyattdilley.com` through the tunnel, with the built copy started with `EMDASH_SITE_URL=https://dev.wyattdilley.com`.
+5. **Back to the shop wallet**, as in step 7.
+
+The closing bundle follows this commit.

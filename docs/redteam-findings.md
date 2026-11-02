@@ -27,7 +27,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-17 | Low | F04 | 1, 1 | A non-admin's refusal shows raw JSON in the "Plugin Error" banner | open |
 | RT-18 | Low | T08 | 1, 1 | A tip note's stacked combining marks spill above and below its line on the admin page | open |
 | RT-19 | Low | T13 (setup) | 1, 2 | The installer checks the pairing code last, so an expired code fails only after the keys are typed and wallet-rpc is downloaded | open |
-| RT-20 | Medium | T17 | 1, 2 | Behind a proxy that ends https, the tip endpoint refuses every visitor's tip as cross-site | open; **blocks release 1** |
+| RT-20 | Medium | T17 | 1, 2 | Behind a proxy that ends https, the tip endpoint refuses every visitor's tip as cross-site | fixed in code 2026-11-02 (`de558a1`); live at the combined session; **blocks release 1** until then |
 | RT-21 | Low | T15 | 1, 2 | With the stagenet-only flag, a mainnet shop is refused only after its view key has been asked for | open |
 | RT-22 | Low | T15 (setup) | 1, 2 | Ctrl-C at an installer prompt is ignored; after it, the install goes on and then fails with a misleading node error | open |
 | RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open |
@@ -440,7 +440,11 @@ Wyatt ran `~/xmr-pay-dev-data/07b-i2.sh` (outside the repo) on the dev box on 20
   - **Live check (phase 09):** the tip button through a real proxy that ends https.
   - **Not chosen:** deciding by `Sec-Fetch-Site`.
 - **A post with no `Origin` passes, and that is intended** (`tip.ts:47`, as on EmDash's own route). A browser's cross-site POST always carries an `Origin` or `Sec-Fetch-Site: cross-site`, so only non-browser clients send none, and they could call the public checkout route directly anyway. They meet the same caps as there (T05, T18): per client only where the site passes client IPs; otherwise the site-wide open-invoice cap, the spec's stated limit. On a Node site with no trusted-proxy setup, round 1's live L2 run made no per-client bucket at all.
-- **Status:** open.
+- **Fixed (2026-11-02, `de558a1`, Wyatt's choice):** `crossSite` accepts an `Origin` equal to the request's own origin or to EmDash's configured public origin. It uses EmDash's own `getPublicOrigin` from `emdash/api/route-utils` (`siteUrl`, then `EMDASH_SITE_URL` or `SITE_URL`), the function EmDash's CSRF check uses. Every existing refusal stays.
+  - **Tests:** the expected-fail test now passes with `siteUrl` in its fixture. Twins: no `siteUrl`, still refused; with `siteUrl`, another https host and `Origin: null`, refused.
+  - **Limit, as chosen:** a site behind such a proxy with no `siteUrl` or `EMDASH_SITE_URL` still refuses tips. EmDash's own passkey sign-in reads the same setting first (progress, 2026-10-13, run A attempt 1), so a proxied site that signs in already has it. The phase 09 docs should say so.
+  - **Live, at the combined session:** the public built copy already starts with `EMDASH_SITE_URL=https://dev.wyattdilley.com` (as on 2026-10-30), so the tip button through the tunnel is the check.
+- **Status:** fixed in code; release 1 waits for the live check.
 
 ## Observation, round 2: Cloudflare's injected analytics beacon is blocked on Coffer's pages (T09, T23)
 

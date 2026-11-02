@@ -46,6 +46,9 @@ const FREE_READ = 20;
 export function checkoutHeight(bridge: BridgeState | null, now: number): number | "WALLET_HOST_SILENT" | "WALLET_HOST_SYNCING" {
 	if (!bridge || bridge.lastSyncAt === undefined || now - bridge.lastSyncAt > SILENT_MS) return "WALLET_HOST_SILENT";
 	if (bridge.checks?.wallet?.state === "syncing") return "WALLET_HOST_SYNCING";
+	// No height yet (spec change 47, Wyatt's answer 2: a remote node with no second node to bound it): an invoice created
+	// now would have no floor for good, so checkout waits, tips too, until the site's first height.
+	if (bridge.height === 0) return "WALLET_HOST_SYNCING";
 	return bridge.height;
 }
 
@@ -303,7 +306,7 @@ async function productInvoice(ctx: PluginContext, input: ProductInput, speed: Sp
 
 /**
  * A visitor's tip (spec change 33): taken whatever the wallet host's state, at the last sync's height (which never goes
- * down; with no sync ever there's no pool either). A fiat amount without a price becomes an open tip; any amount asks
+ * down between pairings; with no sync ever there's no pool either), except while the site has no height at all (47). A fiat amount without a price becomes an open tip; any amount asks
  * for at least the floor. Settling is at the floor whatever was asked (`minAtomic`). Marked `via: "checkout"`, so the
  * admin's test tips stay apart.
  */
@@ -314,7 +317,12 @@ async function tipInvoice(ctx: PluginContext, input: TipInput, speed: Speed, sit
 		if (!entry || entry.status !== "published") return { error: { code: "ENTRY_NOT_FOUND" } };
 		if (typeof entry.data.title === "string" && entry.data.title.trim() !== "") title = entry.data.title.trim();
 	}
-	const chainHeight = (await ctx.kv.get<BridgeState>(KV.bridge))?.height ?? 0;
+	const bridge = await ctx.kv.get<BridgeState>(KV.bridge);
+	const chainHeight = bridge?.height ?? 0;
+	// Spec change 47 (Wyatt's answer 2): the one wallet-host state a tip waits for. A wallet host that has reported but
+	// given no height yet (a remote node with no second node to bound it): a tip made now would have no floor for good
+	// (RT-31). It lasts only until the site's first height. A site that never synced has no pool either: no address.
+	if (bridge && chainHeight === 0) return { error: { code: "WALLET_HOST_SYNCING" } };
 
 	let fiatMinor: bigint | null = null;
 	let xmrAtomic: bigint | null = null;

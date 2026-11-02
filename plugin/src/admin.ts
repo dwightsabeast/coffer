@@ -11,7 +11,7 @@ import type { PluginContext } from "emdash/plugin";
 import { MAX_OPEN_TOTAL, checkoutHeight, claimAndStore, newIds } from "./checkout";
 import type { MoneroNetwork } from "./core/address";
 import { DUST_ATOMIC, GAP_ALERT, GOODS_ENABLED, LATE_WINDOW_MS, MAX_REQUIRED, PRESETS, RECONFIRM_BLOCKS, SILENT_MS, type Speed, TEST_TIP_REQUIRED, UNPAID_RUN_ALERT } from "./core/constants";
-import { type Invoice, counted, isOpen, newInvoice, totals } from "./core/invoice";
+import { type Invoice, counted, isOpen, newInvoice, totals, ignoredOld } from "./core/invoice";
 import { atomicToXmr } from "./core/money";
 import { ownIndex, walletOf, walletRange } from "./core/walletindex";
 import { isWatched } from "./core/watch";
@@ -215,7 +215,7 @@ function problems(h: Health): Array<{ variant: "error" | "alert"; title: string;
 		});
 	}
 	if (checks?.wallet?.state === "unavailable") out.push({ variant: "alert", title: "The wallet host can't read its node's height", description: checks.wallet.detail ?? "On the wallet host, run: xmr-bridge status" });
-	if (checks?.node?.state === "unavailable") out.push({ variant: "alert", title: "Remote-node cross-check unavailable", description: checks.node.detail ?? "No second node answered; confirmations are reported as the configured node gives them" });
+	if (checks?.node?.state === "unavailable") out.push({ variant: "alert", title: "Remote-node cross-check unavailable", description: checks.node.detail ?? "No second node answered, so mined payments are held at 0 confirmations until one does. Use your own node, or one you trust" });
 	if (h.review > 0) out.push({ variant: "alert", title: `${plural(h.review, "invoice needs", "invoices need")} a decision`, description: "They're under Needs a decision, below Health, each with what happened and a recommended action." });
 	if (h.watchTruncatedAt !== null) {
 		out.push({ variant: "alert", title: "The watch list hit its safety cap", description: `At ${utc(h.watchTruncatedAt)}, more recent invoices existed than Coffer reads in one sync (20,000), so some may not be checked for late payments. This usually means a flood of unpaid checkouts.` });
@@ -320,7 +320,7 @@ function testTipBlocks(tip: Invoice, h: Health): Block[] {
 	if (paid.length > TRANSFERS_LISTED) listed.push(`…and ${paid.length - TRANSFERS_LISTED} more payments.`);
 	const synced = h.bridge ? `block ${h.bridge.height} (the wallet host's height now)` : "the wallet host's height (under Health)";
 	return [
-		{ type: "section", text: `${shortXmr(totals(tip).received)} XMR arrived in block ${block}${tip.settledAt ? `, settled at ${utc(tip.settledAt)}` : ""}. Look for this in your shop wallet's history.` },
+		{ type: "section", text: `${shortXmr(totals(tip, h.bridge?.height ?? 0).received)} XMR arrived in block ${block}${tip.settledAt ? `, settled at ${utc(tip.settledAt)}` : ""}. Look for this in your shop wallet's history.` },
 		{ type: "code", code: listed.join("\n\n") },
 		{ type: "context", text: `Not in your wallet app? It must be synced to ${synced}, and its restore height must be at or below block ${block}. If the restore height is higher, restore the wallet again with a lower one; otherwise rescan.` },
 	];
@@ -371,7 +371,7 @@ async function setupSection(ctx: PluginContext, h: Health, now: number, showingC
 		inner.push({ type: "context", text: `Open your shop wallet app and let it finish syncing. If the wallet is new, check that its restore height is at or below block ${h.bridge.height} (the wallet host's height now).` });
 		const open = tips.find((t) => isOpen(t));
 		if (open) {
-			const t = totals(open);
+			const t = totals(open, h.bridge?.height ?? 0);
 			inner.push(
 				{ type: "section", text: `Send at least ${shortXmr(DUST_ATOMIC)} XMR to this address from any wallet. It's a tip to your own shop wallet, so the money stays yours.` },
 				{ type: "code", code: open.subaddress },
@@ -571,8 +571,8 @@ function notCountedReasons(t: Invoice["transfers"][number]): string[] {
 }
 
 /** The amount counted now; for a gone payment, "now", and what was reported if a not-counted transfer remains. */
-function receivedText(inv: Invoice): string {
-	const now = xmr(totals(inv).received);
+function receivedText(inv: Invoice, siteHeight: number): string {
+	const now = xmr(totals(inv, siteHeight).received);
 	if (inv.status === "review" && inv.reviewReason === "reorg") return `${now} XMR, not in a block now`;
 	if (inv.status === "review" && inv.reviewReason === "reversed") {
 		const held = inv.transfers.filter((t) => !counted(t));
@@ -609,13 +609,13 @@ function transferNote(t: Invoice["transfers"][number], checked: string): string 
 }
 
 /** The toggle's label: the invoice on one line, due and received told apart, no expiry (round 2, changes 1 and 6). */
-function invoiceLabel(inv: Invoice, now: number): string {
+function invoiceLabel(inv: Invoice, now: number, siteHeight: number): string {
 	const parts = [statusText(inv)];
 	if (inv.fiat) parts.push(fiatText(inv));
 	if (inv.status === "review" && inv.reviewReason === "reversed") parts.push("payment no longer reported");
 	else if (inv.status === "review" && inv.reviewReason === "reorg") parts.push("payment not mined again");
 	else {
-		const received = totals(inv).received;
+		const received = totals(inv, siteHeight).received;
 		const due = inv.expectedAtomic ? BigInt(inv.expectedAtomic) : null;
 		if (received === 0n) parts.push(due === null ? "nothing received" : `nothing received (${xmr(due)} XMR due)`);
 		else if (due !== null && received < due) parts.push(`received ${xmr(received)} of ${xmr(due)} XMR`);
@@ -644,18 +644,20 @@ function transfersCode(inv: Invoice, now: number): string {
  * values in their own boxes. Buyer-supplied text only as plain text. The invoice just acted on gets a new block_id and
  * starts open: the host keeps each toggle's open state by block_id.
  */
-function invoiceItem(inv: Invoice, now: number, opts: { acted: boolean; cursor?: string }): Block {
+function invoiceItem(inv: Invoice, now: number, siteHeight: number, opts: { acted: boolean; cursor?: string }): Block {
 	const fields = [
 		{ label: "Status", value: statusText(inv) },
 		...(inv.fiat ? [{ label: "Amount", value: fiatText(inv) }] : []),
 		...(inv.expectedAtomic ? [{ label: "Due", value: `${xmr(BigInt(inv.expectedAtomic))} XMR` }] : []),
-		{ label: "Received", value: receivedText(inv) },
+		{ label: "Received", value: receivedText(inv, siteHeight) },
 		{ label: "Confirmations", value: confirmationsText(inv, now) },
 		{ label: "Created", value: dateTime(inv.createdAt) },
 		{ label: "Expires", value: isFinal(inv) ? "—" : dateTime(inv.expiresAt) },
 		...(inv.buyer?.email ? [{ label: "Buyer email", value: inv.buyer.email }] : []),
 	];
 	const inner: Block[] = [{ type: "fields", fields }];
+	const ignored = ignoredText(inv, siteHeight);
+	if (ignored) inner.push({ type: "context", text: ignored });
 	const verbs = allowed(inv);
 	const suffix = opts.cursor ? `|${opts.cursor}` : "";
 	const elements: Block[] = [
@@ -668,7 +670,7 @@ function invoiceItem(inv: Invoice, now: number, opts: { acted: boolean; cursor?:
 	if (inv.buyer?.note) inner.push({ type: "context", text: `Buyer's note: ${inv.buyer.note}` });
 	if (inv.transfers.length === 0) inner.push({ type: "context", text: "No payment reported yet." });
 	else inner.push({ type: "context", text: "Find each payment in your wallet app's transaction history by its Transaction ID." }, { type: "code", code: transfersCode(inv, now) });
-	return { type: "accordion", block_id: opts.acted ? `invoice_${inv.id}_acted` : `invoice_${inv.id}`, label: invoiceLabel(inv, now), default_open: opts.acted, blocks: inner };
+	return { type: "accordion", block_id: opts.acted ? `invoice_${inv.id}_acted` : `invoice_${inv.id}`, label: invoiceLabel(inv, now, siteHeight), default_open: opts.acted, blocks: inner };
 }
 
 /** Said under the Tips header (Wyatt, phase 07): the admin's own test tips from Setup never count here. */
@@ -683,8 +685,24 @@ const thousands = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",")
 /** A tip's entry name, from the title stored at tip time ("Tip: <title>"), so no content lookups are needed. */
 const tipEntryName = (inv: Invoice) => (inv.contentRef && inv.uriDescription?.startsWith("Tip: ") ? inv.uriDescription.slice(5) : inv.contentRef ? "an entry" : "the whole site");
 
-function tipLine(inv: Invoice): string {
-	const received = totals(inv).received;
+/**
+ * RT-31 (spec change 47, D6): the old payments the floor leaves out, with their amount, for the admin only. One line;
+ * empty when there are none.
+ */
+function ignoredText(inv: Invoice, siteHeight: number): string {
+	const old = ignoredOld(inv, siteHeight);
+	if (old.length === 0) return "";
+	const sum = shortXmr(old.reduce((a, t) => a + BigInt(t.amountAtomic), 0n));
+	const what = inv.kind === "tip" ? "tip" : "invoice";
+	const heights = old.map((t) => t.height);
+	const lo = thousands(Math.min(...heights));
+	const hi = thousands(Math.max(...heights));
+	if (old.length === 1) return `An older payment to this address was ignored: ${sum} XMR, mined at block ${lo}, before this ${what}.`;
+	return `Older payments to this address were ignored: ${sum} XMR in ${old.length} transfers, mined at blocks ${lo} to ${hi}, before this ${what}.`;
+}
+
+function tipLine(inv: Invoice, siteHeight: number): string {
+	const received = totals(inv, siteHeight).received;
 	const asked = inv.expectedAtomic !== null ? `${shortXmr(BigInt(inv.expectedAtomic))} XMR` : "any amount";
 	const when = `${shortDate(inv.createdAt)}, ${utc(inv.createdAt)}`;
 	const to = tipEntryName(inv);
@@ -709,6 +727,7 @@ function tipLine(inv: Invoice): string {
  * 1.1.0's Block Kit renders every text as plain text (React children, no HTML or markdown; docs/emdash-upgrade-checklist.md).
  */
 async function tipsBlocks(ctx: PluginContext): Promise<Block[]> {
+	const siteHeight = (await ctx.kv.get<BridgeState>(KV.bridge))?.height ?? 0;
 	const tips: Invoice[] = [];
 	let cursor: string | undefined;
 	let more = false;
@@ -725,7 +744,7 @@ async function tipsBlocks(ctx: PluginContext): Promise<Block[]> {
 		return blocks;
 	}
 	const counted = tips.filter((t) => t.status === "settled");
-	const total = counted.reduce((sum, t) => sum + totals(t).received, 0n);
+	const total = counted.reduce((sum, t) => sum + totals(t, siteHeight).received, 0n);
 	blocks.push({ type: "fields", fields: [{ label: "Received", value: `${shortXmr(total)} XMR` }, { label: "Tips", value: `${thousands(counted.length)} settled` }] });
 	if (more) blocks.push({ type: "context", text: `Totals cover the newest ${thousands(TIPS_SCANNED)} tips.` });
 
@@ -734,7 +753,7 @@ async function tipsBlocks(ctx: PluginContext): Promise<Block[]> {
 		const key = t.contentRef ? `${t.contentRef.collection}/${t.contentRef.id}` : "";
 		const e = byEntry.get(key) ?? { name: t.contentRef ? tipEntryName(t) : "Whole site", count: 0, sum: 0n };
 		e.count++;
-		e.sum += totals(t).received;
+		e.sum += totals(t, siteHeight).received;
 		byEntry.set(key, e);
 	}
 	const ranked = [...byEntry.values()].sort((a, b) => (b.sum > a.sum ? 1 : b.sum < a.sum ? -1 : b.count - a.count));
@@ -752,7 +771,9 @@ async function tipsBlocks(ctx: PluginContext): Promise<Block[]> {
 	blocks.push({ type: "context", text: "Newest tips" });
 	for (const t of tips.slice(0, TIPS_LISTED)) {
 		const open = t.contentRef ? { accessory: { type: "link", label: "Open entry", target: { kind: "content", collection: t.contentRef.collection, id: t.contentRef.id } } } : {};
-		blocks.push({ type: "section", text: tipLine(t), ...open });
+		blocks.push({ type: "section", text: tipLine(t, siteHeight), ...open });
+		const ignored = ignoredText(t, siteHeight);
+		if (ignored) blocks.push({ type: "context", text: ignored });
 		// The visitor's note as they wrote it: plain text, never interpreted.
 		if (t.buyer?.note) blocks.push({ type: "context", text: `Note: ${t.buyer.note}` });
 	}
@@ -760,10 +781,11 @@ async function tipsBlocks(ctx: PluginContext): Promise<Block[]> {
 }
 
 async function invoiceBlocks(ctx: PluginContext, now: number, opts: PageOptions): Promise<Block[]> {
+	const siteHeight = (await ctx.kv.get<BridgeState>(KV.bridge))?.height ?? 0;
 	const r = await invoices(ctx).query({ where: { kind: "product" }, orderBy: { createdAt: "desc" }, limit: INVOICE_PAGE, ...(opts.cursor ? { cursor: opts.cursor } : {}) });
 	const blocks: Block[] = [{ type: "divider" }, { type: "header", text: "All invoices" }];
 	if (r.items.length === 0) blocks.push({ type: "context", block_id: "invoices_empty", text: "No orders yet." });
-	blocks.push(...r.items.map(({ data }) => invoiceItem(data, now, { acted: data.id === opts.acted, ...(opts.cursor ? { cursor: opts.cursor } : {}) })));
+	blocks.push(...r.items.map(({ data }) => invoiceItem(data, now, siteHeight, { acted: data.id === opts.acted, ...(opts.cursor ? { cursor: opts.cursor } : {}) })));
 	const nav: Block[] = [];
 	if (opts.cursor) nav.push({ type: "button", action_id: "invoices_newest", label: "Newest invoices" });
 	if (r.hasMore && r.cursor) nav.push({ type: "button", action_id: "invoices_page", label: "Load more", value: { cursor: r.cursor } });
@@ -787,8 +809,8 @@ const button = (label: string, value: string, style: "primary" | "secondary", co
  * One review item: a banner with the reason and its invoice, then a closed "Details and actions" toggle with what
  * happened and the one recommended action (decisions.md, 2026-10-08 and 2026-10-09).
  */
-function reviewItem(inv: Invoice, now: number): Block[] {
-	const t = totals(inv);
+function reviewItem(inv: Invoice, now: number, siteHeight: number): Block[] {
+	const t = totals(inv, siteHeight);
 	const expected = BigInt(inv.expectedAtomic ?? inv.minAtomic ?? "0");
 	const pct = expected > 0n ? (t.received * 100n) / expected : 0n;
 	const full = t.received >= t.threshold;
@@ -840,7 +862,7 @@ function reviewItem(inv: Invoice, now: number): Block[] {
 	}
 	actions.push(...productLink(inv));
 	const fields = [
-		{ label: "Received", value: receivedText(inv) },
+		{ label: "Received", value: receivedText(inv, siteHeight) },
 		{ label: "Confirmations", value: confirmationsText(inv, now) },
 		...(inv.buyer?.email ? [{ label: "Buyer email", value: inv.buyer.email }] : []),
 	];
@@ -861,6 +883,7 @@ function reviewItem(inv: Invoice, now: number): Block[] {
 
 /** Needs a decision: red first, then the oldest deadline, 12 at a time from `start`, up to item 60. */
 async function reviewBlocks(ctx: PluginContext, total: number, start: number, now: number): Promise<Block[]> {
+	const siteHeight = (await ctx.kv.get<BridgeState>(KV.bridge))?.height ?? 0;
 	if (total === 0) return [];
 	const all: Invoice[] = [];
 	let cursor: string | undefined;
@@ -876,7 +899,7 @@ async function reviewBlocks(ctx: PluginContext, total: number, start: number, no
 	const page = ordered.slice(from, Math.min(from + REVIEW_STEP, reachable));
 	const blocks: Block[] = [{ type: "divider" }, { type: "header", text: `Needs a decision (${total})` }];
 	if (total > REVIEW_STEP) blocks.push({ type: "context", text: `Showing ${from + 1}–${from + page.length} of ${total}.` });
-	blocks.push(...page.flatMap((inv) => reviewItem(inv, now)));
+	blocks.push(...page.flatMap((inv) => reviewItem(inv, now, siteHeight)));
 	const end = from + page.length;
 	const nav: Block[] = [];
 	if (from > 0) nav.push({ type: "button", action_id: "review_page", label: `Back to the first ${REVIEW_STEP}`, value: { start: 0 } });

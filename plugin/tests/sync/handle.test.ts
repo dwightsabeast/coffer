@@ -118,7 +118,9 @@ describe("pairing", () => {
 			const { code, state } = await newPairingCode(T0);
 			store.pairing = state;
 			for (const i of invoices) store.invoices.set(i.id, i);
-			const out = await send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS.test1 } }));
+			// The pairing carries its node's bounded height, above every invoice here (spec change 47's healing, where it
+			// is below, is in tests/redteam/floor.test.ts).
+			const out = await send(store, syncBody({ height: H0 + 200, pair: { code, publicKey: PUBLIC_KEYS.test1 } }));
 			return { store, response: out.response };
 		};
 		// Nothing watched: no suggestion, so the installer uses today.

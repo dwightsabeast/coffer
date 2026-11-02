@@ -7,6 +7,7 @@ import { type MoneroNetwork, subaddressNetwork } from "./address";
 import {
 	DUST_ATOMIC,
 	EXPIRY_GRACE_BLOCKS,
+	FLOOR_MARGIN_BLOCKS,
 	INVOICE_WINDOW_MS,
 	RECONFIRM_BLOCKS,
 	type Speed,
@@ -203,8 +204,27 @@ export interface Totals {
 	notCounted: number;
 }
 
-export function totals(inv: Invoice, include: (t: Transfer) => boolean = () => true): Totals {
-	const use = inv.transfers.filter((t) => counted(t) && include(t));
+/**
+ * RT-31's floor (spec change 47, D4 and D5): the lowest height a confirmed transfer may be mined at and still count
+ * toward this invoice. min(createdHeight, the site's height), so an invoice created under a height a dishonest node
+ * inflated heals when a pairing heals the site's height; siteHeight 0 (unknown) leaves createdHeight alone.
+ */
+export const floorHeight = (inv: Pick<Invoice, "createdHeight">, siteHeight: number) =>
+	(siteHeight > 0 ? Math.min(inv.createdHeight, siteHeight) : inv.createdHeight) - FLOOR_MARGIN_BLOCKS;
+
+/** Mined before this invoice could have been paid: an old payment to a reused address (RT-31), never counted toward it. */
+export const belowFloor = (inv: Pick<Invoice, "createdHeight">, t: Pick<Transfer, "height">, siteHeight: number) =>
+	t.height > 0 && t.height < floorHeight(inv, siteHeight);
+
+/** The spendable transfers below the floor: shown to the admin as ignored (D6), never to the buyer. */
+export const ignoredOld = (inv: Invoice, siteHeight: number) => inv.transfers.filter((t) => counted(t) && belowFloor(inv, t, siteHeight));
+
+/**
+ * Sums for an invoice at the site's height (the floor needs it; 0 when unknown). counted() describes money; this is what
+ * counts toward this invoice: counted, and not below its floor.
+ */
+export function totals(inv: Invoice, siteHeight: number, include: (t: Transfer) => boolean = () => true): Totals {
+	const use = inv.transfers.filter((t) => counted(t) && !belowFloor(inv, t, siteHeight) && include(t));
 	const received = use.reduce((sum, t) => sum + BigInt(t.amountAtomic), 0n);
 	const threshold =
 		inv.kind === "tip" && inv.minAtomic !== null ? BigInt(inv.minAtomic) : paidThreshold(BigInt(inv.expectedAtomic ?? "0"));
@@ -224,8 +244,8 @@ export function totals(inv: Invoice, include: (t: Transfer) => boolean = () => t
  * Before expiry everything counted counts; from expiresAt on, only payments made in time. Except tips: a tip is never
  * late, so every counted payment counts whenever it came (spec change 33).
  */
-export const basis = (inv: Invoice, now: number): Totals =>
-	now >= inv.expiresAt && inv.kind !== "tip" ? totals(inv, (t) => onTime(inv, t)) : totals(inv);
+export const basis = (inv: Invoice, now: number, siteHeight: number): Totals =>
+	now >= inv.expiresAt && inv.kind !== "tip" ? totals(inv, siteHeight, (t) => onTime(inv, t)) : totals(inv, siteHeight);
 
 export function classify(t: Totals, required: number): "new" | "seen" | "confirming" | "settled" {
 	if (t.received === 0n) return "new";
@@ -277,7 +297,7 @@ export function evaluate(input: Invoice, at: { now: number; chainHeight: number 
 	const snapshot = JSON.stringify(input);
 
 	if (before === "settled") {
-		const t = totals(inv);
+		const t = totals(inv, chainHeight);
 		if (t.received < t.threshold) {
 			// The counted money is gone (double-spent in a reorg, or flagged): review and alert at once.
 			inv.status = "review";
@@ -303,7 +323,7 @@ export function evaluate(input: Invoice, at: { now: number; chainHeight: number 
 		}
 	} else if (before === "expired") {
 		// A tip counts every payment, whenever it came (spec change 33); anything else only payments made in time.
-		const s = classify(inv.kind === "tip" ? totals(inv) : totals(inv, (x) => onTime(inv, x)), inv.required);
+		const s = classify(inv.kind === "tip" ? totals(inv, chainHeight) : totals(inv, chainHeight, (x) => onTime(inv, x)), inv.required);
 		if (s === "confirming" || s === "settled") {
 			// Paid in time (or a tip paid at all), reported after expiry: reopen and continue normally.
 			inv.status = s;
@@ -324,7 +344,7 @@ export function evaluate(input: Invoice, at: { now: number; chainHeight: number 
 			inv.reviewReason = "underpaid";
 		}
 	} else if (OPEN_STATUSES.has(before)) {
-		const t = basis(inv, now);
+		const t = basis(inv, now, chainHeight);
 		let s: InvoiceStatus = classify(t, inv.required);
 		inv.pendingExpiry = false;
 		if ((s === "new" || s === "seen") && now >= inv.expiresAt) {
@@ -345,7 +365,7 @@ export function evaluate(input: Invoice, at: { now: number; chainHeight: number 
 		inv.status = s;
 		if (s === "settled") {
 			inv.settledAt = now;
-			const all = totals(inv);
+			const all = totals(inv, chainHeight);
 			if (inv.kind !== "tip" && inv.expectedAtomic !== null && all.received > BigInt(inv.expectedAtomic)) {
 				inv.overpaidAtomic = (all.received - BigInt(inv.expectedAtomic)).toString();
 			}

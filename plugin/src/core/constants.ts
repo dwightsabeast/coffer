@@ -50,6 +50,14 @@ export const UNPAID_RUN_ALERT = 10;
  * because createdHeight runs high when blocks come slower than every 2 minutes (spec change 17). */
 export const RESTORE_MARGIN_BLOCKS = 720;
 
+/**
+ * RT-31's floor (spec change 47, D5): a confirmed transfer mined more than this many blocks below
+ * min(createdHeight, the site's height) doesn't count toward that invoice. An honest payment is mined at or above
+ * createdHeight but for a reorg past it; 30 is three times the deepest confirmation preset, and above the bridge's
+ * 10-block height tolerance (D2).
+ */
+export const FLOOR_MARGIN_BLOCKS = 30;
+
 /** Tips settle at or above this many atomic units (0.0001 XMR). */
 export const DUST_ATOMIC = 100_000_000n;
 

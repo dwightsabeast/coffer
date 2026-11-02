@@ -22,7 +22,9 @@ export function isWatched(inv: Invoice, now: number): boolean {
 	if (inv.status === "expired" || inv.status === "review") return now < inv.expiresAt + LATE_WINDOW_MS;
 	if (inv.status === "settled") {
 		if (inv.settledAt === undefined || now >= inv.settledAt + LATE_WINDOW_MS) return false;
-		return inv.reconfirmingSince !== undefined || totals(inv).depth < FINAL_DEPTH;
+		// The floor from createdHeight alone (0: no site height here). It's never below the min() evaluate uses, so it can
+		// only leave a settled invoice watched longer, never drop it early.
+		return inv.reconfirmingSince !== undefined || totals(inv, 0).depth < FINAL_DEPTH;
 	}
 	return false;
 }

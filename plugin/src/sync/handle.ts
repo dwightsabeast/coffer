@@ -323,7 +323,11 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 	// "starting" message (wallet-rpc not ready) say the wallet host is alive, not that its wallet has synced. Pairing
 	// forgets the previous host's sync and checks; "starting" keeps the last full sync.
 	const prev = await store.getBridgeState();
-	const height = Math.max(prev?.height ?? 0, parsed.height);
+	// Spec change 47, D4 (RT-26): a pairing whose request carries a height resets the site's height to it, lower
+	// included, so a height a dishonest node pushed up heals. The bridge sends only a bounded one (the node synchronized,
+	// within 10 blocks of a second node with a remote node), else 0, which keeps the stored height. A wallet still
+	// scanning reports through ordinary syncs, which never lower it.
+	const height = paired && parsed.height > 0 ? parsed.height : Math.max(prev?.height ?? 0, parsed.height);
 	const starting = parsed.checks?.wallet?.state === "starting";
 	const lastSyncAt = paired ? undefined : starting ? prev?.lastSyncAt : now;
 	const checks = paired ? undefined : parsed.checks;
@@ -415,7 +419,9 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 		response.probes = probeEntries(wallets).map((w) => ({ wallet: w.wallet, index: 1 as const, digest: w.probe.digest }));
 	}
 	if (paired && watched.length > 0) {
-		response.restoreHeight = Math.max(0, Math.min(...watched.map((inv) => inv.createdHeight)) - RESTORE_MARGIN_BLOCKS);
+		// From the healed height too (spec change 47): an invoice created under an inflated height doesn't put the new
+		// wallet's restore height in the future.
+		response.restoreHeight = Math.max(0, Math.min(height, ...watched.map((inv) => inv.createdHeight)) - RESTORE_MARGIN_BLOCKS);
 	}
 	return { response, events, ...(paired ? { paired, replaced } : {}) };
 }

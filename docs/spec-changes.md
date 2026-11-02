@@ -1677,7 +1677,8 @@ Proposal: three parts. Each choice is in the decisions below, with my recommenda
    - **The plugin:** no rise limit (D1). It would guard only against a stolen key or a bridge bug, and with D4's reset it could pin the site's height far below the chain.
    - **Tolerance and persistence (D2):**
      - "A few blocks" is 10, which must stay below D5's margin.
-     - The node check turns "mismatch" only after the disagreement has lasted a few minutes, so a briefly lagging public node doesn't make Health flap. The exact span goes in the build plan.
+     - **The clamp is immediate:** it applies from the first sync where the wallet is more than 10 blocks ahead of the second node (Wyatt, 2026-11-02).
+     - **Only Health's "mismatch" waits:** the node check turns "mismatch" after the disagreement has lasted 5 minutes, so a briefly lagging public node doesn't make Health flap.
 2. **The restore height:**
    - The installer never takes a suggested restore height above its node's height (or a second node's, with a remote node). Above it, it uses the node's height minus spec change 17's margin, and says so in one line.
    - The plugin never suggests a restore height above its own stored height.
@@ -1735,6 +1736,7 @@ Wyatt's decisions (2026-11-02):
 - **D2: the second node's height, with a tolerance of 10 blocks.** It must stay below D5's margin.
   - "Mismatch" only if the disagreement lasts a few minutes, so a briefly lagging public node doesn't make Health flap.
   - **Release-2 note (pass 2):** while the height is held because no second node answers, product checkout refuses, as when the node is syncing.
+  - **The span (Wyatt, later the same day):** 5 minutes, for Health's "mismatch" only. The clamp itself applies from the first sync more than 10 blocks ahead.
 - **D3: yes, both sides.**
 - **D4: (a), a pairing resets the site's height**, but only to the pairing request's height, and only if that's the node's bounded height, never a wallet still scanning.
   - Also: the floor uses `min(createdHeight, the site's current height) − margin`, so open invoices created under an inflated height heal with the site.

@@ -4684,3 +4684,15 @@ Full text in 47's "Wyatt's decisions". `decisions.md` gains a Design row, and it
 
 The closing bundle follows this commit.
 
+**Wyatt, later on 2026-11-02:**
+- **D2's span is 5 minutes,** for Health's "mismatch" only. The clamp to the second node's height applies from the first sync where the wallet is more than 10 blocks ahead. Recorded in 47 and in `decisions.md`.
+- **The order, which replaces the next step above:**
+  1. **The RT-26 + RT-31 build,** tests first, from 47 as accepted.
+  2. **RT-20.**
+  3. **One dev release and one live session** (one signing round), covering:
+     - **step 6's rerun:** RT-30, plus the floor. The phase 05 wallet's three old payments show as ignored on the admin page, and a fresh tip shows nothing received until Wyatt pays;
+     - **the installer's restore-height clamp;**
+     - **RT-20 live.**
+
+**Next step:** plan the RT-26 + RT-31 build session (plan mode; the matrix rows T14, R09, P02 and their new tests first). The closing bundle follows this commit.
+

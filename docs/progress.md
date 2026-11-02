@@ -4878,14 +4878,14 @@ Runbook:
   - **The answer:** at 22:57:29, after 54 s of scanning, a match with **wallet 1** (its stored probe), with `receivedTop` 2 (`state:paidTop:1` 2). So the phase 05 wallet had also been paid at index 2.
   - **Paid indexes kept out of the pool:** the pool started at index 3, above both paid indexes, 1 and 2.
 - **What it found:**
-  - **RT-32 (proposed Medium, release-1 blocker):** a re-pair started an endless address loop. `checkPool`'s bound, `claimedTop + 50` = 51, is below where the top-up's 50 addresses end (52), so each new address came back bad. 137 rows (52 to 188) were bad by 22:58:26, with a false sticky "not from your wallet" warning. I stopped the dev site at 22:58:30, which ended it.
+  - **RT-32 (proposed Medium, release-1 blocker):** a re-pair started an endless address loop. `checkPool`'s bound, `claimedTop + 50` = 51, is below where the top-up's 50 addresses end (52), so each new address came back bad. 137 rows (52 to 188) were bad by 22:58:26, with a false sticky "not from your wallet" warning. I stopped the dev site at 22:58:27, which ended it.
   - **RT-33 (proposed Low):** the height floor moved the settled old tip `inv_f7ea94de1471f114` to review as "reversed", with an alert, against Wyatt's answer 1(a). The build plan's premise was wrong (corrected in `docs/decisions.md`): a settled invoice stays watched until its payment is 10 blocks deep, for up to 24 hours, and with the floor its counted depth was 0.
 - **Not done:** the old tip's "ignored" line (it went to review instead) and the fresh tip. Both wait for step 2's rerun.
 - **Evidence:**
   - the loop's database, `~/xmr-pay-dev-data/redteam/live-step2-loop.db`, SHA-256 `a0e7a7b991159462f1e23266cf60497257134eaedc0b3bb1b76b374ad5a57616` (`integrity_check` ok);
   - `~/xmr-pay-dev-data/live-step2-watch.txt` (the watcher) and `~/xmr-pay-dev-data/live-step2-output.txt` (service, installer log, journal to 22:56:42, status);
   - the uninstall's output, `~/xmr-pay-dev-data/live-step2-uninstall-output.txt`.
-  - **Not saved yet:** the bridge's journal for the whole window needs sudo, so it's Wyatt's: `sudo journalctl -u xmr-bridge --since "2026-11-02 22:54:00 UTC" --until "2026-11-02 23:10:00 UTC" --no-pager -o short-iso-precise > ~/xmr-pay-dev-data/redteam/live-step2-bridge-journal.txt`.
+  - the bridge's journal for 22:54 to 23:10 UTC, saved by Wyatt after the wrap-up: `~/xmr-pay-dev-data/redteam/live-step2-bridge-journal.txt`, 304 lines, SHA-256 `18c82b47008250f9684e54324e302add8a8c691c7bdd9a3ffd41bf9b44c29b39`. Its timeline is in RT-32.
 
 **Wrap-up (Wyatt: stop for the night; no step 3, no fixes, no dev site):**
 - **Stopped:** the watcher (tmux `watch`), the release server (tmux `release`, 127.0.0.1:8099), the leftover tmux `site` shell and the wait loop. `astro dev status` reports none running. 4321, 4322 and 8099 are free.

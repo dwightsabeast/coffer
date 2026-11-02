@@ -854,7 +854,13 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
   - 22:57:29.801: the probe answer matched wallet 1, with `receivedTop` 2 (stored as `state:paidTop:1` 2). The bridge sent 50 addresses, indexes 3 to 52.
   - 22:57:30.104: the bridge's pool check reported index 52 as bad. The site marked it bad and raised the sticky pool-check mismatch for the new key.
   - The site, now one free address short, asked for one more. The bridge created 53, reported it bad on the next sync, and so on. By 22:58:26.094, 137 rows (52 to 188) were bad. The free rows were 3 to 51 and 189.
-  - 22:58:30: I stopped the dev site, which ended the loop. The bridge backs off while the site is down.
+  - 22:58:27: I stopped the dev site, which ended the loop: the bridge's sync in flight got EOF at 22:58:27.017. Its last report, index 189, never landed, so the site holds 189 as free. The bridge then backed off as designed (15 s, 30 s, 1, 2, 4 and 5 minutes).
+  - **The bridge's side** (its journal, 22:54 to 23:10 UTC):
+    - 22:57:29.500 "answering the site's wallet probe" `match=true receivedTop=2`;
+    - 22:57:29.636 "re-offering this wallet's unused addresses" `from=2 count=0` (index 2 is paid, so nothing to re-offer);
+    - 22:57:29.749 "created pool addresses" `count=50` (3 to 52);
+    - from 22:57:30.101, 138 warnings "the site holds addresses that aren't from this wallet", each naming one index, 52 to 189, alternating with 137 "created pool addresses" `count=1`.
+    - One cycle took 0.23 s at the start and 0.72 s at the end, 0.42 s on average, slowing as the site's rows grew. Nothing in the bridge slowed or stopped it; only a warning was logged.
   - No invoice was affected: all the bad rows were free (0 invoices with `not_your_wallet`).
 - **Cause:** `checkPool` (`bridge/internal/bridgeloop/bridgeloop.go`) reports any check-list row above `claimedTop + maxPool` as bad at once, with nothing created (RT-27's bound). With `claimedTop` 1, that bound is 51. But the top-up starts above `receivedTop`, 2, so a full pool of 50 ends at 52, past the bound. Every address the bridge creates to refill is past it too, so the loop never ends.
 - **Reach:** any re-pair whose matched wallet has received at an index above the site's highest claimed row: a wallet used by another install or another site, a site restored from an older backup, or a payment to an address the site never handed out. The shop wallet's re-pairs in 46's live check didn't hit it, because its `claimedTop` (358) was above its highest paid index (305).
@@ -863,7 +869,7 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
   - The site's pool fills with bad rows, and the admin sees the sticky "addresses not from your wallet" warning, which is false here.
   - No money is at risk. A bad row is never handed out, and the bad rows here had no invoices.
 - **Fix idea (Wyatt decides; next session's plan, tests first):** take the bound from the same base as the top-up, `max(claimedTop, receivedTop) + maxPool`, or report as bad only a row whose address the wallet holds with a different digest, or doesn't hold. Either way, an address the bridge created itself must never come back bad.
-- **Evidence:** the site's database as the loop left it, `~/xmr-pay-dev-data/redteam/live-step2-loop.db` (SHA-256 `a0e7a7b991159462f1e23266cf60497257134eaedc0b3bb1b76b374ad5a57616`, `integrity_check` ok); the watcher's log `~/xmr-pay-dev-data/live-step2-watch.txt`; the collection script's output `~/xmr-pay-dev-data/live-step2-output.txt`. The bridge's journal for the window is Wyatt's to save (sudo), to `~/xmr-pay-dev-data/redteam/live-step2-bridge-journal.txt`.
+- **Evidence:** the site's database as the loop left it, `~/xmr-pay-dev-data/redteam/live-step2-loop.db` (SHA-256 `a0e7a7b991159462f1e23266cf60497257134eaedc0b3bb1b76b374ad5a57616`, `integrity_check` ok); the watcher's log `~/xmr-pay-dev-data/live-step2-watch.txt`; the collection script's output `~/xmr-pay-dev-data/live-step2-output.txt`. The bridge's journal for 22:54 to 23:10 UTC, saved by Wyatt (sudo), `~/xmr-pay-dev-data/redteam/live-step2-bridge-journal.txt` (304 lines, SHA-256 `18c82b47008250f9684e54324e302add8a8c691c7bdd9a3ffd41bf9b44c29b39`; no key, seed or password words in it).
 - **Status:** open.
 
 ## RT-33 — The height floor moves a tip settled before the floor existed to review as "reversed", with an alert

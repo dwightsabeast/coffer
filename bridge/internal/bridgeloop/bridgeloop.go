@@ -179,6 +179,9 @@ type Loop struct {
 	nodeErr  error
 	// RT-30: when the "waiting for the wallet to scan" line was last logged (zero once the probe is answered).
 	scanLoggedAt time.Time
+	// stateKey is the key the per-pairing state above was built under (46's step 5b, Wyatt): the watch list, the
+	// answer, the pool report and the re-offer belong to one pairing and never go out under another.
+	stateKey string
 }
 
 // New loads any pending addresses from a previous run.
@@ -373,22 +376,72 @@ var ErrStarting = errors.New("wallet-rpc isn't ready yet; told the site the wall
 // ErrNotPaired: no bridge key yet.
 var ErrNotPaired = errors.New("this wallet host is not paired yet. Press " + sitetext.Button + " and run the command it shows")
 
-func (l *Loop) syncOnce(ctx context.Context) error {
-	key := l.o.Key
-	if l.o.LoadKey != nil {
-		k, err := l.o.LoadKey()
-		if errors.Is(err, os.ErrNotExist) {
-			return ErrNotPaired
-		}
-		if err != nil {
-			return fmt.Errorf("bridge key: %w", err)
-		}
-		key = k
+// loadKey reads the bridge key (Options.LoadKey, else Options.Key).
+func (l *Loop) loadKey() (ed25519.PrivateKey, error) {
+	if l.o.LoadKey == nil {
+		return l.o.Key, nil
 	}
+	k, err := l.o.LoadKey()
+	if errors.Is(err, os.ErrNotExist) {
+		return nil, ErrNotPaired
+	}
+	if err != nil {
+		return nil, fmt.Errorf("bridge key: %w", err)
+	}
+	return k, nil
+}
+
+// adoptKey makes key the one the per-pairing state belongs to. After a pairing (a new key) that state is dropped:
+// the watch list is learned again, and an answer, a pool report or a re-offer made for the old pairing is never sent
+// under the new one (a stale "mismatch" would raise the sticky banner on it). Pending addresses stay: they are this
+// wallet's unused addresses, and the new pairing's site decides whether to take them. Called with l.mu held.
+func (l *Loop) adoptKey(key ed25519.PrivateKey) {
+	k := keyText(key)
+	if l.stateKey != "" && l.stateKey != k {
+		l.watch, l.cursor = nil, 0
+		l.answer, l.report, l.reportNow = nil, nil, false
+		l.reofferPending, l.reoffer = false, nil
+		l.waiting = false
+	}
+	l.stateKey = k
+}
+
+// keyChanged reads the key again just before a send. If a pairing replaced it after this sync began, the body built
+// under the old pairing is dropped, not re-signed (Wyatt, 5b): the state is reset and the next sync starts at once
+// with the new key. Nothing in the dropped body counts as delivered.
+func (l *Loop) keyChanged(key ed25519.PrivateKey) (bool, error) {
+	now, err := l.loadKey()
+	if err != nil {
+		return false, err
+	}
+	if keyText(now) == keyText(key) {
+		return false, nil
+	}
+	l.mu.Lock()
+	l.adoptKey(now)
+	l.soon = true
+	l.mu.Unlock()
+	l.o.Log.Info("the bridge key changed during this sync (a new pairing); starting again with the new key")
+	return true, nil
+}
+
+func (l *Loop) syncOnce(ctx context.Context) error {
+	key, err := l.loadKey()
+	if err != nil {
+		return err
+	}
+	l.mu.Lock()
+	l.adoptKey(key)
+	l.mu.Unlock()
 	wctx, cancel := context.WithTimeout(ctx, walletTimeout)
 	w, err := l.o.Wallet(wctx)
 	cancel()
 	if err != nil {
+		// Waiting for wallet-rpc can take walletTimeout: the key is read again, and this message holds nothing from a
+		// pairing, so it simply goes out under the current key.
+		if k, kerr := l.loadKey(); kerr == nil {
+			key = k
+		}
 		return l.sendStarting(ctx, key, fmt.Errorf("wallet-rpc isn't ready: %w", err))
 	}
 	height, err := w.GetHeight(ctx)
@@ -453,6 +506,9 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 	l.mu.Lock()
 	l.st.WalletCheck = checks.Wallet
 	l.mu.Unlock()
+	if changed, err := l.keyChanged(key); err != nil || changed {
+		return err
+	}
 	for {
 		body := syncclient.Body{V: syncclient.ProtocolV, Seq: l.nextSeq(), Height: height, Addresses: addresses, Snapshots: snapshots[:sent], Checks: checks, Wallet: answer, ProbeDigest: probeDigest}
 		resp, err = l.o.Site.Send(ctx, key, body)
@@ -679,6 +735,9 @@ func (l *Loop) sendReport(ctx context.Context, key ed25519.PrivateKey, height ui
 	l.mu.Unlock()
 	checks := &syncclient.Checks{Node: &syncclient.Check{State: string(nc.State), Detail: nc.Detail}, Pool: report}
 	body := syncclient.Body{V: syncclient.ProtocolV, Seq: l.nextSeq(), Height: height, Addresses: []syncclient.Address{}, Snapshots: []syncclient.Snapshot{}, Checks: checks}
+	if changed, err := l.keyChanged(key); err != nil || changed {
+		return err
+	}
 	_, err := l.o.Site.Send(ctx, key, body)
 	l.mu.Lock()
 	defer l.mu.Unlock()

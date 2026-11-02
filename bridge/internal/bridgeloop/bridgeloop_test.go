@@ -166,6 +166,8 @@ type fakeSite struct {
 	probes      []syncclient.Probe
 	answers     []syncclient.WalletAnswer
 	keepWaiting bool // record answers but keep waiting
+	// signers is the public key each recorded body was signed with (46's step 5b).
+	signers []string
 }
 
 func (s *fakeSite) claimedTopNow() uint32 {
@@ -208,13 +210,14 @@ func (s *fakeSite) checkList() []syncclient.CheckEntry {
 	return out
 }
 
-func (s *fakeSite) Send(_ context.Context, _ ed25519.PrivateKey, b syncclient.Body) (syncclient.Response, error) {
+func (s *fakeSite) Send(_ context.Context, k ed25519.PrivateKey, b syncclient.Body) (syncclient.Response, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.limit > 0 && len(b.Snapshots) > s.limit {
 		return syncclient.Response{}, syncclient.ErrTooLarge
 	}
 	s.bodies = append(s.bodies, b)
+	s.signers = append(s.signers, keyText(k))
 	if s.fail != nil {
 		return syncclient.Response{}, s.fail
 	}

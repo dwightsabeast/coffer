@@ -204,7 +204,7 @@ Effect on the admin budget: none.
 Effect on the trust contract: none.
 Wyatt's decision (2026-10-04): accepted with the 3d plan. Wyatt updates the live spec and `docs/spec.md`.
 
-## 13. The remote-node cross-check: what is compared, when, with whom, and how the site hears of it  (status: accepted, 2026-10-04)
+## 13. The remote-node cross-check: what is compared, when, with whom, and how the site hears of it  (status: accepted, 2026-10-04; item 4 amended 2026-11-02, see below)
 Found in: phase 03 session 3e plan
 Spec says: Bridge service, duty 6: "Cross-check on remote nodes: before reporting a transfer as confirmed, compare the block hash at its height with a second node. A mismatch holds the transfer at 0 confirmations and turns a health check red." Open question 12: which second nodes to use by default.
 Evidence (reasoning, before code): the wallet trusts its node's view of the chain. Comparing "the block hash at its height" means asking the configured node for that hash, and a dishonest node could serve the wallet a fabricated block yet answer that question honestly. Asking the second node about the txid directly would close that, but tells the second node's operator which transactions this wallet host cares about.
@@ -221,6 +221,14 @@ Proposal (Wyatt's decisions, 2026-10-04):
 5. **The site:** the bridge sends an optional `checks` field in the sync body (the plugin ignores unknown fields today); the plugin shows it on the admin page in phase 04. Until then it shows in `xmr-bridge status` and the log.
 Effect on the admin budget: none (no setting; your own node needs nothing).
 Effect on the trust contract: none for the plugin. The bridge makes outbound requests to the listed public nodes only when the configured node is remote.
+
+**Item 4 amended (Wyatt, 2026-11-02, with spec change 47 and RT-26; built in `4615ceb`):**
+- **The change:** with a remote node, while no second node answers, mined transfers are held at 0 confirmations, instead of passing the configured node's counts through. The same holds when a block can't be fetched from either node.
+- **Why:** the reported height now fails closed (spec change 47), so confirmations do too. Otherwise a dishonest remote node with no second node reachable could claim any depth.
+- **Unchanged:** the shop's own node.
+- **The check:** still "unavailable", but no longer amber in effect. Payments don't settle until a second node answers, and the detail now says so.
+- **Mainnet:** the built-in mainnet list is still empty, so a remote mainnet node holds every payment until it's chosen. That makes the list a release-1 blocker, as recorded on the before-phase-09 list.
+- **Spec text to fold in (Wyatt):** duty 6's second sentence, "… A mismatch, or no second node answering, holds the transfer at 0 confirmations and turns a health check red."
 
 ## 14. The plugin is renamed Coffer (slug `coffer`)  (status: proposed, 2026-10-05; the rename itself is Wyatt's decision, the spec text is for him to fold in)
 Found in: Wyatt's request before phase 03 session 3h. Code changed in commit `2f0bdf1`.
@@ -1624,7 +1632,7 @@ Also found while building the bridge:
 - **A response that says the site is waiting** took no addresses, so the bridge keeps the addresses it carried pending, rather than dropping them as delivered.
 - **The bridge sends `probeDigest` only once its wallet has index 1.** It creates index 1 only to answer a probe; a fresh wallet's first top-up creates it, and the next sync carries the digest.
 
-## 47. A chain height a remote node can't inflate, and payments older than the invoice don't count (RT-26, RT-31)  (status: accepted, 2026-11-02, with Wyatt's decisions below; the proposal text includes them; nothing built yet)
+## 47. A chain height a remote node can't inflate, and payments older than the invoice don't count (RT-26, RT-31)  (status: accepted, 2026-11-02, with Wyatt's decisions below; the proposal text includes them; built 2026-11-02 on `redteam-1`, see "Built"; live check at the combined session)
 Found in: 07b pass 1. RT-26 came from round 2's white box (Step 3); RT-31 from the fix sessions, in 46's live step 6.
 
 Spec says:
@@ -1756,3 +1764,23 @@ Effect on the trust contract:
 - **None** to capabilities, hosts, routes, collections or indexes.
 - **The plugin:** a mark on an ignored transfer inside an invoice row (no new index).
 - **The bridge:** already reads the second node's `get_info`.
+
+**Built (2026-11-02, tests first; Wyatt's answers to the build plan: (a) for settled invoices, fail closed with no second node, the pairing height bounded both ways):**
+- **`4615ceb`, the bridge:**
+  - The height bound: the second node's height beyond 10 blocks, from the first sync, and "mismatch" after 5 minutes. With no second node, height 0 and "unavailable".
+  - Spec change 13 amended: with no second node, or a block that can't be fetched, mined transfers are held at 0.
+  - `BoundedHeight` for both pairing paths.
+- **`889d652`, the installer:** a suggestion above the bounded height becomes that height − 720, with one line. With nothing suggested, the wallet starts at the bounded height.
+- **`300fa80`, the plugin:**
+  - **The floor** (`FLOOR_MARGIN_BLOCKS` 30), through `totals(inv, siteHeight)`.
+  - **D6's line:** derived when shown, so settled invoices from before the floor show it too.
+  - **The reset at a pairing,** and the restore suggestion from the healed height.
+  - **Checkout at height 0:** refused, tips included when the host has reported without a height. A site that never synced still answers `NO_ADDRESS_AVAILABLE`.
+- **Found while building:**
+  - **Part 4:** both pairing paths sent the node's raw `get_info` height, and the bounded height now replaces it. The pair command's test was red on 94,954 from a node still catching up.
+  - **The installer's no-suggestion path** also took the node's raw height, so a dishonest remote node could start a new wallet in the future. It now takes the bounded height.
+  - **Visitor tips** never used checkout's height rule (spec change 33 takes them whatever the host's state). Height 0 is now their one exception.
+- **Live check, at the combined session** (one dev release with RT-20):
+  - step 6's rerun, with the old tip `inv_f7ea94de1471f114` as the live view of D6's line, and a fresh tip that shows nothing received until Wyatt pays;
+  - the installer's clamp.
+

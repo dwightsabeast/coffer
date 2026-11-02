@@ -33,12 +33,12 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open |
 | RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | fixed 2026-11-01 (spec change 46, item 5) |
 | RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open |
-| RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | open; **release 1, with RT-31's floor**; spec change 47 accepted 2026-11-02 (D1–D7), not built |
+| RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | fixed in code 2026-11-02 (spec change 47); live at the combined session; **release 1** |
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | fixed 2026-11-01 (spec change 46, bridge side) |
 | RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | fixed 2026-10-31 |
 | RT-29 | Medium | T20, T03, R08 | 1, fix planning | A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first | fixed 2026-10-31 with RT-11 (spec change 45) |
 | RT-30 | Medium (Wyatt, 2026-11-02) | P02, R09 | 1, fix sessions (46 live) | The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool | fixed in code 2026-11-02 (`73781ec`); live at step 6's rerun; **blocks release 1** until then |
-| RT-31 | High (Wyatt, 2026-11-02) | P02, T14 | 1, fix sessions (46 live) | A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice | open; **release 1, with RT-26's fix**; spec change 47 accepted 2026-11-02 (D1–D7), not built |
+| RT-31 | High (Wyatt, 2026-11-02) | P02, T14 | 1, fix sessions (46 live) | A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice | fixed in code 2026-11-02 (spec change 47); live at the combined session; **release 1** |
 
 ---
 
@@ -569,8 +569,10 @@ The spec's Privacy list says nothing about remote nodes. Spec change 13 says the
 
 - **Rows:** T14, R09. **Severity:** Medium (Wyatt ruled, 2026-10-30). It needs no key, only a remote node that lies, and its effect outlasts switching to an honest node. **Pass 1, round 2, Step 3 (white box).**
 - **Tests:**
-  - Go `internal/bridgeloop/redteam_test.go`, "[T14][R09] [RT-26] …" (`t.Skip("RT-26 open")`; without the skip it reports a height 1,000,000 blocks ahead, 15 s after the last).
-  - Plugin `tests/redteam/whitebox.test.ts`, "E4, plugin side" (passing: the consequence).
+  - Go `internal/bridgeloop/redteam_test.go`, "[T14][R09] [RT-26] …". It was skipped while open; without the skip it reported a height 1,000,000 blocks ahead, 15 s after the last.
+    - **Reshaped at the fix (2026-11-02) to Wyatt's D1:** "a wallet height a million blocks ahead of the second node is reported as the second node's", with an own-node twin.
+    - **Why:** the first form bounded the rise by elapsed time, which D1 rejected.
+  - Plugin `tests/redteam/whitebox.test.ts`, "E4, plugin side" (passing: the consequence). Its third test, a pairing carrying no height, still gets a future restore height from the plugin. The installer's clamp covers that case.
 - **How a node does it:**
   - **The bridge reports wallet-rpc's `get_height` unchecked** (`bridgeloop.go`, `SyncOnce`).
   - **wallet-rpc's height is the length of the chain its node served.** `get_height` returns `get_blockchain_current_height()`, which is `m_blockchain.size()` (`monero-v0.18.5.1/src/wallet/wallet_rpc_server.cpp:943`, `wallet/wallet2.h:1230`).
@@ -584,7 +586,15 @@ The spec's Privacy list says nothing about remote nodes. Spec change 13 says the
   - check the reported height against the cross-check's second nodes;
   - cap how far it may move per sync, by elapsed time;
   - in the installer, never take a suggested restore height above the node's own height (and, on the plugin side, never suggest one above a cross-checked height).
-- **Status:** open.
+- **Fix (spec change 47, Wyatt's D1–D4 and answers 2–3; bridge `4615ceb`, installer `889d652`, plugin `300fa80`):**
+  - **The bridge, with a remote node:** it reports the wallet's height while that's at most 10 blocks above a second node's, else the second node's, from the first such sync. Health's "mismatch" follows after 5 minutes.
+    - With no second node, it reports height 0 (the site keeps its own) and holds mined transfers at 0 confirmations (spec change 13 amended).
+  - **Pairing requests** carry only a bounded height, and the site resets its height to it (D4).
+  - **The installer** never scans from above the bounded height.
+  - **The plugin** suggests a restore height from the healed height, and refuses checkout, tips included, while it has no height.
+  - **Tests:** Go `crosscheck/rt26_test.go`, `bridgeloop/rt26_test.go`, `cmd/xmr-bridge/rt26_test.go`, `installer/rt26_test.go`; plugin `tests/redteam/floor.test.ts`.
+- **Still to do:** the live session, in one release with RT-20 and step 6's rerun.
+- **Status:** fixed in code; release 1 waits for the live session.
 
 ## RT-27 — The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses
 
@@ -816,5 +826,12 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 - **Why it matters beyond RT-30:** the site's guarantee is "a fresh subaddress per invoice" (P02), checked only against other invoices on the site. An address the wallet used before Coffer, or under another site or install, isn't fresh, and the plugin can't see that. A height floor would have made RT-30 harmless here: the tip would have stayed unpaid, waiting for a real payment.
 - **Fix idea (Wyatt decides):** ignore a *confirmed* transfer whose height is below `createdHeight` minus a small margin (`createdHeight` can run a little high, spec change 17's `RESTORE_MARGIN_BLOCKS`); unconfirmed ones (no height yet) still count. Show ignored old transfers to the admin rather than dropping them silently.
 - **Checked against RT-26:** `createdHeight` is the site's last reported chain height (`checkout.ts:275`, `checkoutHeight`), which RT-26 lets a dishonest remote node push up for good. With a floor, an inflated height would move the floor above real payments: honest payments to new invoices would be ignored, and the invoices would expire unpaid (lost sales, the money still in the shop's wallet). So the floor needs RT-26's fix first, or a floor from something a node can't inflate (for example the cross-checked height, or the height when the address was handed out bounded by elapsed time). Without RT-26's fix, the floor trades this finding for a remote denial of service.
-- **Status:** open.
+- **Fix (spec change 47, D4–D6; plugin `300fa80`):**
+  - **The rule:** a confirmed transfer mined below `min(createdHeight, the site's height) − 30` (`FLOOR_MARGIN_BLOCKS`) doesn't count toward the invoice's sums or settlement. An unconfirmed one counts as before.
+  - **Unchanged:** the paid-top behind the gap warning still sees the transfer.
+  - **The admin page** shows the ignored transfers with their amount, under the tip in Newest tips and on the invoice and review views. The buyer's status route never does.
+  - **Derived when needed, not stored,** so settled invoices from before the floor show the line too (Wyatt's answer 1). The dev site's `inv_f7ea94de1471f114` keeps its "settled" status as history.
+  - **Tests:** `tests/redteam/floor.test.ts`, "[P02][T14] [RT-31] …", among them the live shape and the margin's edge.
+- **Still to do:** the live session. The old tip `inv_f7ea94de1471f114` is the live view of the admin line, and a fresh tip shows nothing received until Wyatt pays.
+- **Status:** fixed in code; release 1 waits for the live session.
 

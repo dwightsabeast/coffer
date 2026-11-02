@@ -1354,7 +1354,7 @@ Decided while building (Wyatt, 2026-10-31):
    - `compareAndDelete` is reachable from the sandbox (sandbox-workerd 0.9.5 bridges `storage/compareAndDelete`) but isn't used.
 4. **Admin wording:** "Paired · stagenet" (or mainnet, testnet), "Paired · network not known yet", "Not paired". No bracket.
 
-## 46. The honest bridge checks the site's pool, and a re-pair knows whether the wallet changed (RT-08, the rest of RT-29)  (status: accepted, 2026-11-01, with Wyatt's decisions below; the proposal text already includes them; plugin and bridge sides built 2026-11-01 on `redteam-1`, with Wyatt's review of the bridge plan below; live check pending)
+## 46. The honest bridge checks the site's pool, and a re-pair knows whether the wallet changed (RT-08, the rest of RT-29)  (status: accepted, 2026-11-01, with Wyatt's decisions below; the proposal text already includes them; plugin and bridge sides built 2026-11-01 on `redteam-1`, with Wyatt's review of the bridge plan below; live check 2026-11-02: steps 1–5 and 7 pass, step 6's switch passes but its payment proof waits for RT-30 and RT-31, found there)
 Found in: 07b pass 1.
 - **RT-08 (High):** a stolen bridge key adds pool addresses that tippers then pay.
 - **RT-24 (Low):** a far-future `seq` freezes an invoice.
@@ -1536,6 +1536,14 @@ Evidence:
    - **Wyatt** re-runs the installer with the shop wallet.
    - Expected: the answer "match wallet 0"; the first pool address is 357, because wallet 0's 357–405, dropped in step 6, are re-offered; the baseline is wallet 0's again.
 8. **The record:** evidence to `~/xmr-pay-dev-data/46-*.txt`, and a bundle at the end.
+
+**Live check, as run (2026-11-02; details in `docs/progress.md`):**
+- **Step 2 had no `xmr-bridge update` command.** The dev build updated itself from the served release in a minute, which also showed that a self-update never refreshes the root-owned admin copy (the open admin-copy question).
+- **Steps 6 and 7 needed `uninstall --delete-data` first:** the installer refuses another address on a machine that hosts one.
+- **Step 4 used two forged rows (Wyatt):** a held index the site lacked, and `claimedTop` + 100,000. Both were bad within one sync, and a checkout got neither.
+- **Step 5 ran twice:** by installer (5a) and by `pair --code -` with the service running (5b).
+- **Step 6's second wallet had history:** RT-30 (the probe answered before the scan) and RT-31 (old transfers count toward a new invoice). D2's `wallet_changed` expiry passed; the payment proof waits for the fixes and a truly new wallet.
+- **Step 7 expected `claimedTop` + 1 (359)**, not a fixed 357: earlier steps claimed rows.
 
 Effect on the admin budget: none for setup. The new Health lines appear only when something is wrong, and no setting, step or upkeep is added. Switching wallets needs no lookahead change any more, so the doc note planned in spec change 45 isn't needed.
 

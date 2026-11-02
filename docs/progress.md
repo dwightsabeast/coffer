@@ -4527,3 +4527,50 @@ Backup before the live check: `~/xmr-pay-dev-data/redteam/46-before-live.db` (as
    - **The payment proof waits** for the fix and a wallet that's truly new.
    - **The restore height was 2,230,020** (`46-live-step6-restore.txt`). No installer line names the site's suggestion (about 2,241,429), so it came from `--restore-height`; being below the suggestion, it drew no warning. With the suggestion, the old payments would have been outside the scan and step 6 would have looked clean. Added to RT-30's record.
    - **D2 live: PASS.** The shop tip `inv_0eebd504fb0ec85f` (index 358, nothing received) expired with `expiredReason: "wallet_changed"` at 16:50:22.8, 10 s after its 16:50:12.3 deadline (the next sync). The status route shows `expired` (`46-live-step6-shoptip-expiry.txt`).
+7. **Step 7, back to the shop wallet:** PASS (`46-live-step7-output.txt`, `46-live-step7-site.txt`, `46-live-step7-before.txt`).
+   - **The procedure:** uninstall (16:55:11), then install of `59nA…etgQ` with no `--restore-height`. The installer took the site's suggestion ("open invoices from about block 2241400") and restored the wallet from keys.
+   - **The bridge:**
+     - 16:57:39.56: `match=true receivedTop=0`, 35 ms after the wallet opened at 579,994, so again before any scan (RT-30's timing).
+     - "catching the wallet up" `target=358`, a rescan of 358 addresses, caught up at 16:57:49: **the catch-up stopped at `claimedTop` 358.**
+     - "re-offering" `from=359 count=0` (nothing above 358 in the restored wallet), then "created pool addresses" `count=50`.
+   - **The site:**
+     - 16:57:32: the pairing (key `+ckxCG2o…`, waiting, wallet 1's 50 free rows dropped).
+     - 16:57:40: matched wallet 0.
+     - 16:57:50: free rows **359–408**, the first new address `claimedTop` + 1, with nothing skipped.
+     - Health "Address check: OK", no banner, `previousSeen` none.
+     - **Wallet 0's baseline is back** ("Unpaid addresses since the last payment: 53", 5a's 52 plus the expired shop tip), so the pre-scan `receivedTop=0` didn't reset it.
+8. **The record:**
+   - **Matrix:** live notes on T03, T04, T29 and R08, and the RT-30/RT-31 gap on P02.
+   - **Spec change 46:** status, plus a "Live check, as run" list. `docs/spec.md` is unchanged.
+   - **Findings:** RT-08 (its live result; still open for Wyatt), RT-29's 46 note, and RT-30 and RT-31 (above).
+
+**Results, the live check:**
+
+| Step | Result |
+| --- | --- |
+| 1 | PASS |
+| 2 | PASS (self-update) |
+| 3 | PASS |
+| 4 | PASS (both sides) |
+| 5a, 5b | PASS (5b's old-key race wasn't hit, so it isn't proven absent) |
+| 6 | the switch PASS; D2 PASS; RT-30 and RT-31 found; payment proof not run |
+| 7 | PASS |
+
+**Not covered:**
+- step 6's payment to a truly new wallet;
+- CI (nothing pushed);
+- `-race`;
+- mainnet.
+
+**Open, for Wyatt:**
+- **Severities:** RT-30 (proposed Medium) and RT-31 (proposed High).
+- **RT-31's floor depends on RT-26.**
+- **The installer refusal:** it could name the installed address (cost two codes in 5a).
+- **The admin-copy question:** live evidence above.
+- **Whether to restore `46-before-live.db`:** the installed bridge is now paired with key `+ckxCG2o…`, which that backup doesn't know.
+
+**Next step:** Wyatt rules on RT-30 and RT-31. Then a fix session, tests first:
+- the bridge answers the probe only after the wallet has scanned to its node's height;
+- the plugin's height floor, after or with RT-26's fix.
+
+Then step 6's payment proof with a truly new wallet.

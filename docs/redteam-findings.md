@@ -15,7 +15,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | open |
 | RT-06 | Low | F01 | 1, 1 | The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature | open |
 | RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | open |
-| RT-08 | High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open; spec change 46 built 2026-11-01 (plugin and bridge), live check pending |
+| RT-08 | High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open; spec change 46 built 2026-11-01 (plugin and bridge); live 2026-11-02: forged rows reported bad within one sync and never handed out |
 | RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open |
 | RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open |
 | RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | fixed 2026-10-31 (spec change 45) |
@@ -134,6 +134,7 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Reach:** needs the bridge signing key (the stolen-key position, a stated design limit). Within that, it reaches real tipper money, not only a fake record. The pay-page-control caveat in the spec's wallet-host table (an attacker who controls the site "can show their own address on the pay page") covers a site break-in, not a stolen bridge key on an intact site. This is a report-completeness finding against the T03 wording: the public report must state that a stolen bridge key can route new tips to the attacker, not only mark invoices paid. Scope matches the plan's D2 break condition exactly; no probing beyond D2 (Wyatt, 2026-10-26).
 - **Evidence:** vitest output, round 1.
 - **Status:** open. For Wyatt: whether this is a wording fix to the report (the mechanism is the stated stolen-key limit) or a change (e.g. the plugin pinning pool addresses it can verify belong to the shop wallet — but the plugin holds no wallet material, so it can't verify an address; this likely stays a documented limit).
+- **Live, spec change 46 (2026-11-02, dev site, stagenet, release `37742ab`):** two forged free rows, tagged with the current key as a thief's sync would add them: index 306 (held by the wallet, missing on the site, a made-up address) and `claimedTop` + 100,000. Both were `bad` 512 ms after the write. The honest bridge's next sync carried them in its `check` list, and its report-only sync followed 43 ms later; the worst case is one sync interval, about 15 s. The bridge created nothing for the far row. A checkout at +46 s got 357, neither row. The banner showed until the next pairing. Evidence: `~/xmr-pay-dev-data/46-live-step4*.txt`. RT-08 stays open for Wyatt's ruling.
 - **Ruling (Wyatt, 2026-10-31): High.** It's gated only by a stolen bridge key, but the outcome is Critical-class.
   - **Fix sessions:** look for detection (for example the honest bridge checking the site's pool against its own wallet) and fast re-pairing.
   - **If nothing holds,** it becomes an accepted limit with honest wording. Draft for T03, the spec and the public report (spec change 44): "A stolen bridge key can't spend from or read your wallet, but until you re-pair it can send new tips to the thief's wallet, and your Tips page may still show them as received. If tips listed there are missing from your wallet app, re-pair."
@@ -767,6 +768,7 @@ Not Coffer code: tier 1 keeps it out of everything Coffer ships. But it's the tr
     - So on a "no match" for a wallet with history (both sides rebuilt, or a reused wallet paired as new), `create_address` can hand out addresses that already received payments, and `receivedTop` can be far too low.
     - A match is fine: the catch-up creates up to `claimedTop` and rescans.
     - The install docs will say to use a wallet made for this shop (phase 09). It's on pass 2's list.
+  - **Live, 2026-11-02 (46's live check):** the same-wallet re-pairs (installer and `pair --code -`) matched and re-offered 358–407 with nothing skipped; the switch to a second wallet started at its own index 1 (2³²+1); the shop wallet restored from keys after it matched wallet 0, caught up to `claimedTop` 358 only, and started its pool at 359. The second wallet had history, which exposed RT-30 and RT-31: the known limit above is wider than recorded, because the probe answer comes before the wallet has scanned at all.
 
 ---
 

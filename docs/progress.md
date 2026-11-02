@@ -4841,3 +4841,14 @@ Runbook:
   - The operator skip and the second opinion do apply on stagenet. With kernal configured, the second nodes are five hosts from four operators (monerodevs counts once), and step 3b blocks all five.
 - **Release checklist** (phase 09): the mainnet list is ticked, and "Grow the HTTPS second-node list" is added.
 - **Tests:** `operators_test.go`, 9 cases: 7 failed on the old code, and 2 are guards that pass either way. Bridge gofmt, vet, `go test ./...`, `go test -race ./...` and the static build pass.
+
+**Before the live session (2026-11-02, Wyatt's request):**
+- **Dev release `0.0.202611022057-dev.1df3c4d`** (go1.27.3, no `.dirty`) in `~/xmr-pay-dev-data/dev-release/`, unsigned and not served yet.
+  - **Shipped code:** the same as `6dd4ef6`. `1df3c4d` adds only `bridge/internal/crosscheck/live_mainnet_test.go` (a test file, not compiled into the binary) and a `CLAUDE.md` row.
+  - **SHA-256:** amd64 `50c86d9c9ca3705414e907f860890e69950018a2693647455ed7fe6742c052ab`; arm64 `ed6d55ee8d335bcf7f72022a7be798d0621b97e118dd583f5e668a76d8015925`; `install.sh` `53bde9267cac7b08823c91012d929fd838f51b08470677a47b308bad0a0ee969`; `release.json` `6519625a3a5f7b92b624d915e40ea7d3e2a279d78f209ede14440b1c41b83f60`.
+  - **Signing waits for CI on `6dd4ef6` to pass** (Wyatt).
+- **New live step, read-only: the mainnet second-node list over https** (`1df3c4d`, `TestLiveMainnetSecondNodes`, opt-in by variable; command in `CLAUDE.md`).
+  - **How it works:** each built-in mainnet node in turn is the configured node and gives one recent block with a transaction. The bridge's own `Checker` checks that block against each other node as the only second node, so every node's https path vouches at least once: certificates verified, redirects refused, a different operator vouching.
+  - **Run 2026-11-02:** 6 of 6 pairs ok at block 3,797,792, confirmations 20 → 20 (`~/xmr-pay-dev-data/mainnet-second-nodes-live-2026-11-02.txt`).
+  - **A first version** picked the second node at random and never used `ravfx` as a voucher, hence the pairwise form.
+  - **In the live runbook:** step 0, re-run at the session, before the signing.

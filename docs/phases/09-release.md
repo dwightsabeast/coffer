@@ -13,7 +13,10 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
 **Before the session** (from the plan change's waiting list):
 
 - [ ] Phase 07b is done: no Critical or High finding open, every Medium fixed or accepted in `docs/decisions.md`.
-- [ ] The mainnet second-node list for the cross-check (spec change 13).
+- [x] The mainnet second-node list for the cross-check (spec change 13): decided 2026-11-02, https only (`node.monerodevs.org:18089`, `xmr-node.cakewallet.com:18081`, `ravfx.its-a-node.org:18081`), built in `1162b8f`.
+- [ ] Grow the HTTPS second-node list (Wyatt, 2026-11-02). Today it's three mainnet nodes, one per operator, and stagenet still uses http because only one of its nodes has a certificate that verifies.
+  - **Why it matters:** with a remote node and no second node answering, every payment is held and no height is reported.
+  - **How to add a node:** probe it read-only, as on 2026-11-02 (synchronized, restricted, `get_block` by height, the same block hash as the others, a certificate that verifies), and only from an operator not already listed.
 - [ ] The self-update admin-copy question.
 - [ ] An install host that serves the bridge files without redirects (spec change 21).
 - [x] The Atmosphere account to publish under (below; done 2026-10-23).

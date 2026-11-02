@@ -230,6 +230,17 @@ Effect on the trust contract: none for the plugin. The bridge makes outbound req
 - **Mainnet:** the built-in mainnet list is still empty, so a remote mainnet node holds every payment until it's chosen. That makes the list a release-1 blocker, as recorded on the before-phase-09 list.
 - **Spec text to fold in (Wyatt):** duty 6's second sentence, "… A mismatch, or no second node answering, holds the transfer at 0 confirmations and turns a health check red."
 
+**Items 3 and 4 amended again (Wyatt, 2026-11-02; built in `1162b8f`):**
+- **Mainnet's list is https only:** the certificate is checked, no redirect is followed, and a plain-http entry is never used.
+  - The list: `node.monerodevs.org:18089`, `xmr-node.cakewallet.com:18081`, `ravfx.its-a-node.org:18081`. These are the three of Wyatt's seven candidates whose certificates verified in the read-only probe, and all seven agreed on height and block hash (`~/xmr-pay-dev-data/mainnet-second-nodes-probe-2026-11-02.txt`).
+  - Growing the list is on phase 09's checklist.
+- **Stagenet keeps its http list:** only `stagenet.xmr.kernal.eu` has a certificate that verifies (`~/xmr-pay-dev-data/stagenet-second-nodes-https-probe-2026-11-02.txt`). It's the public-node live step's configured node, so an https-only list would leave that step with no second node.
+- **Skipped by operator, not only by host:** a second node is skipped when it shares the configured node's operator. The operator is the host's last two labels; an IP address or a single label is its own. So `node2.monerodevs.org` no longer vouches for `node.monerodevs.org`.
+- **A second opinion before holding:** on a mismatch, one more second node from a different operator is asked, once per check. If it agrees with the configured node, the payment counts, on that node's confirmations. If it disagrees, or there's none to ask, the payment is held as before, and the detail names both.
+- **Spec text to fold in (Wyatt):**
+  - duty 6: "… with a second node from a built-in list (https only on mainnet), never one run by the configured node's operator. A mismatch is checked with one more node from another operator before the transfer is held";
+  - open question 12: the mainnet list above.
+
 ## 14. The plugin is renamed Coffer (slug `coffer`)  (status: proposed, 2026-10-05; the rename itself is Wyatt's decision, the spec text is for him to fold in)
 Found in: Wyatt's request before phase 03 session 3h. Code changed in commit `2f0bdf1`.
 Spec says: Plugin manifest: `"slug": "xmr-pay"`, `"name": "Monero Payments"`. The plugin is called xmr-pay throughout.

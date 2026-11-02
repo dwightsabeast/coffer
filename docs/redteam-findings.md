@@ -37,8 +37,8 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | fixed 2026-11-01 (spec change 46, bridge side) |
 | RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | fixed 2026-10-31 |
 | RT-29 | Medium | T20, T03, R08 | 1, fix planning | A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first | fixed 2026-10-31 with RT-11 (spec change 45) |
-| RT-30 | Proposed Medium (Wyatt rules) | P02, R09 | 1, fix sessions (46 live) | The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool | open |
-| RT-31 | Proposed High (Wyatt rules) | P02, T14 | 1, fix sessions (46 live) | A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice | open |
+| RT-30 | Medium (Wyatt, 2026-11-02) | P02, R09 | 1, fix sessions (46 live) | The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool | open; **blocks release 1** |
+| RT-31 | High (Wyatt, 2026-11-02) | P02, T14 | 1, fix sessions (46 live) | A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice | open |
 
 ---
 
@@ -776,8 +776,8 @@ Not Coffer code: tier 1 keeps it out of everything Coffer ships. But it's the tr
 
 Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a second wallet). Evidence in `~/xmr-pay-dev-data/`: `46-live-step6-invoice.txt` (the invoice and its pool row), `46-live-step6-status.txt` (the status route), `46-live-step6-output.txt` (installer log, journal, `status`), `46-live-step6-site.txt` and `46-live-watch-2.txt` (the site's state). No code changed this session (Wyatt); each fix session writes the failing test first.
 
-**What happened.** The second wallet installed for step 6 was `58WW…eSZP`, not a new wallet. Its index 1 had received three 0.0001 XMR payments: txids `fbb401a3…` (height 2,230,085, 2026-10-15 23:23 UTC), `e413ea6e…` (2,230,165, 2026-10-16 02:15) and `1419df9d…` (2,240,100, 2026-10-30 18:40). They match the test tips of phase 05's runs A and B and the 30 October `coffer-test` run, each sent to a fresh install's index 1, so it is very likely phase 05's setup-test shop wallet (Wyatt to confirm in Feather's History). Then:
-- The install's restore height was 2,230,020 (`/etc/xmr-bridge/config`; Wyatt's read). No installer line names the site's suggestion (about 2,241,429 then: the open shop tip's `createdHeight` 2,242,149 − 720), so it came from `--restore-height`, below the suggestion and so without a warning. It fits that wallet's own restore height, 65 blocks before its first test tip. With the suggestion instead, the wallet wouldn't have scanned the old payments and step 6 would have looked clean: the finding needs a restore height below the wallet's old payments, which a reused wallet's own restore height usually is.
+**What happened.** The second wallet installed for step 6 was `58WW…eSZP`, not a new wallet. Its index 1 had received three 0.0001 XMR payments: txids `fbb401a3…` (height 2,230,085, 2026-10-15 23:23 UTC), `e413ea6e…` (2,230,165, 2026-10-16 02:15) and `1419df9d…` (2,240,100, 2026-10-30 18:40). They match the test tips of phase 05's runs A and B and the 30 October `coffer-test` run, each sent to a fresh install's index 1, It is phase 05's setup-test shop wallet (Wyatt confirmed, 2026-11-02). Then:
+- The install's restore height was 2,230,020 (`/etc/xmr-bridge/config`; Wyatt's read). No installer line names the site's suggestion (about 2,241,429 then: the open shop tip's `createdHeight` 2,242,149 − 720), so it came from `--restore-height`, below the suggestion and so without a warning. Wyatt passed it: it's the restore height Feather gave that wallet in run A attempt 2. With the suggestion instead, the wallet wouldn't have scanned the old payments and step 6 would have looked clean: the finding needs a restore height below the wallet's old payments, which a reused wallet's own restore height usually is.
 - 16:29:35.521 UTC: the new service opened the wallet at height 579,994 (wallet-rpc's own chain right after `generate_from_keys`; the dev box's 8 October install logged the same) while the node was at 2,242,155.
 - 16:29:35.556, 35 ms later: "answering the site's wallet probe" `match=false receivedTop=0`. Index 1 had been created to answer the probe.
 - 16:29:35.713: "created pool addresses" `count=49`; the site took index 1 to 50 as wallet 1's 2³²+1 to 2³²+50.
@@ -787,7 +787,7 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 
 ## RT-30 — The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool
 
-- **Rows:** P02, R09. **Severity:** proposed Medium; Wyatt rules. **Pass 1, fix sessions** (46's live check, step 6). Test: none yet (no code changes this session); the fix session writes it first.
+- **Rows:** P02, R09. **Severity:** Medium (Wyatt, 2026-11-02), and it **blocks release 1**: until RT-31's height floor exists, RT-30's fix is the only thing stopping an honest admin's switch to a used wallet from crediting old payments. **Pass 1, fix sessions** (46's live check, step 6). Test: none yet (no code changes this session); the fix session writes it first.
 - **What I did:** the live step above, a wallet with history installed on a site with history (46's "no match" path).
 - **What happened:**
   - The probe answer came 35 ms after the wallet opened, with the wallet 1.66 million blocks behind its node. `ReceivedIndexes` could only return what the wallet had scanned, nothing, so `receivedTop` was 0.
@@ -800,7 +800,7 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 
 ## RT-31 — A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice
 
-- **Rows:** P02, T14. **Severity:** proposed High (a product whose price an old payment meets would be fulfilled with no new payment); Wyatt rules. **Pass 1, fix sessions** (46's live check, step 6). Test: none yet (no code changes this session).
+- **Rows:** P02, T14. **Severity:** High (Wyatt, 2026-11-02): a product whose price an old payment meets would be fulfilled with no new payment. **Pass 1, fix sessions** (46's live check, step 6). Test: none yet (no code changes this session).
 - **What I did:** the same live step. The invoice's stored transfers sit at heights 2,230,085, 2,230,165 and 2,240,100; its `createdHeight` is 2,242,155.
 - **What the code does:** a transfer counts when it isn't a double spend and its `unlockTime` is "0" (`plugin/src/core/invoice.ts:182`, `counted`). Nothing compares its height with the invoice's `createdHeight` (`sync/merge.ts`, `mergeSnapshot`). So any payment the address ever received counts, however old.
 - **Why it matters beyond RT-30:** the site's guarantee is "a fresh subaddress per invoice" (P02), checked only against other invoices on the site. An address the wallet used before Coffer, or under another site or install, isn't fresh, and the plugin can't see that. A height floor would have made RT-30 harmless here: the tip would have stayed unpaid, waiting for a real payment.

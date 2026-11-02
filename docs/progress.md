@@ -4574,3 +4574,28 @@ Backup before the live check: `~/xmr-pay-dev-data/redteam/46-before-live.db` (as
 - the plugin's height floor, after or with RT-26's fix.
 
 Then step 6's payment proof with a truly new wallet.
+
+## 2026-11-02 · Phase 07b fix sessions · Wyatt's decisions after 46's live check
+
+1. **Site data:** keep it as is, no restore. It holds the RT-31 tip and the bad rows, and the installed bridge is paired with key `+ckxCG2o…`.
+2. **Severities:** RT-31 High. RT-30 Medium, and it **blocks release 1**: until RT-31's height floor exists, RT-30's fix is the only thing stopping an honest admin's switch to a used wallet from crediting old payments.
+3. **RT-31's floor and RT-26: not decided yet.** The message carried the two options without a choice:
+   - **A:** both in release 1.
+   - **B:** both before release 2 (orders). Release 1 records RT-31 as a known limit, for tips only: a false "Tip received" and an old payment counted twice, no goods, no lost funds.
+4. **The wallet:** `58WW…eSZP` is the phase 05 setup-test wallet. 2,230,020 is the restore height Feather gave it in run A attempt 2, and Wyatt passed it.
+5. **The next fix session also tests 5b's unproven case:** a sync signed by the previous key arriving right after a same-machine re-pair. If it raises the "previous wallet host" line, that line gets a short grace period after a pairing.
+6. **Step 6's rerun uses the same phase 05 wallet** with `--restore-height 2230020`, not a new wallet. Expected after RT-30's fix:
+   - the probe is answered only after the wallet has scanned to its node's height;
+   - `receivedTop` covers its paid index;
+   - the first pool address is above every index that has received;
+   - a fresh tip shows nothing received;
+   - Wyatt pays it from the Feather buyer wallet, and it settles and shows in that wallet's own Feather history.
+
+   That tests RT-30's fix and the payment proof together.
+
+**Next step:** once decision 3 is made, a fix session, tests first:
+- RT-30: the bridge answers the probe only after the wallet has scanned to its node's height;
+- 5b's previous-key race test (and the grace period if it fails);
+- under option A, RT-31's height floor with RT-26's fix.
+
+Then step 6's rerun as in decision 6.

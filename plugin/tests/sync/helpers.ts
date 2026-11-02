@@ -3,7 +3,7 @@
 import type { Invoice } from "../../src/core/invoice";
 import { ownIndex, walletOf } from "../../src/core/walletindex";
 import { siteIndex } from "../../src/core/walletindex";
-import type { BridgeState, CheckRow, NetworkRecord, PoolCheckState, RefusedRecord, RotationState, SyncStore, WalletsState } from "../../src/sync/handle";
+import type { BridgeState, CheckRow, NetworkRecord, PoolCheckState, PreviousKey, RefusedRecord, RotationState, SyncStore, WalletsState } from "../../src/sync/handle";
 import { type PairingState, keyId } from "../../src/sync/pairing";
 
 const SEEDS = {
@@ -48,11 +48,11 @@ export class MemoryStore implements SyncStore {
 	recent: Array<{ index: number; at: number }> = [];
 	rotation: RotationState | null = null;
 	poolCheck: PoolCheckState | null = null;
-	previousKey: string | null = null;
+	previousKey: PreviousKey | null = null;
 	previousSeen: { at: number } | null = null;
 	refused: RefusedRecord | null = null;
-	async getPreviousKey() { return this.previousKey; }
-	async setPreviousKey(k: string | null) { this.previousKey = k; }
+	async getPreviousKey() { return this.previousKey ? { ...this.previousKey } : null; }
+	async setPreviousKey(k: PreviousKey | null) { this.previousKey = k ? { ...k } : null; }
 	async getPreviousSeen() { return this.previousSeen ? { ...this.previousSeen } : null; }
 	async setPreviousSeen(s: { at: number } | null) { this.previousSeen = s ? { ...s } : null; }
 	async getRefused() { return this.refused ? { ...this.refused } : null; }

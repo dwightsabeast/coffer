@@ -109,6 +109,19 @@ export interface RefusedRecord {
 }
 /** The refusal and previous-key records are written at most this often, so a key can't drive KV writes. */
 export const REFUSAL_WRITE_MS = 60_000;
+/**
+ * 46's step 5b: the previous key's requests in the first minute after a pairing aren't recorded. On a same-machine
+ * re-pair the site stores the new key before the bridge saves it, so a sync signed with the old key can land just after
+ * the swap (and one can be up to the 30 s request wall on its way). An old host still running is recorded at its first
+ * sync after this, at most one sync interval later.
+ */
+export const PREVIOUS_GRACE_MS = 60_000;
+
+/** Spec change 46, item 2 (D4): the key a pairing replaced, and when that pairing was (for the grace). */
+export interface PreviousKey {
+	publicKey: string;
+	pairedAt: number;
+}
 
 /** The paired key's wallet, or null while the site waits for its answer. */
 export function currentWallet(state: WalletsState | null, signerKeyId: string): number | null {
@@ -154,8 +167,8 @@ export interface SyncStore {
 	getPoolCheck(): Promise<PoolCheckState | null>;
 	setPoolCheck(state: PoolCheckState): Promise<void>;
 	/** Spec change 46, item 2 (D4): the key the last pairing replaced, and when it was last heard from. */
-	getPreviousKey(): Promise<string | null>;
-	setPreviousKey(publicKey: string | null): Promise<void>;
+	getPreviousKey(): Promise<PreviousKey | null>;
+	setPreviousKey(previous: PreviousKey | null): Promise<void>;
 	getPreviousSeen(): Promise<{ at: number } | null>;
 	setPreviousSeen(seen: { at: number } | null): Promise<void>;
 	getRefused(): Promise<RefusedRecord | null>;
@@ -261,7 +274,8 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 			await store.clearNetwork();
 			await store.setPublicKey(body.value.pair.publicKey);
 			// Spec change 46, item 2: keep the key this pairing replaced, to tell its requests apart later.
-			if (previous !== null && previous !== body.value.pair.publicKey) await store.setPreviousKey(previous);
+			// One write holds the key and the pairing's time, so a request can't see the key without the time (5b's grace).
+			if (previous !== null && previous !== body.value.pair.publicKey) await store.setPreviousKey({ publicKey: previous, pairedAt: now });
 			await store.setPreviousSeen(null);
 			await store.setRefused(null);
 			// Spec change 46: a site with history waits for the bridge to say which wallet it holds; a fresh one is wallet 0.
@@ -417,10 +431,14 @@ async function refuse(store: SyncStore, code: SyncErrorCode, now: number): Promi
 	return error(code);
 }
 
-/** After a re-pair: a request the previous key signed is still refused, but recorded (D4), at most once a minute. */
+/**
+ * After a re-pair: a request the previous key signed is still refused, but recorded (D4), at most once a minute, and not
+ * in the grace after the pairing (5b).
+ */
 async function notePrevious(store: SyncStore, ts: string, bytes: Uint8Array, signature: Uint8Array<ArrayBuffer>, now: number) {
 	const previous = await store.getPreviousKey();
-	const key = previous === null ? null : decodeBase64(previous, 32);
+	if (previous === null || now - previous.pairedAt < PREVIOUS_GRACE_MS) return;
+	const key = decodeBase64(previous.publicKey, 32);
 	if (!key || !(await verifySignature(key, ts, bytes, signature))) return;
 	const seen = await store.getPreviousSeen();
 	if (!seen || now - seen.at >= REFUSAL_WRITE_MS) await store.setPreviousSeen({ at: now });

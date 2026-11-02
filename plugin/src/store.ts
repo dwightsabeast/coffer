@@ -11,7 +11,7 @@ import { LATE_WINDOW_MS, TIP_WATCH_MS } from "./core/constants";
 import type { Invoice } from "./core/invoice";
 import { CURRENCIES, rateCacheKey } from "./rates";
 import { ownIndex, walletRange } from "./core/walletindex";
-import type { BridgeState, CheckRow, NetworkRecord, PoolCheckState, RefusedRecord, RotationState, SyncStore, WalletsState } from "./sync/handle";
+import type { BridgeState, CheckRow, NetworkRecord, PoolCheckState, PreviousKey, RefusedRecord, RotationState, SyncStore, WalletsState } from "./sync/handle";
 import type { PairingState } from "./sync/pairing";
 
 export const SETTING = { publicKey: "bridgePublicKey", currency: "currency", speed: "speed" } as const;
@@ -148,12 +148,15 @@ export class CtxSyncStore implements SyncStore {
 	setPoolCheck(state: PoolCheckState) {
 		return this.ctx.kv.set(KV.poolCheck, state);
 	}
-	getPreviousKey() {
-		return this.ctx.kv.get<string>(KV.previousKey);
+	/** A plain string is the form from before the grace (5b): read as paired at 0, so it gets none. */
+	async getPreviousKey(): Promise<PreviousKey | null> {
+		const v = await this.ctx.kv.get<PreviousKey | string>(KV.previousKey);
+		if (v === null || v === undefined) return null;
+		return typeof v === "string" ? { publicKey: v, pairedAt: 0 } : v;
 	}
-	async setPreviousKey(publicKey: string | null) {
-		if (publicKey === null) await this.ctx.kv.delete(KV.previousKey);
-		else await this.ctx.kv.set(KV.previousKey, publicKey);
+	async setPreviousKey(previous: PreviousKey | null) {
+		if (previous === null) await this.ctx.kv.delete(KV.previousKey);
+		else await this.ctx.kv.set(KV.previousKey, previous);
 	}
 	getPreviousSeen() {
 		return this.ctx.kv.get<{ at: number }>(KV.previousSeen);

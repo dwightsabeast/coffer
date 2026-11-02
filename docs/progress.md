@@ -4465,3 +4465,27 @@ Branch `redteam-1`, local commits only (`4619904` to the docs commit after `2599
     - If the installer restores the view-only wallet from keys, check that the bridge answers "match" and catches up to `claimedTop` without creating anything past it (a preview of step 7).
   - **Step 5b:** `sudo xmr-bridge pair --config /etc/xmr-bridge/config --code -` with the refreshed copy, then status's Address check line.
   - **Both 5a and 5b:** the pool banner clears at the pairing, and no "previous wallet host" line appears. If one does, that's a finding.
+
+## 2026-11-02 · Phase 07b fix sessions · Spec change 46 live check: steps 1–4
+
+Backup before the live check: `~/xmr-pay-dev-data/redteam/46-before-live.db` (as `46-before-round2`). The plugin was built at `6789715` (70.3 KB, validate passed), and the dev site ran in `astro dev`. The 9 October service accepted a sync from the 46 plugin at 15:16:19 UTC before the update. Evidence: `~/xmr-pay-dev-data/46-live-step*.txt`.
+
+1. **The release:** Wyatt signed `0.0.202611021505-dev.37742ab`. `check-dev-signature.sh` verified it with the public key only. It was served on 127.0.0.1:8099 from 15:20:49 UTC.
+2. **The self-update** (`46-live-step2-output.txt`, Wyatt's sudo run): PASS.
+   - 15:21:02 UTC: "updating the bridge from `0.0.202610090032-dev.97f0e66` to `0.0.202611021505-dev.37742ab`", exit 75, and a systemd restart 10 s later.
+   - "starting version=…37742ab", then "update confirmed" 15 s after the start. No rollback and no warnings since.
+   - The admin copy is still `0.0.202610082327-dev.0d66a34`, and its `status` has no Address check line (the evidence above).
+   - The service the update replaced was a 9 October build, not the 8 October install.
+3. **The honest pool check:** PASS (site side).
+   - The updated bridge's first sync, 15:22:01, recorded `poolCheck.lastOkAt`.
+   - Health shows "Address check: OK", with no pool banner and no bad or dropped rows.
+   - The bridge's own Address check line waits for the new admin copy (5a).
+4. **RT-08, live, two forged free rows** (`46-step4.mjs`, outside the repo, beside `46-live.mjs`, which reads Health and the pool): site side PASS.
+   - **The rows:** both tagged `keyId` `eb18uYYYYekANLBG` (the current key), with made-up addresses, at 15:28:05.440 UTC.
+     - **a.** Index 306, held by the wallet but missing on the site, since 45's re-pair dropped 306–355 (checked: the only gap).
+     - **b.** Index 100,356, which is `claimedTop` 356 + 100,000.
+   - **Both were `bad` after 512 ms,** my polling step. The bridge's regular sync landed about 400 ms after the write; its response carried the new `check` list, and the report-only sync followed 43 ms later (`mismatch.at`). The worst case is one sync interval (12 s plus up to 3 s of jitter), inside the 45 s wait.
+   - **A tip checkout at +46 s got index 357,** neither forged row. The bad rows were never claimed, and `poolTop` stayed 406.
+   - **Health:** the banner "Coffer found addresses on this site that aren't from your wallet" (D3's wording) and "Address check: Failed at 15:28 UTC". `lastOkAt` keeps advancing while the mismatch stays.
+   - **The pool:** 307 claimed, 50 free (358–407: the bridge's top-up for 357), and 2 bad.
+   - **Still to read:** the bridge's journal for 4b (no catch-up, only the top-up) and the reported indexes.

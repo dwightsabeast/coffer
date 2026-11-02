@@ -4489,3 +4489,19 @@ Backup before the live check: `~/xmr-pay-dev-data/redteam/46-before-live.db` (as
    - **Health:** the banner "Coffer found addresses on this site that aren't from your wallet" (D3's wording) and "Address check: Failed at 15:28 UTC". `lastOkAt` keeps advancing while the mismatch stays.
    - **The pool:** 307 claimed, 50 free (358–407: the bridge's top-up for 357), and 2 bad.
    - **Still to read:** the bridge's journal for 4b (no catch-up, only the top-up) and the reported indexes.
+- **Step 4, the bridge's side** (`46-live-step4-output.txt`; the first run left no file, and the second, run as `dev`, did): PASS.
+  - 15:28:05.882 "the site holds addresses that aren't from this wallet" `indexes="[306 100356]"`, 0.44 s after the write.
+  - 15:28:59 "created pool addresses" `count=1` (the top-up for 357).
+  - No catch-up and no rescan, so row b made the bridge create nothing.
+5. **5a, the installer re-run with the same wallet:** PASS (`46-live-step5a-output.txt`, `46-live-step5a-site.txt`, `46-live-watch.txt`).
+   - **Two refused attempts first:** the address typed was another valid wallet's (`58WW…eSZP`), while the installed host and `SHOP_ADDRESS` are `59nA…etgQ` (`46-live-addrcheck*.sh`, yes/no only). The installer refused before changing anything, and both unused codes were deleted.
+     - **A possible proposal for Wyatt:** the refusal "already hosts a wallet for another address" could name the installed address in short form. Not having it cost two codes.
+   - **The third attempt:**
+     - The install started at 16:09:08 and kept the existing view-only wallet (no restore from keys, so the restore case waits for step 7). The admin copy is now `…37742ab`.
+     - Journal: the new service started at 16:09:21, answered `match=true receivedTop=305`, then "re-offering this wallet's unused addresses" `from=358 count=50`.
+     - `status`: "Address check: ok" and the new bridge key.
+   - **The site** (2 s watcher):
+     - **At the pairing** (between 16:09:16.9 and 16:09:20.9): new key `jW55uagv…`, wallet `null` while waiting, `poolCheck` reset (**the banner cleared**), `previousKey` the old key, and the 50 free rows dropped.
+     - **16:09:26:** wallet 0 matched, and free rows 358–407 re-offered (`addedAt` 16:09:25), nothing skipped above `claimedTop` 357.
+     - **`previousSeen` none, so no "previous wallet host" line.** The old service stopped at 16:09:20.83, within about 4 s of the pairing.
+     - Rows 306 and 100,356 stay `bad`.

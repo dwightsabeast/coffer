@@ -4912,3 +4912,60 @@ Runbook:
 4. **Step 5** (back to the shop wallet on the own node).
 5. Wyatt rules on RT-32's and RT-33's severity. Then plan both fixes, tests first: RT-32's live shape (`claimedTop` 1, `receivedTop` 2) and RT-33's (a settled tip from before the floor stays settled).
 6. One dev release, which Wyatt signs, then **step 2's rerun**: the old tip's "ignored" line, and a fresh tip that shows nothing received until Wyatt pays it.
+
+## 2026-11-06 · Phase 07b fix sessions · Combined live session: step 3 (public node)
+
+**Checks before starting (Wyatt's list):**
+- **Hashes, re-taken:** `data.db` and `live-before-step2.db` `a46a7baa0dde0a8f55c8faaf0738603ecdd2d4dc2bcf9c8d982116582e8b0f69`; `live-step2-loop.db` `a0e7a7b991159462f1e23266cf60497257134eaedc0b3bb1b76b374ad5a57616`; the bridge's journal `18c82b47008250f9684e54324e302add8a8c691c7bdd9a3ffd41bf9b44c29b39` (304 lines). All match the 2026-11-02 entry. Its "before" hashes for `data.db`, `-wal` and `-shm` can't be rechecked: those files no longer exist.
+- **CI on `8cab888`:** run 41543313890 passed (plugin, theme, bridge with the race detector).
+- **Shipped code:** no diff under `bridge`, `plugin` or `installer` between `1df3c4d` (installed) and `8cab888`.
+
+**Before the site:**
+- **Backup:** `~/xmr-pay-dev-data/redteam/live-before-step3.db`, SHA-256 `82146e67ec49f4ab7cb11176ae9c7539ecdd2ecd33d74b430083a7558fd9e76f`. Counts from it: 59 invoices, 361 pool rows (309 claimed, 50 free, 2 bad).
+- **`/etc/hosts` before the first block:** SHA-256 `1d3d9611532c6edb88c7c2aeaf0bc44ac2fe8e4ea34fd2de74783d96ecd6ea2c`.
+- **Block target:** 127.0.0.2, not the runbook's 127.0.0.1. The dev box's `monerod` listens on `127.0.0.1:38081`, and two of the five blocked nodes use that port, so it would have answered as a second node (Wyatt's check; plan approved with this).
+
+**3a:** `state:bridge.height` set from 2,242,172 to 3,245,092 (node 2,245,092 + 1,000,000) through the KV shortcut, site stopped. `lastSyncAt` not touched: the public tip path has no silence check. Tip `inv_ca1ec50afd39fb95` (index 359, wallet 0, nobody pays it) has `createdHeight` 3,245,092.
+
+**3b, `block 1` (21:26:03 UTC):** the script printed FAIL for `xmr-lux.boldsuck.org`; the block itself is good and the check was wrong.
+- **The false FAIL:** `getent hosts` asks for IPv6 first, finds no IPv6 line in `/etc/hosts`, and goes to DNS, so it returned the host's AAAA record. `curl` exited 7 because it used 127.0.0.2.
+- **What the bridge does:** a throwaway static Go client (`CGO_ENABLED=0`, as `/usr/local/bin/xmr-bridge` is built) resolved all five hosts to 127.0.0.2 only, and all five failed to connect. `stagenet.xmr.kernal.eu` answered with HTTP 200. `getent ahosts` also gives 127.0.0.2.
+- **Why it mattered to check:** this box has working IPv6. `curl -6` straight to that host's address got HTTP 200 (one `get_info`), so the block holds only because the hosts file wins in Go's and glibc's combined lookups. A client asking for IPv6 alone would get past it.
+- **Script changed for `block 2`:** `getent hosts` to `getent ahosts`.
+
+**3c, install on the public node** (phase 05 wallet, `--node https://stagenet.xmr.kernal.eu:38089`, no `--restore-height`; install log from 21:31:49 UTC, service up 21:33:51; evidence `~/xmr-pay-dev-data/live-step3-output.txt`, watcher `live-step3-watch.txt`):
+- **Passed:** the site's height stayed at the inflated 3,245,092 through the pairing. `checks.node` is `unavailable` ("no second node answered…"), and `status` says the same. At 21:35:09 "answering the site's wallet probe" `match=true receivedTop=0`, after 70 s of scanning. Wallet 1 is current, the pool is 2–51 (50 free), the address check is ok, and bad rows are still 2. RT-32 didn't fire.
+- **Not as expected: no clamp line.** The installer said "The site has open invoices from about block 2241400 on". The code is right: the site's suggestion is the minimum over every wallet's watched invoices, and two empty expired wallet-0 tips from 2 November are still watched (`inv_79311d2f506ce6e1`, index 357, `createdHeight` 2,242,120; `inv_0eebd504fb0ec85f`, index 358, 2,242,149). 2,242,120 − 720 = 2,241,400. They would leave the watch at 15:58 and 16:50 UTC on 9 November, and until then no report can move them: wallet 0 isn't reporting. The runbook, written on 2 November, didn't allow for them.
+- **Index 2 is back in the pool:** paid on 2026-10-30 at 2,240,130, below this scan's start, so the wallet doesn't know. Known limit (a restored wallet misses what it didn't scan); no wrong credit, a privacy cost.
+- **RT-32's reach, wider than I told Wyatt:** a default install scans back to the oldest watched invoice − 720, which can be days. So a payment inside that span can fire the loop with no `--restore-height` at all (traced, not run).
+
+Stopped here for Wyatt's call on the clamp; 3d not started.
+
+**3c, second install, for the clamp (Wyatt chose to redo it before 3d):**
+- **Edit:** site stopped, backup `~/xmr-pay-dev-data/redteam/live-before-clamp-edit.db` (SHA-256 `533716c0cf1b81ebb72af752a73a1d4667ca8243c97c694df85ce0aaafef6d45`), then `seq` set to `expiresAt` + 24 h on `inv_79311d2f506ce6e1` and `inv_0eebd504fb0ec85f`, so they leave the watch. A dev-only edit to two evidence rows; `live-before-step3.db` has the originals. The only watched invoice was then the inflated tip.
+- **Clamp, PASS** (installer log, install from 21:39:28 UTC; evidence `~/xmr-pay-dev-data/live-step3-output-2.txt`): "The site suggested scanning from block 3244372, above the node's height 2245099; the new wallet scans from block 2244379 instead." 3,245,092 − 720 = 3,244,372 and 2,245,099 − 720 = 2,244,379.
+- **The rest, PASS:** the height stayed at 3,245,092 through the pairing; the node check is `unavailable`; the wallet answered at 21:41:55 UTC with `match=true receivedTop=0` after 55 s; wallet 1 is current; the pool is 2–51; bad rows are still 2.
+
+**3d, unblock and re-pair the same wallet:**
+- **`unblock 1` (21:44:45 UTC):** `/etc/hosts` back to `1d3d9611…ea2c`. The node check went from `unavailable` to `ok` by 21:45:37.
+- **Height before `pair`:** 3,245,092, both at 21:45:37 (first read with the check `ok`) and at 21:46:24, right before the code. Ordinary syncs with a second node answering didn't lower it.
+- **`pair --code -`, PASS:** at the watcher's 21:46:43 read the height was 2,245,102, the dev box's node's height then, under the new key `lChpFHckCep9yt5h`. So the heal came from the pairing. The inflated tip's floor is now 2,245,072 (`min(3245092, 2245102) − 30`), and that floor moves up with the site's height (RT-34).
+
+**3e, payments held:**
+- **`block 2` (21:47:36 UTC):** all five hosts PASS with the corrected check; `before-block-1` unchanged.
+- **Wyatt's keep-alive prediction, confirmed:** `checks.node.state` was still `ok` at 21:49:50, 2 min 14 s after the block, and the site's height rose once after it. After `sudo systemctl restart xmr-bridge` (service up 21:50:38) it read `unavailable` at the first read, 21:50:47. So a hosts-file block doesn't reach a running bridge's open connection; only a restart cut it. A test-method lesson, with no effect on a shop.
+- **Fresh tip:** `inv_bf39dc72bcab799f` (0.001 XMR, wallet 1 index 2, `createdHeight` 2,245,104), opened only after the precondition held. Index 2 had received a payment on 2026-10-30, below this wallet's scan start.
+- **Payment:** tx `bd9d1605f25d…`, 0.001 XMR, on the site at 21:59:15 UTC as `confirming`, 0 of 2 (`classify`: the full amount seen, under the required depth).
+- **The hold, PASS** (log `~/xmr-pay-dev-data/live-step3e-held.txt`): mined at 2,245,107. At 22:02:14 the dev box's node and the bridge's wallet were at 2,245,110, 3 real confirmations against 2 required, while the site held the transfer at 0, the tip and the public status route said `confirming` 0 of 2, the site's height stayed at 2,245,104, and the node check read `unavailable`. The admin page's alert itself wasn't viewed: read from `checks.node`, which it renders.
+- **`unblock 2` (22:02:34 UTC):** `/etc/hosts` back to `1d3d9611…ea2c`, no marker. **Settled at 22:02:41**, 7 s later, 3 of 2, no restart.
+- **Observation:** Health kept saying "held at 0 confirmations" for 47 s after the tip settled (cleared at 22:03:28, height 2,245,110). The payment check asks a second node every sync, but the height bound only once a minute and its "unavailable" overrides. Cosmetic, up to a minute; not filed.
+
+**Step 3 result: 3a–3e pass.** The clamp, no height on a pairing with no second node, the heal by pairing only, the hold and the release are shown live on `0.0.202611022057-dev.1df3c4d`.
+
+**Not covered:** RT-34 live (nobody paid the inflated tip); the admin page's alert by eye; the IPv6-only client path around a hosts-file block (the bridge doesn't use one).
+
+**Findings:** RT-32 corrected and its reach widened, RT-33 noted, RT-34 added, a setup-friction row. No code changed.
+
+**The state I leave:** the dev site, the release server and the watcher are running, the bridge is on `https://stagenet.xmr.kernal.eu:38089` with key `lChpFHckCep9yt5h` and the phase 05 wallet (wallet 1). `data.db` still holds step 3's changes, including the `seq` edit and tip `inv_ca1ec50afd39fb95`; `live-before-step3.db` is the restore point, if Wyatt wants it.
+
+**Next:** Wyatt says whether to restore `data.db`, then step 4 (RT-20 live), step 5 (back to the shop wallet), his rulings on RT-32, RT-33 and RT-34, the fixes tests first, one dev release, and step 2's rerun. That rerun can't show RT-33 live: the old tip's 24-hour watch has ended, so RT-33 needs a test.

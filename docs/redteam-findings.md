@@ -903,6 +903,7 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 - **Evidence:** as RT-32 (the loop database holds the tip in review and the alert; `live-before-step2.db` holds it settled).
 - **Note (2026-11-06):** 1.0.0 is the first public version, so a released site can't hold a pre-floor invoice and this can't occur there. RT-34 reaches the same "reversed" result from a different cause.
 - **Fix (2026-11-06, spec change 48):** with RT-34. A settled invoice with no stored floor has no floor for totals or the watch list, so it stays settled and leaves the watch list. Its old payments still show on the ignored line (spec change 47's answer 1(a)), the one place a counted payment is listed. Tests: `plugin/tests/redteam/rt34.test.ts`.
+- **A related gap, found 2026-11-06, from reading the code; not run:** 1.0.0 can't hold a pre-floor invoice, but Mark settled writes a settled invoice with no stored floor, so the same branch is reachable on a release. Display only. See spec change 48.
 - **Status:** fixed in code; unit-tested, its live window has ended.
 - **Live data point, RT-33's fix still open (2026-11-07 00:50 UTC, combined session step 5):** a settled tip created after the floor existed (`inv_bf39dc72bcab799f`, wallet 1, settled 22:02:41 on 2026-11-06) stayed settled with its transfer when the site switched to wallet 0, about 3 hours into its 24-hour watch window, read 1½ minutes after the switch. It doesn't cover RT-33's own case, a tip from before the floor, which 1.0.0 can't hold.
 

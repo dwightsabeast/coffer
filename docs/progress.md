@@ -5080,3 +5080,20 @@ Times UTC, 2026-11-07. Restored `live-before-step2.db` (hash `a46a7baa…`); Wya
 **Wyatt's finding:** the admin page can't tie a person to a row. Logged as spec change 49 (proposed, not built). My view: it doesn't block release 1.
 
 **Waiting on Wyatt:** the older-payments wording; whether items 1-3 of spec change 49 go in phase 09; whether to go back to step 5's state (`live-before-step2-rerun.db`, then the shop wallet).
+
+## 2026-11-06 · Combined live session: handoff
+
+**Tonight's result:** step 2's rerun passed on dev release `0.0.202611070301-dev.82ac08d`. RT-32 is fixed and live-checked. RT-33 and RT-34 are fixed in code and unit-tested. RT-20's first pass passed. Wyatt confirmed the fresh tip (txid `2cc3ae6e…`, 0.001 XMR) is in the `58WW…` wallet's Feather history.
+
+**CI:** run 42340203092 passed on `7918bc3` (plugin, theme, bridge with the race detector). `origin/redteam-1` is at `7918bc3`; this entry's commit, with tonight's spec notes, is local and in the bundle.
+
+**The state I leave (Wyatt, 2026-11-06: no swap tonight):**
+- **The bridge:** installed, running `82ac08d` on **Wyatt's Feather wallet `58WW…eSZP` (wallet 1)**, own node, key `Px6/BDHqOl3kPXto`, `--restore-height 2230020`. It backs off while the site is stopped, and logs failed update checks while the release server is stopped.
+- **`data.db`:** from after step 2's rerun, matching that bridge: wallet 1 current, height 2,245,323, 310 claimed, 50 free, 2 bad; 26 expired, 1 review, 33 settled. Read-only copy: `redteam/live-after-step2-rerun.db` (SHA-256 `b18068c4e0918a973f0aa8efee946e6c572662efded14fcde301a1888840f112`).
+- **Stopped:** dev site, built copy, watcher, release server. The release in `~/xmr-pay-dev-data/dev-release/` is signed. `/etc/hosts` has its recorded hash. Wyatt's tunnel route to 4322 is down.
+- **Wallet names, from here on:** the dev box CLI wallet (`59nA…etgQ`, `~/stagenet-wallets/shop`, wallet 0) and Wyatt's Feather wallet (`58WW…eSZP`, wallet 1). Both have been called "the shop wallet". A separate Feather buyer wallet pays the tips.
+
+**Next session, in order:**
+1. **Swap back to wallet 0.** With the site stopped: restore `redteam/live-before-step2-rerun.db` (SHA-256 `1572b9019496663940a9b921a44f7fc066db2ee8601848bb853b8f712d59788c`), then Wyatt uninstalls (`sudo xmr-bridge uninstall --delete-data`). Only then start the site and the release server: a site restored under a running bridge would refuse its key. Issue a code when he's at the prompt; he installs `59nA…etgQ`, reading its details himself with `nano -v ~/.config/xmr-pay-dev/stagenet.env`. Expected: wallet 0, `claimedTop` 359, free rows 360-409, no bad rows beyond 2.
+2. **The Mark settled fix (spec change 48), tests first.** Mark settled stores the floor. Wyatt decides whether the no-floor line then goes (Claude's recommendation) or takes his approved wording. Not built tonight; found by reading the code, not run.
+3. **Spec change 49:** items 1-3 go in phase 09; items 4-5 block release 2.

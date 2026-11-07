@@ -5013,3 +5013,28 @@ Wyatt pressed the tip button on `https://dev.wyattdilley.com/posts/welcome` thro
 **Running:** dev site, watcher (baseline 2), release server, and the bridge on `59nA…etgQ`.
 
 **Next:** Wyatt's rulings on RT-32, RT-33 and RT-34; the fixes, tests first; one dev release he signs; step 2's rerun.
+
+## 2026-11-06 · Phase 07b fix sessions · RT-32, RT-33, RT-34 fixed in code (spec change 48)
+
+**Wyatt's rulings:** RT-32 Medium, blocks release 1. RT-33 Low, doesn't block, closed with RT-34's fix. RT-34 Medium, fix in release 1; unit-tested, not live, by his decision. Plan approved with his changes; the record is spec change 48.
+
+**RT-32 (bridge):** `checkPool` compares digests for every index the wallet holds; the bound applies only to indexes it doesn't hold. The wallet is saved after every create. A failed save warns on Health and in the log, the addresses still go out, and every sync tries again. A circuit breaker has two triggers: `bad_created` and `too_many` (100 created for the pool without `claimedTop` rising; catch-up doesn't count).
+
+**Test 7, real wallet-rpc, view-only shop wallet copy (`TestLiveStoreSurvivesKill`):**
+- Without `store`, as Wyatt asked first: FAIL, index 50 forgotten after `kill -9`. So the test can fail, and the address count didn't survive a crash.
+- With `store`: PASS, index 50 kept.
+
+**RT-33, RT-34 (plugin):** `settledFloor` and `floorPin`, with the estimate from the time since creation. The ignored line uses the same floor as totals. Mutation check: putting back my plan's flaw (Wyatt's catch) fails 2 tests in `rt34.test.ts`, including "nothing counted in totals ever appears on the ignored line". The one exception, by his ruling: a settled invoice with no stored floor counts its old payments and still lists them.
+
+**Test results:**
+- Bridge: gofmt and vet clean; all 21 packages pass; race detector passes on `bridgeloop` and `cmd/xmr-bridge`; the static build works. New: 15 subtests in `rt32_test.go`, `TestStore`, `TestStatusBreaker`.
+- Plugin: typecheck clean, validate passes, bundle 73.0 KB. Default config 454 passed, 12 expected fail, 1 skipped; goods config 101 passed, 1 skipped. New: `rt34.test.ts` and `admin-48.test.ts`.
+- No existing test changed, apart from `Store` on the bridge's shared fake wallet.
+
+**Not covered:** nothing here has run on the dev site or through a real bridge yet. Theme and contract tests weren't rerun; neither changed.
+
+**Text for Wyatt to review (spec change 48):** my additions to his banner, for one and for no free addresses, and the amber line for a failed save.
+
+**State:** dev site, watcher and release server stopped. The bridge is on `59nA…etgQ` and backs off while the site is stopped. These commits are local; `origin/redteam-1` is at `d381cbe`.
+
+**Next:** Wyatt pushes or says to, CI on the tip, a dev release he signs, then step 2's rerun: restore `live-before-step2.db`, install the Feather wallet `58WW…eSZP` with `--restore-height 2230020`. Expected: no bad rows, no loop, the old tip's ignored line, and a fresh tip showing nothing received until he pays.

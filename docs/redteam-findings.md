@@ -39,9 +39,9 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-29 | Medium | T20, T03, R08 | 1, fix planning | A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first | fixed 2026-10-31 with RT-11 (spec change 45) |
 | RT-30 | Medium (Wyatt, 2026-11-02) | P02, R09 | 1, fix sessions (46 live) | The bridge answers the wallet probe before its wallet has scanned, so `receivedTop` is 0 and an already-paid index 1 goes into the pool | fixed 2026-11-02 (`73781ec`); live check passed at the combined session's step 2 (2026-11-02) |
 | RT-31 | High (Wyatt, 2026-11-02) | P02, T14 | 1, fix sessions (46 live) | A transfer mined before the invoice existed is counted toward it, so an old payment settles a new invoice | fixed in code 2026-11-02 (spec change 47); live at the combined session; **release 1** |
-| RT-32 | Medium, proposed (waiting on Wyatt) | F08, R08 | 1, fix sessions (combined live, step 2) | A re-pair of a wallet paid above the site's `claimedTop` starts an endless address loop and a false "not from your wallet" warning | open; proposed **release-1 blocker** |
-| RT-33 | Low, proposed (waiting on Wyatt) | R10, T14 | 1, fix sessions (combined live, step 2) | The height floor moves a tip settled before the floor existed to review as "reversed", with an alert | open |
-| RT-34 | Not set (waiting on Wyatt) | R10, T14 | 1, fix sessions (found tracing RT-33, 2026-11-06) | After a height heal, the floor of an invoice with an inflated `createdHeight` follows the site's height, so an honest settled payment turns "reversed" 31 blocks after it's mined | open |
+| RT-32 | Medium, **blocks release 1** (Wyatt, 2026-11-06) | F08, R08 | 1, fix sessions (combined live, step 2) | A re-pair of a wallet paid above the site's `claimedTop` starts an endless address loop and a false "not from your wallet" warning | fixed in code 2026-11-06 (spec change 48); live at step 2's rerun; **blocks release 1** until then |
+| RT-33 | Low, doesn't block release 1 (Wyatt, 2026-11-06) | R10, T14 | 1, fix sessions (combined live, step 2) | The height floor moves a tip settled before the floor existed to review as "reversed", with an alert | fixed in code 2026-11-06 with RT-34 (spec change 48); unit-tested, its live window has ended |
+| RT-34 | Medium, fix in release 1 (Wyatt, 2026-11-06) | R10, T14 | 1, fix sessions (found tracing RT-33, 2026-11-06) | After a height heal, the floor of an invoice with an inflated `createdHeight` follows the site's height, so an honest settled payment turns "reversed" 31 blocks after it's mined | fixed in code 2026-11-06 (spec change 48); unit-tested, not live (Wyatt) |
 
 ---
 
@@ -854,7 +854,7 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 
 ## RT-32 — A re-pair of a wallet paid above the site's `claimedTop` starts an endless address loop and a false "not from your wallet" warning
 
-- **Rows:** F08, R08. **Severity:** Medium, proposed (Claude, 2026-11-02), and proposed to **block release 1**; waiting on Wyatt. **Pass 1, fix sessions** (the combined live session, step 2, on dev release `0.0.202611022057-dev.1df3c4d`). Test: none yet (no code changes this session).
+- **Rows:** F08, R08. **Severity:** Medium, **blocks release 1** (Wyatt, 2026-11-06): ordinary admin actions reach it (restoring the site from an older backup, switching to a wallet that's been paid before), the loop grows without limit, and its false "not from your wallet" alarm teaches admins to ignore the real one (RT-08). **Pass 1, fix sessions** (the combined live session, step 2, on dev release `0.0.202611022057-dev.1df3c4d`). Test: none yet (no code changes this session).
 - **What I did:** step 2, step 6's rerun. The phase 05 wallet installed with `--restore-height 2230020` on the dev site, where it's wallet 1 with one claimed row (index 1, the old RT-31 tip). Index 2 had also been paid. Corrected 2026-11-06: this said "in the phase 05 setup test, but the site never had a row for it". In fact a checkout tip paid it on 2026-10-30 at height 2,240,130, on a reset site where the wallet was wallet 0 and index 2 was a claimed row (`~/xmr-pay-dev-data/baseline/data.db.before-restore-20261030T200451477Z`). That day's restore erased the row.
 - **What happened** (times UTC, from the site's database; evidence below):
   - 22:57:29.801: the probe answer matched wallet 1, with `receivedTop` 2 (stored as `state:paidTop:1` 2). The bridge sent 50 addresses, indexes 3 to 52.
@@ -879,12 +879,18 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
   - No money is at risk. A bad row is never handed out, and the bad rows here had no invoices.
 - **Fix idea (Wyatt decides; next session's plan, tests first):** take the bound from the same base as the top-up, `max(claimedTop, receivedTop) + maxPool`, or report as bad only a row whose address the wallet holds with a different digest, or doesn't hold. Either way, an address the bridge created itself must never come back bad. Note (2026-11-06): the `max` form alone looks insufficient, because the bridge sets `receivedTop` only when answering a probe and holds it in memory, so after a restart the bound falls back and the same rows would come back bad.
 - **Evidence:** the site's database as the loop left it, `~/xmr-pay-dev-data/redteam/live-step2-loop.db` (SHA-256 `a0e7a7b991159462f1e23266cf60497257134eaedc0b3bb1b76b374ad5a57616`, `integrity_check` ok); the watcher's log `~/xmr-pay-dev-data/live-step2-watch.txt`; the collection script's output `~/xmr-pay-dev-data/live-step2-output.txt`. The bridge's journal for 22:54 to 23:10 UTC, saved by Wyatt (sudo), `~/xmr-pay-dev-data/redteam/live-step2-bridge-journal.txt` (304 lines, SHA-256 `18c82b47008250f9684e54324e302add8a8c691c7bdd9a3ffd41bf9b44c29b39`; no key, seed or password words in it).
-- **Status:** open.
+- **Fix (2026-11-06, spec change 48, Wyatt's direction):**
+  - **The check:** `checkPool` compares digests for every index the wallet holds, whatever its number. The `claimedTop + maxPool` bound applies only to indexes it doesn't hold, so RT-27 stays closed.
+  - **The premise needed work:** the wallet's address count didn't survive a crash. `TestLiveStoreSurvivesKill` against the real wallet-rpc: without a save, index 50 was forgotten after `kill -9`; with `store`, kept. The bridge now saves after every create (top-up, catch-up, the probe's index 1), before the addresses go out. A failed save warns on Health and in the log, the addresses still go out, and the next sync tries again.
+  - **The circuit breaker:** stops top-ups and shows a Health error when the check flags an address created in this run (`bad_created`), or after 100 addresses created for the pool without `claimedTop` rising (`too_many`; catch-up doesn't count). A restart or a new pairing clears it.
+  - **Tests:** `bridge/internal/bridgeloop/rt32_test.go`, including step 2's live shape, a restart in the middle, and a fresh install from keys. No existing test changed; the shared fake wallet gained `Store`.
+  - **Known limit:** a wallet file lost with no re-pair still reports a row above the bound as bad, and someone with a stolen bridge key can trip the breaker by forging a row (tips refuse once free rows run out; RT-08's real alarm still shows).
+- **Status:** fixed in code; live at step 2's rerun.
 - **Live data point (2026-11-07 00:35 UTC, combined session step 5, first install):** a fresh install of wallet 1 answered `receivedTop=2` with the site at `claimedTop` 3, caught up to 3, re-offered from 4 with count 0, created 50 addresses and didn't loop. That fits the finding's condition, a paid index above `claimedTop`, which didn't hold here.
 
 ## RT-33 — The height floor moves a tip settled before the floor existed to review as "reversed", with an alert
 
-- **Rows:** R10, T14. **Severity:** Low, proposed (Claude, 2026-11-02); waiting on Wyatt. Proposed Low because only invoices settled before the floor existed can hit it, no released site holds one, and the result is a visible review, not lost money. **Pass 1, fix sessions** (the combined live session, step 2). Test: none yet.
+- **Rows:** R10, T14. **Severity:** Low, doesn't block release 1 (Wyatt, 2026-11-06), since 1.0.0 can't hold a pre-floor invoice; closed with RT-34's fix if one change covers both. **Pass 1, fix sessions** (the combined live session, step 2). Test: none yet.
 - **What I did:** the same step. The old RT-31 tip `inv_f7ea94de1471f114` (`createdHeight` 2,242,155) was settled at 2026-11-02 16:30:42 UTC, before the floor existed, on three transfers mined at 2,230,085, 2,230,165 and 2,240,100.
 - **What happened:** at the probe answer (22:57:29.801 UTC), wallet 1 became current. The tip went from settled to review with reason `reversed`, and the site raised a "reversed" alert. Wyatt's answer 1(a) to the 47 build plan was that it stays "settled" as history, with the ignored-payment line worked out when the page is shown.
 - **Cause:**
@@ -895,12 +901,13 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 - **Fix idea (Wyatt decides):** judge a settled invoice's depth and reversal on the transfers that settled it (no floor for an invoice settled before the floor), or leave the floor out of the settled branch of `isWatched` and the reversal check.
 - **Evidence:** as RT-32 (the loop database holds the tip in review and the alert; `live-before-step2.db` holds it settled).
 - **Note (2026-11-06):** 1.0.0 is the first public version, so a released site can't hold a pre-floor invoice and this can't occur there. RT-34 reaches the same "reversed" result from a different cause.
-- **Status:** open.
+- **Fix (2026-11-06, spec change 48):** with RT-34. A settled invoice with no stored floor has no floor for totals or the watch list, so it stays settled and leaves the watch list. Its old payments still show on the ignored line (spec change 47's answer 1(a)), the one place a counted payment is listed. Tests: `plugin/tests/redteam/rt34.test.ts`.
+- **Status:** fixed in code; unit-tested, its live window has ended.
 - **Live data point, RT-33's fix still open (2026-11-07 00:50 UTC, combined session step 5):** a settled tip created after the floor existed (`inv_bf39dc72bcab799f`, wallet 1, settled 22:02:41 on 2026-11-06) stayed settled with its transfer when the site switched to wallet 0, about 3 hours into its 24-hour watch window, read 1½ minutes after the switch. It doesn't cover RT-33's own case, a tip from before the floor, which 1.0.0 can't hold.
 
 ## RT-34 — After a height heal, an inflated invoice's floor follows the site's height, so an honest settled payment turns "reversed"
 
-- **Rows:** R10, T14. **Severity:** not set; waiting on Wyatt. **Pass 1, fix sessions** (found tracing RT-33 on 2026-11-06). Test: none yet. Not run live: nobody paid the inflated tip in step 3.
+- **Rows:** R10, T14. **Severity:** Medium, fix in release 1, in the same plugin change as RT-33 (Wyatt, 2026-11-06): it marks honest payments reversed and can leave one uncredited for good, which becomes a fulfilled order flagged reversed in release 2. If the fix grows past one session, Wyatt decides; it can wait for 1.0.x, before orders exist. **Pass 1, fix sessions** (found tracing RT-33 on 2026-11-06). Test: none yet. Not run live: nobody paid the inflated tip in step 3.
 - **What I did:** ran `evaluate` from `plugin/src/core/invoice.ts` in memory, with nothing written, on a tip with `createdHeight` 3,245,086 and a payment mined at 2,245,088, at rising site heights.
 - **What happened:**
   - Site height 2,245,090: settled (floor 2,245,060).
@@ -921,4 +928,5 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
   - **The reversal also needs:** a re-pair that heals the height, a payment mined after the heal or within 30 blocks before it, and 31 more blocks inside the 24 hours after settling.
 - **Harm:** a false "reversed" review and alert on an honest payment; no money lost. Release 1 has tips only. With orders in release 2, it would flag an order already fulfilled. Related: a payment to an inflated tip mined more than 30 blocks before the heal stays ignored for good.
 - **Fix idea (Wyatt decides; tests first):** keep the floor from rising once the invoice's height has healed, or judge a settled invoice on the floor it settled under.
-- **Status:** open.
+- **Fix (2026-11-06, spec change 48, Wyatt's direction):** settling stores `settledFloor`, which never moves. A healed height stores `floorPin` once: the site's height − 30 − 2 × the blocks expected since creation, so a payment mined long before the heal is credited. The ignored line uses the same floor as totals; Wyatt caught that my plan would have listed a counted payment as ignored, and a mutation check shows the new test fails if that comes back. Tests: `plugin/tests/redteam/rt34.test.ts`, from the in-memory run's shape.
+- **Status:** fixed in code; unit-tested, not live (Wyatt, 2026-11-06).

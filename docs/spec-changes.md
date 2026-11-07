@@ -1799,3 +1799,33 @@ Effect on the trust contract:
   - step 6's rerun, with the old tip `inv_f7ea94de1471f114` as the live view of D6's line, and a fresh tip that shows nothing received until Wyatt pays;
   - the installer's clamp.
 
+
+## 48. An address the wallet holds is never bad on its index alone; the bridge stops a runaway top-up; a settled invoice keeps its floor (RT-32, RT-33, RT-34)  (status: accepted, 2026-11-06, with Wyatt's decisions below; being built on `redteam-1`)
+Found in: 07b pass 1, fix sessions (the combined live session, step 2, and tracing RT-33 on 2026-11-06).
+
+**The bridge (RT-32):**
+1. **The pool check** compares digests for every index the wallet holds, whatever its number; it's bad only if the digest differs. `claimedTop + maxPool` applies only to indexes the wallet doesn't hold: within it they wait for the catch-up, above it they're bad at once with nothing created, so RT-27 stays closed.
+2. **The wallet is saved after every create** (top-up, catch-up, the probe's index 1), before the addresses go out. Live on 2026-11-06: without the save, the real wallet-rpc forgot a created address after `kill -9`; with it, the address survived. **If the save fails:** a warning in the log and on Health, the addresses still go out, and the next sync tries again. The failure's only cost is a possible false bad row after a crash, and holding addresses back would run the pool dry instead.
+3. **A circuit breaker** stops top-ups and shows a Health error. Payments keep syncing, and the pool check keeps reporting. Only a restart or a new pairing clears it.
+   - **Trigger 1 (`bad_created`):** the pool check finds bad an index the bridge created in this run.
+   - **Trigger 2 (`too_many`):** 100 addresses (2 × `maxPool`) created for the pool in one run without `claimedTop` rising. Catch-up and the probe's index 1 don't count; `claimedTop` rising or a new pairing resets it. It catches rows the site drops without reporting them (spec change 45's wrong-network and unreadable drops).
+   - **A known limit:** someone with a stolen bridge key can trip it by forging a row. Tips then refuse once free rows run out, which fails safe, and RT-08's real alarm still shows.
+4. **On the wire:** optional `checks.topUp` (`state: "stopped"`, `reason: "bad_created" | "too_many"`) and `checks.save` (`state: "failed"`). The plugin writes the admin's text.
+5. **A wallet file lost with no re-pair isn't covered:** a row above the bound that the wallet no longer holds is still reported bad. An ordinary fresh install pairs, and a pairing drops the free rows.
+
+**Health's text (Wyatt's, 2026-11-06). Title: "The wallet host stopped adding addresses".**
+- `bad_created`: "It found a problem with an address it had just created, so it stopped rather than keep repeating."
+- `too_many`: "It created far more addresses than tips have used, so it stopped rather than keep going."
+- Then: "Payments are still tracked. Tips keep working for now: {n} free addresses are left. To restart it, run sudo systemctl restart xmr-bridge on the wallet host. If it stops again, its log has the details: sudo journalctl -u xmr-bridge"
+- **Claude's additions, for Wyatt's review:** one free address reads "1 free address is left"; none reads "Tips have stopped: no free addresses are left." A failed save is an amber line, title "The wallet host can't save its wallet": "Payments are still tracked, and it keeps trying. Until a save works, a crash could make it forget new addresses and report them as not from your wallet. Its log has the details: sudo journalctl -u xmr-bridge"
+
+**The floor (RT-33, RT-34):**
+1. **A settled invoice is judged on the floor it settled under,** stored as `settledFloor` when it settles. One settled with no stored floor, before the floor existed, has no floor for totals or the watch list.
+2. **A healed height stops the floor rising.** When the `createdHeight` of an invoice that hasn't settled is above the site's height, `floorPin` is stored once and never rises:
+   `siteHeight − 30 − 2 × (blocks expected since createdAt, at 2 minutes each)`. The estimate lets a payment mined long before the heal count. Its cost: on an inflated invoice only, an old payment to a reused address inside that window could count.
+   - **Honest open tips can be pinned too (Wyatt: fine, recorded):** a re-pair to a node a few blocks behind puts `createdHeight` above the site's height, so the tip gets a pin slightly lower than its normal floor.
+3. **The ignored-payment line uses the same floor as totals,** so nothing counted is ever listed as ignored. The one fallback: a settled invoice with no stored floor keeps today's formula for the line (spec change 47's answer 1(a)).
+
+Effect on the trust contract: none. Capabilities, hosts, routes, collections and indexes don't change. The new invoice fields aren't indexed and aren't on the public status route.
+Effect on the admin budget: none. No setting or routine task; a restart only after a fault.
+Live check: RT-32 at step 2's rerun (restore `live-before-step2.db`, the Feather wallet with `--restore-height 2230020`). **RT-34: unit-tested, not live (Wyatt, 2026-11-06).** RT-33: unit-tested; its live window has ended.

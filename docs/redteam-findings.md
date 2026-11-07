@@ -880,6 +880,7 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 - **Fix idea (Wyatt decides; next session's plan, tests first):** take the bound from the same base as the top-up, `max(claimedTop, receivedTop) + maxPool`, or report as bad only a row whose address the wallet holds with a different digest, or doesn't hold. Either way, an address the bridge created itself must never come back bad. Note (2026-11-06): the `max` form alone looks insufficient, because the bridge sets `receivedTop` only when answering a probe and holds it in memory, so after a restart the bound falls back and the same rows would come back bad.
 - **Evidence:** the site's database as the loop left it, `~/xmr-pay-dev-data/redteam/live-step2-loop.db` (SHA-256 `a0e7a7b991159462f1e23266cf60497257134eaedc0b3bb1b76b374ad5a57616`, `integrity_check` ok); the watcher's log `~/xmr-pay-dev-data/live-step2-watch.txt`; the collection script's output `~/xmr-pay-dev-data/live-step2-output.txt`. The bridge's journal for 22:54 to 23:10 UTC, saved by Wyatt (sudo), `~/xmr-pay-dev-data/redteam/live-step2-bridge-journal.txt` (304 lines, SHA-256 `18c82b47008250f9684e54324e302add8a8c691c7bdd9a3ffd41bf9b44c29b39`; no key, seed or password words in it).
 - **Status:** open.
+- **Live data point (2026-11-07 00:35 UTC, combined session step 5, first install):** a fresh install of wallet 1 answered `receivedTop=2` with the site at `claimedTop` 3, caught up to 3, re-offered from 4 with count 0, created 50 addresses and didn't loop. That fits the finding's condition, a paid index above `claimedTop`, which didn't hold here.
 
 ## RT-33 — The height floor moves a tip settled before the floor existed to review as "reversed", with an alert
 
@@ -895,6 +896,7 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 - **Evidence:** as RT-32 (the loop database holds the tip in review and the alert; `live-before-step2.db` holds it settled).
 - **Note (2026-11-06):** 1.0.0 is the first public version, so a released site can't hold a pre-floor invoice and this can't occur there. RT-34 reaches the same "reversed" result from a different cause.
 - **Status:** open.
+- **Live data point, RT-33's fix still open (2026-11-07 00:50 UTC, combined session step 5):** a settled tip created after the floor existed (`inv_bf39dc72bcab799f`, wallet 1, settled 22:02:41 on 2026-11-06) stayed settled with its transfer when the site switched to wallet 0, about 3 hours into its 24-hour watch window, read 1½ minutes after the switch. It doesn't cover RT-33's own case, a tip from before the floor, which 1.0.0 can't hold.
 
 ## RT-34 — After a height heal, an inflated invoice's floor follows the site's height, so an honest settled payment turns "reversed"
 

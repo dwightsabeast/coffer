@@ -4993,3 +4993,23 @@ Wyatt's question, before choosing how to close RT-20's gap. **Corrected the same
 Wyatt pressed the tip button on `https://dev.wyattdilley.com/posts/welcome` through his tunnel and reports a pass. The watcher logged one new invoice and one newly claimed address at 00:14:34 UTC on 2026-11-07 (17:14 local, the evening of 2026-11-06), bad rows still 2, no stop. The tip stays unpaid; the bridge points at `localhost:4321`, so it can't settle here. The second pass doesn't apply.
 
 **Next:** step 5 (back to the shop wallet on the own node), on Wyatt's word. Then his rulings on RT-32, RT-33 and RT-34.
+
+### Step 5 result: back to the shop wallet on the own node, passed (second install)
+
+**First install (00:33:51 UTC):** Wyatt's Feather wallet `58WW…eSZP`, not the shop wallet. My hand-off said only "the shop wallet", a name the records also use for his Feather wallet; `docs/setup-friction.md` has the row. The site correctly matched wallet 1: `match=true receivedTop=2`, catch-up to 3, free rows 4–53, no loop. Output kept as `live-step5-output-1.txt`.
+
+**Second install (00:48:48 UTC):** `59nA…etgQ`, no `--node`, no `--restore-height`; evidence `live-step5-output.txt`, `live-step3-watch.txt`.
+- **Installer:** own node on 127.0.0.1:38081; scan from 2,244,396 (the first-pass tip's 2,245,116 − 720); no clamp line.
+- **Bridge:** 00:50:49 `match=true receivedTop=0`, catch-up to 359, caught up 00:50:58, re-offer from 360 with count 0, created 50.
+- **Site:** key `gcczMoiL0O46qhtJ`, wallet 0, height 2,245,206 with the node at 2,245,207, free rows 360–409 with nothing skipped, 312 claimed, 2 bad (306 and 100356, the baseline), address check OK, no watcher stop.
+- **First-pass tip `inv_cbaca928ccb6a291`:** expired `wallet_changed` at 00:50:49. **My prediction was wrong:** I said that after its 00:44:32 deadline it would expire normally on wallet 1 first. It stayed `new` past the deadline with no evidence coming in, as the expire-on-evidence rule says, and expired at the switch.
+- **Settled tip `inv_bf39dc72bcab799f`:** still settled with its transfer. Recorded under RT-33.
+- **`/etc/hosts`:** still the recorded hash.
+
+**Not covered:** a new payment to wallet 0 (none was made), and the admin page by eye.
+
+**CI:** run 42318147527 passed on `d381cbe` (plugin, theme, bridge with the race detector).
+
+**Running:** dev site, watcher (baseline 2), release server, and the bridge on `59nA…etgQ`.
+
+**Next:** Wyatt's rulings on RT-32, RT-33 and RT-34; the fixes, tests first; one dev release he signs; step 2's rerun.

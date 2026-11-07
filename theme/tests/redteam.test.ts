@@ -171,6 +171,40 @@ describe("Round 2 (07b pass 1): the tip endpoint behind an https proxy", () => {
 		expect((await run()).status).toBe(403);
 		expect(calls).toHaveLength(0);
 	});
+	// RT-20's recorded limit (Wyatt, 2026-11-06): with no public address configured, the site's own https page is still
+	// refused, but the page says why to the site's owner. Only the wording differs; every case stays a 403 before checkout.
+	const refusal = async (origin: string, extra: Record<string, string> = {}) => {
+		const calls: Call[] = [];
+		const form = new FormData();
+		form.set("amount", "any");
+		const request = new Request("http://shop.example/pay/coffer/tip", { method: "POST", body: form, headers: { "sec-fetch-site": "same-origin", origin, ...extra } });
+		const res = (await tipEndpoint()({ request, url: new URL(request.url), locals: locals(ok, calls) } as never)) as Response;
+		return { status: res.status, html: await res.text(), calls };
+	};
+	const OWNER_NOTE = "For the site's admin: this site's public address isn't set up for a proxy. See Coffer's install guide.";
+	const CROSS_SITE = "This tip didn't come from this site's own page.";
+	it("[T17] [RT-20] an https Origin on the request's own host, over plain http: still a 403 before checkout, with a note for the site's owner", async () => {
+		const { status, html, calls } = await refusal("https://shop.example");
+		expect(status).toBe(403);
+		expect(calls).toHaveLength(0);
+		expect(html).toContain(OWNER_NOTE);
+		expect(html).not.toContain(CROSS_SITE);
+	});
+	it("[T17] [RT-20] everything else refused keeps the cross-site message: another host or port, Origin null, or Sec-Fetch-Site cross-site", async () => {
+		const cases: Array<[string, Record<string, string>]> = [
+			["https://evil.example", {}],
+			["https://shop.example:8443", {}],
+			["null", {}],
+			["https://shop.example", { "sec-fetch-site": "cross-site" }],
+		];
+		for (const [origin, extra] of cases) {
+			const { status, html, calls } = await refusal(origin, extra);
+			expect(status, origin).toBe(403);
+			expect(calls, origin).toHaveLength(0);
+			expect(html, origin).toContain(CROSS_SITE);
+			expect(html, origin).not.toContain("isn't set up for a proxy");
+		}
+	});
 	it("[T17] [RT-20] siteUrl doesn't widen anything else: another https host, and Origin null, are refused", async () => {
 		for (const origin of ["https://evil.example", "null"]) {
 			const { calls, run } = proxied(origin, "https://shop.example");

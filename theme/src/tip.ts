@@ -64,6 +64,20 @@ function crossSite(request: Request, url: URL, config: { siteUrl?: string } | un
 	}
 }
 
+/**
+ * RT-20's recorded limit: a post `crossSite` refused that looks like the site's own https page with no public address
+ * configured (same host, only https against the site's plain http). It chooses the wording only, never the refusal.
+ */
+function proxyNotSetUp(request: Request, url: URL): boolean {
+	if (request.headers.get("sec-fetch-site") === "cross-site" || url.protocol !== "http:") return false;
+	try {
+		const o = new URL(request.headers.get("origin") ?? "");
+		return o.protocol === "https:" && o.host === url.host;
+	} catch {
+		return false;
+	}
+}
+
 /** Decimal text to integer minor units with at most `places` decimals, or null. */
 function toUnits(text: string, places: number, maxWhole: number): bigint | null {
 	const m = new RegExp(`^(\\d{1,${maxWhole}})(?:\\.(\\d{1,${places}}))?$`).exec(text.trim());
@@ -135,7 +149,10 @@ export function tipEndpoint(options: TipEndpointOptions = {}): APIRoute {
 
 	return async ({ request, url, locals }) => {
 		const config = (locals as { emdash?: { config?: { siteUrl?: string } } }).emdash?.config;
-		if (crossSite(request, url, config)) return errorPage(403, "This tip didn't come from this site's own page.", "/");
+		if (crossSite(request, url, config)) {
+			if (proxyNotSetUp(request, url)) return errorPage(403, "This site can't take tips yet.", "/", "this site's public address isn't set up for a proxy. See Coffer's install guide.");
+			return errorPage(403, "This tip didn't come from this site's own page.", "/");
+		}
 		const form = await request.formData().catch(() => new FormData());
 		// The way back (spec change 39): the page the tip came from, checked; its error pages link "/" otherwise.
 		const returnTo = safeReturn(form.get("returnTo"), url.origin);

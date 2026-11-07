@@ -1828,7 +1828,37 @@ Found in: 07b pass 1, fix sessions (the combined live session, step 2, and traci
    `siteHeight − 30 − 2 × (blocks expected since createdAt, at 2 minutes each)`. The estimate lets a payment mined long before the heal count. Its cost: on an inflated invoice only, an old payment to a reused address inside that window could count.
    - **Honest open tips can be pinned too (Wyatt: fine, recorded):** a re-pair to a node a few blocks behind puts `createdHeight` above the site's height, so the tip gets a pin slightly lower than its normal floor.
 3. **The ignored-payment line uses the same floor as totals,** so nothing counted is ever listed as ignored. The one fallback: a settled invoice with no stored floor keeps today's formula for the line (spec change 47's answer 1(a)).
+   - **Still to change (Wyatt, step 2's rerun, 2026-11-06):** in that fallback the line says the payments "were ignored", but those same transfers settled the tip and count in its totals. For a settled invoice with no stored floor, the line must say they counted. Wording waiting on Wyatt; not built during the live check.
 
 Effect on the trust contract: none. Capabilities, hosts, routes, collections and indexes don't change. The new invoice fields aren't indexed and aren't on the public status route.
 Effect on the admin budget: none. No setting or routine task; a restart only after a fault.
 Live check: RT-32 at step 2's rerun (restore `live-before-step2.db`, the Feather wallet with `--restore-height 2230020`), including one `sudo systemctl restart xmr-bridge` after the pool fills (Wyatt): still no bad rows. Both new banners by eye once, on the dev site. **RT-34: unit-tested, not live (Wyatt, 2026-11-06).** RT-33: unit-tested; its live window has ended.
+
+## 49. Tie a person to an invoice: IDs, transfers and a lookup on the admin page, and the ID for the payer  (status: proposed, 2026-11-06; not built; found by Wyatt during step 2's rerun)
+Found in: the combined live session, step 2's rerun. The Tips list shows no invoice IDs: Wyatt could tell which row was `inv_f7ea94de1471f114` only from its older-payments line. If a tipper, or later a buyer, contacts the admin, the admin can't tie them to a row.
+
+Today:
+- A tip's row (`tipLine`, `plugin/src/admin.ts`) shows no ID, transfers or address. Product invoices already list each transfer's amount, block and transaction ID (`transfersCode`).
+- The Tips view lists the newest 10 of up to 1,000 scanned.
+- The pay page and the status route don't give the payer an ID.
+
+Wyatt's proposal:
+1. Show each invoice's ID on its row, copyable.
+2. Under each row, list each transfer's txid, amount and block (already stored in `transfers[]`).
+3. Show the address in short form.
+4. A lookup box that finds an invoice by ID, txid, address or pay-page token, including tips older than the newest-tips list.
+5. Show the ID to the payer on the pay page and the Tip received card, and put it in the `monero:` URI's description so it lands in their wallet history.
+
+**The pay token works as a secret (checked in the code, 2026-11-06), so never display it anywhere new:**
+- It's 128 bits from a cryptographic RNG, in a unique index, and spec row T09 protects it (no-store, no-referrer, noindex, no framing).
+- It's the only public handle on an invoice. Whoever holds it can read the invoice's status, amounts, address, `monero:` URI (with its description), expiry and settled time, for as long as the row exists. It can't change anything, and the status route doesn't return the buyer's note or contact details, or any txid.
+- So: the lookup may accept a token typed in, but must never show or echo one, and it must not go on a row, in a log or in the URI.
+
+**The invoice ID isn't a secret (checked):** 64 random bits, and no public route accepts it; the status route takes only a 22-character token. Showing it to the payer gives them nothing they could use on the site.
+
+What it would touch:
+- **Items 1-3:** the admin page only, using data already stored. No trust-contract change.
+- **Item 4:** a new input and action on the private admin route. ID (row key), token and address (unique indexes) are direct reads. **A txid has no index:** it's inside `transfers[]`, so it needs either a bounded scan or a new index. A new index changes the storage trust contract, so Wyatt decides.
+- **Item 5:** a new field on the public status response, the theme's pages, and the URI. To check live: whether wallets, Feather first, keep `tx_description` in their history. The description is capped at 100 characters today and carries the entry's title.
+
+Claude's view on release 1: doesn't block. Release 1 is tips only, with nothing to fulfil or refund. Suggested split, for Wyatt to decide: items 1-3 in phase 09, since they're small and display only; items 4-5 before orders exist, as a blocker for release 2.

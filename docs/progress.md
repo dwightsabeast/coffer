@@ -5056,3 +5056,27 @@ Wyatt pressed the tip button on `https://dev.wyattdilley.com/posts/welcome` thro
 6. The old tip's ignored line, and a fresh tip showing nothing received until he pays.
 
 **Test results after this list:** bridge gofmt and vet clean, all 21 packages pass. Plugin typecheck clean, validate passes, bundle 73.1 KB; default config 459 passed, 12 expected fail, 1 skipped; goods config 101 passed, 1 skipped. CI run 42329784544 passed on `0d6d7b6`, before these changes. The commit below is local until Wyatt says to push it.
+
+**CI and the dev release:** CI run 42331090673 passed on `82ac08d` (plugin, theme, bridge with the race detector). Dev release `0.0.202611070301-dev.82ac08d` built from a clean tree, in `~/xmr-pay-dev-data/dev-release/`, unsigned until Wyatt runs `scripts/sign-dev-release.sh`. SHA-256: `release.json` `05ff9dfeb2dea14a66685456976f85979d723d14673de962c37ad51ab399115e`, `install.sh` `a073a0da3648c951e955efbd70fb52821c6de38ecd3699381c43a17edc359b0a`, amd64 `bcd6ca396c2a17ff08c24fe9d31882f4365619093170d6f78655c8e41a798e19`, arm64 `9f8f6a1a592d68b902af60ffe48a86b0a99d706d0c93535f68d528cead628abc`.
+
+### Step 2's rerun on dev release `0.0.202611070301-dev.82ac08d`: passed
+
+Times UTC, 2026-11-07. Restored `live-before-step2.db` (hash `a46a7baa…`); Wyatt's Feather wallet `58WW…eSZP`, own node, `--restore-height 2230020`. Evidence: `live-rerun-output-install.txt`, `live-rerun-output-restart.txt`, `live-step3-watch.txt`, `live-rerun-feather.txt`.
+
+- **The signed update:** the old bridge updated itself to this release at 03:34:02, just before the uninstall, so the real updater accepted Wyatt's signature. Not planned.
+- **Both new banners by eye (Wyatt):** both show on the dev site. Written with `live-banners.py`; one stop reason (`too_many`) and the failed-save line. Before the restore, so the restore removed the write.
+- **RT-32, the shape that looped on 2026-11-02:** 03:45:56 `match=true receivedTop=2`, re-offer `from=2 count=0`, `created pool addresses count=50`, once. Free rows 3-52, consecutive; index 52 is above the old bound of 51. Still 2 bad rows (306, 100356), address check OK, no mismatch, no loop, the watcher never stopped the site.
+- **The restart (Wyatt's item):** `sudo systemctl restart xmr-bridge` at 03:48:53, so `receivedTop` is gone from memory. Nothing created, rows still 3-52, still 2 bad rows, address check OK.
+- **RT-33's symptom:** the old tip `inv_f7ea94de1471f114` stayed settled, with no new alert. Its 24-hour window has ended, so it wasn't being watched; the unit tests are what cover RT-33.
+- **RT-31's line (spec change 47):** Wyatt read it on the admin page. It says the older payments "were ignored", which is false for this tip because they count. Recorded under spec change 48; not changed during the live check.
+- **The fresh tip `inv_78bc3086b267cac7`** (wallet 1, index 3, `createdHeight` 2,245,295), paid by Wyatt from the Feather buyer wallet through its pay page:
+  - before payment: `new`, 0 received on the status route;
+  - 04:08:02: seen, `confirming`, 0 of 2; the pool topped back up to 50;
+  - 04:15:26: settled, mined at 2,245,306, 2 confirmations, `settledFloor` 2,245,265 (`createdHeight` − 30), no `floorPin`;
+  - the status route agrees and shows no floor fields; no new alert.
+
+**Not covered:** the fresh tip in the `58WW…` wallet's Feather history (Wyatt's to check); RT-34 live (unit-tested, not live, his decision); `bad_created` and "none left" by eye (tests cover the wording); the breaker tripping live, and a failed save live.
+
+**Wyatt's finding:** the admin page can't tie a person to a row. Logged as spec change 49 (proposed, not built). My view: it doesn't block release 1.
+
+**Waiting on Wyatt:** the older-payments wording; whether items 1-3 of spec change 49 go in phase 09; whether to go back to step 5's state (`live-before-step2-rerun.db`, then the shop wallet).

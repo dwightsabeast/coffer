@@ -61,3 +61,6 @@ Success (`data`): `{ "ok": true, "poolFree": <free addresses>, "poolTarget": 50,
 | `probeDigest` | The digest of the bridge's own index-1 address. Sent with the answer, and with every sync until one carrying it succeeds; the site keeps the first as the current wallet's probe and ignores later ones. A malformed one is dropped. |
 | `checks.pool` | The check of the last `check` list: `{ "state": "ok" }`, or `{ "state": "mismatch", "bad": [<own index>…] }` with at most 20. An index the wallet holds with another digest is bad; so is one it doesn't hold above `claimedTop + 50`. A mismatch goes out at once (a sync with no snapshots or addresses), before any catch-up; "ok" waits until every row can be compared. The site turns bad rows "bad", sends their invoices to review, and shows a red banner until the next pairing; an "ok" never clears it. |
 
+## Spec change 48: the circuit breaker and a failed save
+
+`bridge-checks.json` is read by the bridge's tests (`bridge/internal/bridgeloop/rt32_test.go`) and the plugin's (`plugin/tests/sync/vectors.test.ts`). Each case gives the bridge's state and the `checks` it must send: `topUp` (`state: "stopped"`, `reason: "bad_created" | "too_many"`) and `save` (`state: "failed"`). The plugin keeps exactly that, and drops anything malformed without refusing the body.

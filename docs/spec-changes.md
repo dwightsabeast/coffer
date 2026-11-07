@@ -1811,13 +1811,16 @@ Found in: 07b pass 1, fix sessions (the combined live session, step 2, and traci
    - **Trigger 2 (`too_many`):** 100 addresses (2 × `maxPool`) created for the pool in one run without `claimedTop` rising. Catch-up and the probe's index 1 don't count; `claimedTop` rising or a new pairing resets it. It catches rows the site drops without reporting them (spec change 45's wrong-network and unreadable drops).
    - **A known limit:** someone with a stolen bridge key can trip it by forging a row. Tips then refuse once free rows run out, which fails safe, and RT-08's real alarm still shows.
 4. **On the wire:** optional `checks.topUp` (`state: "stopped"`, `reason: "bad_created" | "too_many"`) and `checks.save` (`state: "failed"`). The plugin writes the admin's text.
-5. **A wallet file lost with no re-pair isn't covered:** a row above the bound that the wallet no longer holds is still reported bad. An ordinary fresh install pairs, and a pairing drops the free rows.
+5. **A wallet that lost addresses with no re-pair isn't covered:** a row above the bound that the wallet no longer holds is still reported bad. The realistic way there is a failed save followed by a crash (a full disk, say); a lost wallet file is the other. An ordinary fresh install pairs, and a pairing drops the free rows.
+6. **Shared vector:** `contract/test-vectors/bridge-checks.json`, read by the bridge's and the plugin's tests, covers both stop reasons and a failed save.
 
 **Health's text (Wyatt's, 2026-11-06). Title: "The wallet host stopped adding addresses".**
 - `bad_created`: "It found a problem with an address it had just created, so it stopped rather than keep repeating."
 - `too_many`: "It created far more addresses than tips have used, so it stopped rather than keep going."
 - Then: "Payments are still tracked. Tips keep working for now: {n} free addresses are left. To restart it, run sudo systemctl restart xmr-bridge on the wallet host. If it stops again, its log has the details: sudo journalctl -u xmr-bridge"
-- **Claude's additions, for Wyatt's review:** one free address reads "1 free address is left"; none reads "Tips have stopped: no free addresses are left." A failed save is an amber line, title "The wallet host can't save its wallet": "Payments are still tracked, and it keeps trying. Until a save works, a crash could make it forget new addresses and report them as not from your wallet. Its log has the details: sudo journalctl -u xmr-bridge"
+- **With one free address:** "Tips keep working for now: 1 free address is left."
+- **With none (Wyatt):** "No free addresses are left, so Coffer can't take new tips." Not "tips have stopped": an empty pool is a fallback case in the theme (`theme/src/tip.ts`, `FALLBACK_CODES`), so a site with spec change 18 A's address still shows it, and the plugin can't know whether it set one.
+- **A failed save, amber (Wyatt). Title: "The wallet host can't save its wallet".** "Payments are still tracked, and it keeps trying. Until a save works, a crash could make it forget new addresses and then wrongly report them as not from your wallet. Check that the wallet host's disk isn't full (df -h). Details are in its log; on the wallet host, run: sudo journalctl -u xmr-bridge"
 
 **The floor (RT-33, RT-34):**
 1. **A settled invoice is judged on the floor it settled under,** stored as `settledFloor` when it settles. One settled with no stored floor, before the floor existed, has no floor for totals or the watch list.
@@ -1828,4 +1831,4 @@ Found in: 07b pass 1, fix sessions (the combined live session, step 2, and traci
 
 Effect on the trust contract: none. Capabilities, hosts, routes, collections and indexes don't change. The new invoice fields aren't indexed and aren't on the public status route.
 Effect on the admin budget: none. No setting or routine task; a restart only after a fault.
-Live check: RT-32 at step 2's rerun (restore `live-before-step2.db`, the Feather wallet with `--restore-height 2230020`). **RT-34: unit-tested, not live (Wyatt, 2026-11-06).** RT-33: unit-tested; its live window has ended.
+Live check: RT-32 at step 2's rerun (restore `live-before-step2.db`, the Feather wallet with `--restore-height 2230020`), including one `sudo systemctl restart xmr-bridge` after the pool fills (Wyatt): still no bad rows. Both new banners by eye once, on the dev site. **RT-34: unit-tested, not live (Wyatt, 2026-11-06).** RT-33: unit-tested; its live window has ended.

@@ -46,9 +46,9 @@ describe("the circuit breaker on Health", () => {
 		await setup({ topUp: { state: "stopped", reason: "too_many" } }, 1);
 		expect(await banners()).toContainEqual({ variant: "error", title: TITLE, description: `${MANY} Payments are still tracked. Tips keep working for now: 1 free address is left. ${AFTER}` });
 	});
-	it("[R08] [RT-32] no free addresses: it doesn't say tips keep working", async () => {
+	it("[R08] [RT-32] no free addresses: Wyatt's text, which stays true on a site with a fallback address", async () => {
 		await setup({ topUp: { state: "stopped", reason: "too_many" } }, 0);
-		expect(await banners()).toContainEqual({ variant: "error", title: TITLE, description: `${MANY} Payments are still tracked. Tips have stopped: no free addresses are left. ${AFTER}` });
+		expect(await banners()).toContainEqual({ variant: "error", title: TITLE, description: `${MANY} Payments are still tracked. No free addresses are left, so Coffer can't take new tips. ${AFTER}` });
 	});
 	it("[R08] [RT-32] no banner while top-ups run", async () => {
 		await setup({}, 3);
@@ -59,7 +59,7 @@ describe("the circuit breaker on Health", () => {
 describe("a failed save on Health", () => {
 	it("[R08] [RT-32] an amber line saying what it risks and where to look", async () => {
 		await setup({ save: { state: "failed" } }, 3);
-		expect(await banners()).toContainEqual({ variant: "alert", title: "The wallet host can't save its wallet", description: "Payments are still tracked, and it keeps trying. Until a save works, a crash could make it forget new addresses and report them as not from your wallet. Its log has the details: sudo journalctl -u xmr-bridge" });
+		expect(await banners()).toContainEqual({ variant: "alert", title: "The wallet host can't save its wallet", description: "Payments are still tracked, and it keeps trying. Until a save works, a crash could make it forget new addresses and then wrongly report them as not from your wallet. Check that the wallet host's disk isn't full (df -h). Details are in its log; on the wallet host, run: sudo journalctl -u xmr-bridge" });
 	});
 });
 

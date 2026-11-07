@@ -3,7 +3,10 @@ package bridgeloop
 import (
 	"context"
 	"crypto/ed25519"
+	"encoding/json"
 	"errors"
+	"os"
+	"reflect"
 	"testing"
 
 	"github.com/dwightsabeast/coffer/bridge/internal/syncclient"
@@ -357,4 +360,62 @@ func TestRT32Breaker(t *testing.T) {
 			t.Fatalf("topUp sent: %+v", c.TopUp)
 		}
 	})
+}
+
+// The bridge's side of contract/test-vectors/bridge-checks.json; the plugin reads the same file. The reasons come from
+// the states the breaker really sets, so a renamed constant fails here.
+func TestBridgeChecksVector(t *testing.T) {
+	data, err := os.ReadFile("../../../contract/test-vectors/bridge-checks.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var v struct {
+		Cases []struct {
+			Name   string
+			Bridge struct {
+				TopUpStopped string
+				StoreFailed  bool
+			}
+			Wire map[string]any
+		}
+	}
+	if err := json.Unmarshal(data, &v); err != nil {
+		t.Fatal(err)
+	}
+	if len(v.Cases) != 5 {
+		t.Fatalf("%d cases", len(v.Cases))
+	}
+	for _, c := range v.Cases {
+		t.Run("[R08][F08] [RT-32] "+c.Name, func(t *testing.T) {
+			l, _, _, _ := setup(t)
+			l.mu.Lock()
+			if c.Bridge.TopUpStopped != "" {
+				l.stopTopUp(c.Bridge.TopUpStopped)
+			}
+			l.st.StoreFailed = c.Bridge.StoreFailed
+			checks := &syncclient.Checks{}
+			l.addBreakerChecks(checks)
+			l.mu.Unlock()
+			b, err := json.Marshal(checks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got map[string]any
+			if err := json.Unmarshal(b, &got); err != nil {
+				t.Fatal(err)
+			}
+			if !reflect.DeepEqual(got, c.Wire) {
+				t.Fatalf("sent %s, want %v", b, c.Wire)
+			}
+		})
+	}
+	for _, reason := range []string{stopBadCreated, stopTooMany} {
+		found := false
+		for _, c := range v.Cases {
+			found = found || c.Bridge.TopUpStopped == reason
+		}
+		if !found {
+			t.Errorf("the vector doesn't cover %q", reason)
+		}
+	}
 }

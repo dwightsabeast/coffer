@@ -5038,3 +5038,21 @@ Wyatt pressed the tip button on `https://dev.wyattdilley.com/posts/welcome` thro
 **State:** dev site, watcher and release server stopped. The bridge is on `59nA…etgQ` and backs off while the site is stopped. These commits are local; `origin/redteam-1` is at `d381cbe`.
 
 **Next:** Wyatt pushes or says to, CI on the tip, a dev release he signs, then step 2's rerun: restore `live-before-step2.db`, install the Feather wallet `58WW…eSZP` with `--restore-height 2230020`. Expected: no bad rows, no loop, the old tip's ignored line, and a fresh tip showing nothing received until he pays.
+
+### Before the dev release (Wyatt's list, 2026-11-06)
+
+- **Pushed** `b21ad5b`, `427049e`, `04de32d`, `0d6d7b6` to `origin/redteam-1`.
+- **Shared vector:** `contract/test-vectors/bridge-checks.json`, read by `TestBridgeChecksVector` and `plugin/tests/sync/vectors.test.ts`: both stop reasons, a failed save, both together, neither. Renaming a reason on either side fails its test (tried once on each, then restored).
+- **Banner with no free addresses:** Wyatt's text. Checked: an empty pool gives `NO_ADDRESS_AVAILABLE`, which the theme treats as a fallback case (`theme/src/tip.ts`, `FALLBACK_CODES`), so a site with an 18 A address still shows it.
+- **Failed-save line:** Wyatt's text.
+- **Known limit:** now names a failed save followed by a crash.
+
+**Step 2's rerun, in order (updated):**
+1. Build the plugin for the dev site. Wyatt uninstalls the bridge.
+2. **Both banners by eye:** with the site stopped and no bridge running, `python3 -I ~/xmr-pay-dev-data/live-banners.py` writes the two checks into `state:bridge` (dry run on a copy passed; it refuses while the site or the bridge runs). Start `astro dev`, Wyatt looks at the admin page through his tunnel, then stop the site. The restore in step 3 removes the write.
+3. Restore `live-before-step2.db`, start the site, the watcher on (bad rows baseline from that backup).
+4. Install the Feather wallet `58WW…eSZP` with `--restore-height 2230020`. Expected: no bad rows, no loop.
+5. **After the pool fills:** Wyatt runs `sudo systemctl restart xmr-bridge` once. Expected: still no bad rows.
+6. The old tip's ignored line, and a fresh tip showing nothing received until he pays.
+
+**Test results after this list:** bridge gofmt and vet clean, all 21 packages pass. Plugin typecheck clean, validate passes, bundle 73.1 KB; default config 459 passed, 12 expected fail, 1 skipped; goods config 101 passed, 1 skipped. CI run 42329784544 passed on `0d6d7b6`, before these changes. The commit below is local until Wyatt says to push it.

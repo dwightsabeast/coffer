@@ -188,7 +188,8 @@ function problems(h: Health): Array<{ variant: "error" | "alert"; title: string;
 	// Spec change 48: the wallet host's circuit breaker stopped top-ups (Wyatt's text, 2026-11-06).
 	if (checks?.topUp) {
 		const why = checks.topUp.reason === "too_many" ? "It created far more addresses than tips have used, so it stopped rather than keep going." : "It found a problem with an address it had just created, so it stopped rather than keep repeating.";
-		const tips = h.free === 0 ? "Tips have stopped: no free addresses are left." : `Tips keep working for now: ${h.free === 1 ? "1 free address is" : `${h.free} free addresses are`} left.`;
+		// Not "tips have stopped": a site with spec change 18 A's fallback address still shows it, and the plugin can't know.
+		const tips = h.free === 0 ? "No free addresses are left, so Coffer can't take new tips." : `Tips keep working for now: ${h.free === 1 ? "1 free address is" : `${h.free} free addresses are`} left.`;
 		out.push({ variant: "error", title: "The wallet host stopped adding addresses", description: `${why} Payments are still tracked. ${tips} To restart it, run sudo systemctl restart xmr-bridge on the wallet host. If it stops again, its log has the details: sudo journalctl -u xmr-bridge` });
 	}
 	// Spec change 46, item 2: a sync the current key signed that the site refused.
@@ -221,7 +222,7 @@ function problems(h: Health): Array<{ variant: "error" | "alert"; title: string;
 		});
 	}
 	if (checks?.wallet?.state === "unavailable") out.push({ variant: "alert", title: "The wallet host can't read its node's height", description: checks.wallet.detail ?? "On the wallet host, run: xmr-bridge status" });
-	if (checks?.save) out.push({ variant: "alert", title: "The wallet host can't save its wallet", description: "Payments are still tracked, and it keeps trying. Until a save works, a crash could make it forget new addresses and report them as not from your wallet. Its log has the details: sudo journalctl -u xmr-bridge" });
+	if (checks?.save) out.push({ variant: "alert", title: "The wallet host can't save its wallet", description: "Payments are still tracked, and it keeps trying. Until a save works, a crash could make it forget new addresses and then wrongly report them as not from your wallet. Check that the wallet host's disk isn't full (df -h). Details are in its log; on the wallet host, run: sudo journalctl -u xmr-bridge" });
 	if (checks?.node?.state === "unavailable") out.push({ variant: "alert", title: "Remote-node cross-check unavailable", description: checks.node.detail ?? "No second node answered, so mined payments are held at 0 confirmations until one does. Use your own node, or one you trust" });
 	if (h.review > 0) out.push({ variant: "alert", title: `${plural(h.review, "invoice needs", "invoices need")} a decision`, description: "They're under Needs a decision, below Health, each with what happened and a recommended action." });
 	if (h.watchTruncatedAt !== null) {

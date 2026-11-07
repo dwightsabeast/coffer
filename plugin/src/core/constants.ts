@@ -57,6 +57,8 @@ export const RESTORE_MARGIN_BLOCKS = 720;
  * 10-block height tolerance (D2).
  */
 export const FLOOR_MARGIN_BLOCKS = 30;
+/** Monero's block target, for the floor's estimate after a healed height (spec change 48). */
+export const BLOCK_TARGET_MS = 120_000;
 
 /** Tips settle at or above this many atomic units (0.0001 XMR). */
 export const DUST_ATOMIC = 100_000_000n;

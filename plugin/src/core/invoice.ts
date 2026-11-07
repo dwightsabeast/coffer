@@ -7,6 +7,7 @@ import { type MoneroNetwork, subaddressNetwork } from "./address";
 import {
 	DUST_ATOMIC,
 	EXPIRY_GRACE_BLOCKS,
+	BLOCK_TARGET_MS,
 	FLOOR_MARGIN_BLOCKS,
 	INVOICE_WINDOW_MS,
 	RECONFIRM_BLOCKS,
@@ -79,6 +80,10 @@ export interface Invoice {
 	expiresAt: number;
 	createdHeight: number;
 	expiresHeight: number;
+	/** Spec change 48: the floor this invoice settled under, which never moves. A settled invoice without one predates the floor. */
+	settledFloor?: number;
+	/** Spec change 48: the floor fixed once when a healed height left createdHeight above the site's height. */
+	floorPin?: number;
 	pendingExpiry?: boolean;
 	/** Chain height when a reorg knocked a settled payment shallower. */
 	reconfirmingSince?: number;
@@ -209,15 +214,46 @@ export interface Totals {
  * toward this invoice. min(createdHeight, the site's height), so an invoice created under a height a dishonest node
  * inflated heals when a pairing heals the site's height; siteHeight 0 (unknown) leaves createdHeight alone.
  */
-export const floorHeight = (inv: Pick<Invoice, "createdHeight">, siteHeight: number) =>
+const movingFloor = (inv: Pick<Invoice, "createdHeight">, siteHeight: number) =>
 	(siteHeight > 0 ? Math.min(inv.createdHeight, siteHeight) : inv.createdHeight) - FLOOR_MARGIN_BLOCKS;
 
-/** Mined before this invoice could have been paid: an old payment to a reused address (RT-31), never counted toward it. */
-export const belowFloor = (inv: Pick<Invoice, "createdHeight">, t: Pick<Transfer, "height">, siteHeight: number) =>
-	t.height > 0 && t.height < floorHeight(inv, siteHeight);
+type FloorFields = Pick<Invoice, "createdHeight"> & Partial<Pick<Invoice, "status" | "settledFloor" | "floorPin">>;
 
-/** The spendable transfers below the floor: shown to the admin as ignored (D6), never to the buyer. */
-export const ignoredOld = (inv: Invoice, siteHeight: number) => inv.transfers.filter((t) => counted(t) && belowFloor(inv, t, siteHeight));
+/**
+ * Spec change 48 (RT-33, RT-34): the floor an invoice settled under never moves, one fixed by a healed height never
+ * rises, and a settled invoice with neither settled before the floor existed, so it has none. Otherwise the moving floor.
+ */
+export function floorHeight(inv: FloorFields, siteHeight: number): number {
+	if (inv.settledFloor !== undefined) return inv.settledFloor;
+	if (inv.floorPin !== undefined) return inv.floorPin;
+	return inv.status === "settled" ? 0 : movingFloor(inv, siteHeight);
+}
+
+/** Mined before this invoice could have been paid: an old payment to a reused address (RT-31), never counted toward it. */
+export const belowFloor = (inv: FloorFields, t: Pick<Transfer, "height">, siteHeight: number) => t.height > 0 && t.height < floorHeight(inv, siteHeight);
+
+/**
+ * The spendable transfers below the floor: shown to the admin as ignored (D6), never to the buyer. The same floor as
+ * totals, so nothing counted is listed. The one exception (spec change 47's answer 1(a)): a tip settled before the floor
+ * existed counts them, and still says they were older.
+ */
+export const ignoredOld = (inv: Invoice, siteHeight: number) =>
+	inv.transfers.filter((t) => counted(t) && (inv.status === "settled" && inv.settledFloor === undefined ? t.height > 0 && t.height < movingFloor(inv, siteHeight) : belowFloor(inv, t, siteHeight)));
+
+/**
+ * Spec change 48: where the floor stops when a healed height leaves createdHeight above the site's height. The honest
+ * creation height isn't stored, so it's estimated from the time since: twice the blocks expected, since blocks can come
+ * fast, so a payment mined long before the heal still counts. This also pins an honest tip after a re-pair to a node a
+ * few blocks behind, just below its normal floor.
+ */
+const healedFloor = (inv: Pick<Invoice, "createdAt">, at: { now: number; chainHeight: number }) =>
+	at.chainHeight - FLOOR_MARGIN_BLOCKS - 2 * Math.ceil(Math.max(0, at.now - inv.createdAt) / BLOCK_TARGET_MS);
+
+/** Settling fixes the floor it happened under (spec change 48). A later re-settle keeps the first. */
+function markSettled(inv: Invoice, now: number, chainHeight: number): void {
+	inv.settledAt = now;
+	inv.settledFloor ??= inv.floorPin ?? movingFloor(inv, chainHeight);
+}
 
 /**
  * Sums for an invoice at the site's height (the floor needs it; 0 when unknown). counted() describes money; this is what
@@ -295,6 +331,9 @@ export function evaluate(input: Invoice, at: { now: number; chainHeight: number 
 	const before = inv.status;
 	const wasPending = Boolean(inv.pendingExpiry);
 	const snapshot = JSON.stringify(input);
+	if (before !== "settled" && inv.settledFloor === undefined && inv.floorPin === undefined && chainHeight > 0 && inv.createdHeight > chainHeight) {
+		inv.floorPin = healedFloor(inv, at);
+	}
 
 	if (before === "settled") {
 		const t = totals(inv, chainHeight);
@@ -329,7 +368,7 @@ export function evaluate(input: Invoice, at: { now: number; chainHeight: number 
 			inv.status = s;
 			inv.reopened = true;
 			events.push({ type: "reopened" });
-			if (s === "settled") inv.settledAt = now;
+			if (s === "settled") markSettled(inv, now, chainHeight);
 			else delete inv.finalAt;
 		} else if (inv.kind === "tip") {
 			// Below the floor: stays expired, quietly. Never late, never underpaid (spec change 33).
@@ -364,7 +403,7 @@ export function evaluate(input: Invoice, at: { now: number; chainHeight: number 
 		}
 		inv.status = s;
 		if (s === "settled") {
-			inv.settledAt = now;
+			markSettled(inv, now, chainHeight);
 			const all = totals(inv, chainHeight);
 			if (inv.kind !== "tip" && inv.expectedAtomic !== null && all.received > BigInt(inv.expectedAtomic)) {
 				inv.overpaidAtomic = (all.received - BigInt(inv.expectedAtomic)).toString();

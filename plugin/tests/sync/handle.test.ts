@@ -4,10 +4,10 @@ import { describe, expect, it } from "vitest";
 import { RESTORE_MARGIN_BLOCKS } from "../../src/core/constants";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { handleSync } from "../../src/sync/handle";
-import { PAIRING_TTL_MS, newPairingCode } from "../../src/sync/pairing";
+import { PAIRING_TTL_MS, keyId, newPairingCode } from "../../src/sync/pairing";
 import { PAIR_MAX_BYTES } from "../../src/sync/protocol";
-import { type KeyName, MemoryStore, PUBLIC_KEYS, bytesOf, signedHeaders } from "./helpers";
-import { fakeSubaddress } from "../addresses";
+import { KEY_IDS, type KeyName, MemoryStore, PUBLIC_KEYS, bytesOf, signedHeaders } from "./helpers";
+import { TAGS, fakeAddress, fakeSubaddress } from "../addresses";
 
 const T0 = 1_790_000_000_000;
 const H0 = 3_000_000;
@@ -31,6 +31,12 @@ function pairedStore(key: KeyName = "test1") {
 }
 
 describe("pairing", () => {
+	it("a key ID is the key's first 16 base64 characters, different for the two test keys (spec change 45)", () => {
+		expect(keyId(PUBLIC_KEYS.test1)).toBe(PUBLIC_KEYS.test1.slice(0, 16));
+		expect(keyId(PUBLIC_KEYS.test1)).toHaveLength(16);
+		expect(keyId(PUBLIC_KEYS.test1)).not.toBe(keyId(PUBLIC_KEYS.test2));
+	});
+
 	it("[T03] NOT_PAIRED without a key or an active code", async () => {
 		expect(errorCode(await send(new MemoryStore(), syncBody()))).toBe("NOT_PAIRED");
 	});
@@ -112,7 +118,9 @@ describe("pairing", () => {
 			const { code, state } = await newPairingCode(T0);
 			store.pairing = state;
 			for (const i of invoices) store.invoices.set(i.id, i);
-			const out = await send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS.test1 } }));
+			// The pairing carries its node's bounded height, above every invoice here (spec change 47's healing, where it
+			// is below, is in tests/redteam/floor.test.ts).
+			const out = await send(store, syncBody({ height: H0 + 200, pair: { code, publicKey: PUBLIC_KEYS.test1 } }));
 			return { store, response: out.response };
 		};
 		// Nothing watched: no suggestion, so the installer uses today.
@@ -290,6 +298,134 @@ describe("ordinary syncs", () => {
 
 // Spec change 29: only a full sync counts as one. A pairing request, or the bridge's "starting" message while
 // wallet-rpc isn't ready, says the wallet host is alive (lastHeardAt) but not that its wallet has synced (lastSyncAt).
+describe("one network per pairing (spec change 45)", () => {
+	const MAIN = (i: number) => fakeAddress(TAGS.mainnet[1], i, "M");
+	const UNREADABLE = (i: number) => fakeAddress(99, i, "U");
+	const indexes = (store: MemoryStore) => [...store.pool.keys()].sort((a, b) => a - b);
+
+	it("[T20][P02] [RT-11] with no stored network, the first address sets it for the key that sent it; another network's address is dropped", async () => {
+		const store = pairedStore();
+		await send(store, syncBody({ addresses: [{ index: 1, address: ADDR(1) }, { index: 2, address: MAIN(2) }, { index: 3, address: ADDR(3) }] }));
+		expect(indexes(store)).toEqual([1, 3]);
+		expect(store.network).toEqual({ network: "stagenet", keyId: KEY_IDS.test1 });
+	});
+
+	it("[T20][P02] [RT-11] a mixed first batch keeps only the first readable address's network, in the body's order", async () => {
+		const store = pairedStore();
+		const addresses = [{ index: 1, address: UNREADABLE(1) }, { index: 2, address: MAIN(2) }, { index: 3, address: ADDR(3) }, { index: 4, address: MAIN(4) }];
+		await send(store, syncBody({ addresses }));
+		expect(indexes(store)).toEqual([2, 4]);
+		expect(store.network).toEqual({ network: "mainnet", keyId: KEY_IDS.test1 });
+	});
+
+	it("[T20][P02] [RT-11] the stored network holds for later syncs: another network's address is dropped and the network stays", async () => {
+		const store = pairedStore();
+		store.network = { network: "stagenet", keyId: KEY_IDS.test1 };
+		await send(store, syncBody({ addresses: [{ index: 5, address: MAIN(5) }] }));
+		expect(indexes(store)).toEqual([]);
+		expect(store.network).toEqual({ network: "stagenet", keyId: KEY_IDS.test1 });
+	});
+
+	it("[T20][T03] a stored network from another key counts as not known: this key's first address sets its own", async () => {
+		const store = pairedStore("test1");
+		store.network = { network: "mainnet", keyId: KEY_IDS.test2 };
+		await send(store, syncBody({ addresses: [{ index: 1, address: ADDR(1) }] }));
+		expect(indexes(store)).toEqual([1]);
+		expect(store.network).toEqual({ network: "stagenet", keyId: KEY_IDS.test1 });
+	});
+
+	it("[T03] each pool row carries the ID of the key that signed the sync, and when it was added (spec change 46)", async () => {
+		const store = pairedStore("test2");
+		await send(store, syncBody({ addresses: [{ index: 1, address: ADDR(1) }] }), { key: "test2" });
+		expect(store.pool.get(1)).toEqual({ addrIndex: 1, address: ADDR(1), status: "free", keyId: KEY_IDS.test2, addedAt: T0 });
+	});
+
+	it("[T03][R08] a sync whose key is replaced by a pairing while it runs is refused, and changes nothing", async () => {
+		// The first read of the key (the signature check) sees test1; a pairing to test2 lands straight after.
+		class RacingStore extends MemoryStore {
+			reads = 0;
+			override async getPublicKey() {
+				const key = this.publicKey;
+				if (++this.reads === 1) this.publicKey = PUBLIC_KEYS.test2;
+				return key;
+			}
+		}
+		const store = new RacingStore();
+		store.publicKey = PUBLIC_KEYS.test1;
+		const out = await send(store, syncBody({ height: H0 + 5, addresses: [{ index: 1, address: ADDR(1) }] }));
+		expect(errorCode(out)).toBe("BAD_SIGNATURE");
+		expect(store.pool.size).toBe(0);
+		expect(store.network).toBeNull();
+		expect(store.bridge).toBeNull();
+	});
+});
+
+describe("a new pairing starts the pool afresh (spec change 45)", () => {
+	async function pairWith(store: MemoryStore, key: KeyName, now = T0) {
+		const { code, state } = await newPairingCode(now);
+		store.pairing = state;
+		return { code, out: await send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS[key] } }), { key, now }) };
+	}
+
+	it("[T20][T03][R08] [RT-29] pairing drops every unused address and clears the network; claimed rows stay and poolTop falls to the highest", async () => {
+		const store = pairedStore("test1");
+		await send(store, syncBody({ addresses: [1, 2, 3, 4].map((i) => ({ index: i, address: ADDR(i) })) }));
+		store.claim(2, newInvoice({ network: "stagenet", id: "inv_2", token: "t".repeat(22), kind: "tip", fiatMinor: null, currency: "USD", rate: null, speed: "standard", subaddress: ADDR(2), addrIndex: 2, now: T0, chainHeight: H0 }));
+		const { out } = await pairWith(store, "test2", T0 + 1000);
+		// Spec change 46: a site with history waits for the probe answer (poolTop 0), then the matched wallet's top.
+		expect(out.response).toMatchObject({ ok: true, poolFree: 0, poolTop: 0 });
+		const answered = await send(store, syncBody({ seq: T0 + 2000, wallet: { match: 0, receivedTop: 0 } }), { key: "test2", now: T0 + 2000 });
+		expect(answered.response).toMatchObject({ ok: true, poolFree: 0, poolTop: 2 });
+		expect([...store.pool.keys()]).toEqual([2]);
+		expect(store.network).toBeNull();
+		expect(store.invoices.has("inv_2")).toBe(true);
+	});
+
+	it("[T03][T13][R08] a pairing that fails after the drops: the old key still syncs, the new key is refused, and the code pairs on a retry", async () => {
+		class FailingStore extends MemoryStore {
+			failNext = true;
+			override async setPublicKey(k: string) {
+				if (this.failNext) {
+					this.failNext = false;
+					throw new Error("storage write failed");
+				}
+				await super.setPublicKey(k);
+			}
+		}
+		const store = new FailingStore();
+		store.publicKey = PUBLIC_KEYS.test1;
+		await send(store, syncBody({ addresses: [1, 2].map((i) => ({ index: i, address: ADDR(i) })) }));
+		const { code, state } = await newPairingCode(T0);
+		store.pairing = state;
+		const pairBody = syncBody({ seq: T0 + 1, pair: { code, publicKey: PUBLIC_KEYS.test2 } });
+		await expect(send(store, pairBody, { key: "test2", now: T0 + 1000 })).rejects.toThrow("storage write failed");
+		// The drops happened before the failure; nothing else did.
+		expect(store.pool.size).toBe(0);
+		expect(store.publicKey).toBe(PUBLIC_KEYS.test1);
+		expect(store.pairing?.used).toBe(false);
+		// The old pairing still works and refills; the new key isn't paired.
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 2, addresses: [{ index: 3, address: ADDR(3) }] }), { now: T0 + 2000 }))).toBe("ok");
+		expect([...store.pool.keys()]).toEqual([3]);
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 3 }), { key: "test2", now: T0 + 3000 }))).toBe("BAD_SIGNATURE");
+		// A retry with the same code pairs, and starts the pool afresh again.
+		expect(errorCode(await send(store, pairBody, { key: "test2", now: T0 + 4000 }))).toBe("ok");
+		expect(store.publicKey).toBe(PUBLIC_KEYS.test2);
+		expect(store.pairing?.used).toBe(true);
+		expect(store.pool.size).toBe(0);
+	});
+
+	it("[T20][T03] a pairing body's own addresses set the new pairing's network and carry the new key's ID", async () => {
+		const store = pairedStore("test1");
+		store.network = { network: "stagenet", keyId: KEY_IDS.test1 };
+		const { code, state } = await newPairingCode(T0);
+		store.pairing = state;
+		const MAIN = (i: number) => fakeAddress(TAGS.mainnet[1], i, "M");
+		await send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS.test2 }, addresses: [{ index: 1, address: MAIN(1) }] }), { key: "test2" });
+		expect(store.network).toEqual({ network: "mainnet", keyId: KEY_IDS.test2 });
+		expect(store.pool.get(1)).toMatchObject({ status: "free", keyId: KEY_IDS.test2 });
+	});
+});
+
 describe("heard, not synced (spec change 29)", () => {
 	it("a pairing request: heard, not synced, no checks kept; the height still sets the floor", async () => {
 		const store = new MemoryStore();
@@ -320,5 +456,29 @@ describe("heard, not synced (spec change 29)", () => {
 		expect(out.response).toMatchObject({ ok: true });
 		expect(store.bridge).toEqual({ height: H0 + 7, lastSyncAt: T0 + 500, lastHeardAt: T0 + 1000, version: 1, outdated: false, checks: starting });
 		expect(store.invoices.get("inv_1")).toEqual(inv);
+	});
+});
+
+describe("the seq bound (spec change 46, item 5; RT-24)", () => {
+	it("[T04] a sync whose seq is more than 300 s from its signed timestamp is refused and changes nothing; 300 s is accepted", async () => {
+		const store = pairedStore();
+		for (const seq of [T0 + 300_001, T0 - 300_001, T0 + 10 * 365 * 86_400_000]) {
+			expect(errorCode(await send(store, syncBody({ seq, addresses: [{ index: 1, address: ADDR(1) }] })))).toBe("SEQ_OUT_OF_RANGE");
+		}
+		expect(store.pool.size).toBe(0);
+		expect(store.bridge).toBeNull();
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 300_000 })))).toBe("ok");
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 1000 - 300_000 }), { now: T0 + 1000 }))).toBe("ok");
+	});
+
+	it("[T04][T13] the pairing path applies it too, and a refused pairing doesn't burn the code", async () => {
+		const store = new MemoryStore();
+		const { code, state } = await newPairingCode(T0);
+		store.pairing = state;
+		const out = await send(store, syncBody({ seq: T0 + 300_001, pair: { code, publicKey: PUBLIC_KEYS.test1 } }));
+		expect(errorCode(out)).toBe("SEQ_OUT_OF_RANGE");
+		expect(store.publicKey).toBeNull();
+		expect(store.pairing?.used).toBe(false);
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 300_000, pair: { code, publicKey: PUBLIC_KEYS.test1 } })))).toBe("ok");
 	});
 });

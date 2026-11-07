@@ -7,6 +7,7 @@ Coffer relies on some EmDash behavior that isn't a documented promise. Before mo
 | **`requestMeta.geo` is null off Cloudflare Workers.** EmDash sets it only from Cloudflare's `cf` object, never from `CF-*` headers (spec change 35) | Coffer refuses Cloudflare-hosted sites by `geo !== null`. If an upgrade filled it on Node (for example from `CF-IPCountry` behind Cloudflare's proxy), **every Node site would be refused** | `plugin/tests/routes/platform.test.ts`: the two tests through EmDash's own request handling (one with `CF-*` headers). Also read EmDash's `extractRequestMeta` and `extractGeo` in the new version |
 | **The Cloudflare runner's limits:** 10 bridge calls per plugin invocation, CPU about 0.5 to 1 s (phase 07 spike) | Release 1 is Node-only because of the 10-call limit. If an upgrade raised it, or made bridge calls stop counting, spec change 35's option A could be smaller, or the refusal could go | Rerun `spikes/cf-runner/drive.mjs` on a Cloudflare test site, if one exists then; read EmDash's sandbox docs and changelog |
 | **`getPublicPluginApiRouteHandler`** in `emdash/plugin-utils`, with the signature `(pluginId, method, path, request)` and public routes only | The theme's pay page and `isPaid` read `status` in-process through it | `theme/` tests; the pay page on the dev site |
+| **`getPublicOrigin(url, config)`** in `emdash/api/route-utils` (in the package's `exports` and typed, but not in EmDash's docs; checked 2026-11-02): `config.siteUrl`, then `EMDASH_SITE_URL` or `SITE_URL` (read once and cached), then the request's own origin. It's the same function EmDash's CSRF check on plugin routes uses (`astro/middleware/auth.mjs`, `checkPublicCsrf`) | The theme's tip endpoint accepts an `Origin` equal to it (RT-20, `theme/src/tip.ts`, `crossSite`). If it moved, was renamed, or its order changed, tips behind an https-ending proxy would be refused again, or an `Origin` EmDash itself refuses could pass | `theme/` tests (the three `[T17] [RT-20]` tests); `grep -n getPublicOrigin` in the new `dist/api/route-utils.d.mts` and `public-url-*.mjs`; the tip button through the tunnel on the built copy |
 | **Block Kit admin pages load once and never poll** (spec change 27) | The "Checked at" line and the Check again button exist because of it. If EmDash added a refresh, they could go | Read the admin page renderer's changelog |
 | **`ctx.site.url`** is `siteUrl` (or `EMDASH_SITE_URL`, `SITE_URL`), then the Site URL setting (`site:url`, https or loopback http), then the setup address (`emdash:site_url`) (EmDash 1.2.0 #3744; spec changes 23 and 42) | The install command's site address uses the admin's browser origin when EmDash's is loopback or missing, which still happens on a site set up under `npm run dev` with neither of the first two set. If EmDash stopped falling back to the setup address, or changed the order, the page's wording and the fallback need another look | `plugin/tests/routes/admin-site.test.ts`; on an upgrade, read `readSiteInfo` and `resolveSiteOrigin`, and load the dev site's admin page (no `siteUrl`, setup address `http://localhost:4321`: the red banner, or the browser's https origin when there is one) |
 | **Headers set by a component are lost; only the page file's are sent** (Astro, phase 06 session 6c) | `preparePayPage` must run in the page file | `theme/tests/paypage.test.ts` and the dev site's built copy (`curl -I`) |
@@ -16,6 +17,17 @@ Coffer relies on some EmDash behavior that isn't a documented promise. Before mo
 | **A storage cursor saved under one EmDash version still works under the next** | The purge keeps its `query` cursor in KV between cron runs (`plugin/src/housekeeping.ts`), across an upgrade. A cursor that stopped decoding would stall or restart the purge | On an upgrade, read the storage cursor's decoding. 1.3.0 (#3885) adds sort values to cursors; a cursor without them, as 1.1.0 wrote, falls back to looking up its anchor row |
 
 ## Checked against
+
+### EmDash 1.4.0 (to do: after 2026-11-05, in the fix phase before phase 09's final tests; Wyatt, 2026-10-31)
+
+Not started. Besides every row above, check these from the 1.4 release notes:
+
+- **Caching:** the pay page and the tip endpoint set their own `Cache-Control`, because Astro's implicit no-cache is gone. Check the built copy with `curl -I`, and test it in `theme/`.
+- **Deferred tasks:** sandboxed calls are awaited, and runtime-host tests use `await host.waitForDeferredTasks()`.
+- **Bundle check:** `emdash-plugin bundle --validate-only` now builds `dist/` itself. Check that it still validates what ships, and that CI and the commit rule still mean the same thing.
+- **DOMPurify:** whether 1.4.0's tree clears 1.3.1's critical (GHSA-cg2g-xh64-v4q7, fixed in `dompurify` 3.4.17).
+  - `@emdash-cms/admin@1.4.0` keeps `dompurify ^3.3.2`, so it depends on what the lockfile resolves. `pnpm why dompurify` before and after.
+  - Today it's on EmDash's runtime path: `@emdash-cms/admin` (a regular dependency) ← `emdash` (07b F5).
 
 ### EmDash 1.3.1 (2026-10-25, session 7g; from 1.1.0)
 

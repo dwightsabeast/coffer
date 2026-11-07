@@ -1,0 +1,19 @@
+{
+	"name": "coffer-canary",
+	"version": "0.0.1",
+	"private": true,
+	"description": "Phase 07b sandbox canary. Never shipped; loaded on the dev site only while its probes run.",
+	"type": "module",
+	"main": "dist/index.mjs",
+	"exports": {
+		".": {
+			"import": "./dist/index.mjs",
+			"types": "./dist/index.d.mts"
+		},
+		"./sandbox": "./dist/plugin.mjs"
+	},
+	"files": [
+		"dist",
+		"emdash-plugin.jsonc"
+	]
+}

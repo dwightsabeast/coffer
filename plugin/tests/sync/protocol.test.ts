@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { MAX_ADDRESSES, MAX_SNAPSHOTS, MAX_TRANSFERS, acceptsVersion, checkHeaders, decodeStrict, parseSyncBody } from "../../src/sync/protocol";
+import { MAX_ADDRESSES, MAX_POOL_BAD, MAX_SNAPSHOTS, MAX_TRANSFERS, MAX_WALLET_INDEX, acceptsVersion, checkHeaders, decodeStrict, parseSyncBody, seqInRange } from "../../src/sync/protocol";
 import { TAGS, fakeAddress, fakeSubaddress } from "../addresses";
 
 const NOW = 1_790_000_000_000;
@@ -78,7 +78,7 @@ describe("body validation", () => {
 		expect(r.ok && r.value.snapshots[0].transfers[0]).toMatchObject({ amount: "18446744073709551615", unlockTime: "18446744073709551615" });
 	});
 	it("[F01] skips malformed pool addresses instead of rejecting the body", () => {
-		const r = parseSyncBody(body({ addresses: [{ index: 0, address: fakeSubaddress(0) }, { index: 2, address: "short" }, { index: 3, address: "0".repeat(95) }, { index: 4, address: fakeSubaddress(4) }] }));
+		const r = parseSyncBody(body({ addresses: [{ index: 1.5, address: fakeSubaddress(1) }, { index: 2, address: "short" }, { index: 3, address: "0".repeat(95) }, { index: 4, address: fakeSubaddress(4) }] }));
 		expect(r.ok && r.value.addresses).toEqual([{ index: 4, address: fakeSubaddress(4) }]);
 	});
 	it("[T20] skips a pool address whose network can't be read (spec change 36): an unknown byte, or a standard address", () => {
@@ -106,5 +106,64 @@ describe("body validation", () => {
 		expect(code(parseSyncBody(body({ pair: { code: "A".repeat(22), publicKey: "A".repeat(43) + "=" } })))).toBe("ok");
 		expect(code(parseSyncBody(body({ pair: { code: "short", publicKey: "A".repeat(43) + "=" } })))).toBe("INVALID_BODY");
 		expect(code(parseSyncBody(body({ pair: { code: "A".repeat(22), publicKey: "not base64" } })))).toBe("INVALID_BODY");
+	});
+});
+
+describe("spec change 46: the wallet's index range, the seq bound, and the new request fields", () => {
+	it("[T03][P02] an address or snapshot index outside 1..2^32-1 rejects the body, so a stolen key can't write into another wallet's range", () => {
+		expect(MAX_WALLET_INDEX).toBe(2 ** 32 - 1);
+		const addr = (index: number) => body({ addresses: [{ index, address: fakeSubaddress(7) }] });
+		const snap = (index: number) => body({ snapshots: [{ index, transfers: [] }] });
+		expect(code(parseSyncBody(addr(MAX_WALLET_INDEX)))).toBe("ok");
+		expect(code(parseSyncBody(snap(MAX_WALLET_INDEX)))).toBe("ok");
+		for (const index of [0, -1, 2 ** 32, 2 ** 32 + 5, 2 ** 40]) {
+			expect(code(parseSyncBody(addr(index)))).toBe("INVALID_BODY");
+			expect(code(parseSyncBody(snap(index)))).toBe("INVALID_BODY");
+		}
+	});
+	it("[T04] seq must be within 300 s of the signed timestamp, either way (RT-24)", () => {
+		const ts = String(NOW / 1000);
+		expect(seqInRange(NOW, ts)).toBe(true);
+		expect(seqInRange(NOW + 300_000, ts)).toBe(true);
+		expect(seqInRange(NOW - 300_000, ts)).toBe(true);
+		expect(seqInRange(NOW + 300_001, ts)).toBe(false);
+		expect(seqInRange(NOW - 300_001, ts)).toBe(false);
+		expect(seqInRange(9e15, ts)).toBe(false);
+	});
+	it("[T03][R08] reads checks.pool: ok, or a mismatch with at most 20 valid indexes; anything malformed dropped", () => {
+		const pool = (p: unknown) => {
+			const r = parseSyncBody(body({ checks: { pool: p } }));
+			expect(r.ok).toBe(true);
+			return r.ok ? r.value.checks?.pool : "rejected";
+		};
+		expect(pool({ state: "ok" })).toEqual({ state: "ok", bad: [] });
+		expect(pool({ state: "mismatch", bad: [3, 9] })).toEqual({ state: "mismatch", bad: [3, 9] });
+		expect(pool({ state: "mismatch", bad: [0, 2 ** 32, 1.5, "4", 4] })).toEqual({ state: "mismatch", bad: [4] });
+		expect(MAX_POOL_BAD).toBe(20);
+		expect(pool({ state: "mismatch", bad: Array.from({ length: 30 }, (_, i) => i + 1) })).toEqual({ state: "mismatch", bad: Array.from({ length: 20 }, (_, i) => i + 1) });
+		expect(pool({ state: "mismatch" })).toEqual({ state: "mismatch", bad: [] });
+		for (const bad of [{ state: "weird" }, "ok", null, { state: "mismatch", bad: "1" }]) expect(pool(bad)).toBeUndefined();
+	});
+	it("[T03][P02] reads the wallet answer: a match or null, and the highest received index; malformed dropped", () => {
+		const wallet = (w: unknown) => {
+			const r = parseSyncBody(body({ wallet: w }));
+			expect(r.ok).toBe(true);
+			return r.ok ? r.value.wallet : "rejected";
+		};
+		expect(wallet({ match: 0, receivedTop: 405 })).toEqual({ match: 0, receivedTop: 405 });
+		expect(wallet({ match: null, receivedTop: 0 })).toEqual({ match: null, receivedTop: 0 });
+		expect(wallet({ match: 3, receivedTop: MAX_WALLET_INDEX })).toEqual({ match: 3, receivedTop: MAX_WALLET_INDEX });
+		for (const bad of [{ match: -1, receivedTop: 0 }, { match: 1.5, receivedTop: 0 }, { match: 0 }, { match: 0, receivedTop: 2 ** 32 }, { receivedTop: 1 }, "x", null]) {
+			expect(wallet(bad)).toBeUndefined();
+		}
+	});
+	it("[T03][P02] reads probeDigest: a 24-character base64 digest; anything else dropped", () => {
+		const d = (v: unknown) => {
+			const r = parseSyncBody(body({ probeDigest: v }));
+			expect(r.ok).toBe(true);
+			return r.ok ? r.value.probeDigest : "rejected";
+		};
+		expect(d("qYtoTZjlFXXSf7Ul9MFxxg==")).toBe("qYtoTZjlFXXSf7Ul9MFxxg==");
+		for (const bad of ["qYtoTZjlFXXSf7Ul9MFxxg=", "A".repeat(24), "qYtoTZjlFXXSf7Ul9MFxx-==", 7, null]) expect(d(bad)).toBeUndefined();
 	});
 });

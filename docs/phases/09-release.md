@@ -13,7 +13,10 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
 **Before the session** (from the plan change's waiting list):
 
 - [ ] Phase 07b is done: no Critical or High finding open, every Medium fixed or accepted in `docs/decisions.md`.
-- [ ] The mainnet second-node list for the cross-check (spec change 13).
+- [x] The mainnet second-node list for the cross-check (spec change 13): decided 2026-11-02, https only (`node.monerodevs.org:18089`, `xmr-node.cakewallet.com:18081`, `ravfx.its-a-node.org:18081`), built in `1162b8f`.
+- [ ] Grow the HTTPS second-node list (Wyatt, 2026-11-02). Today it's three mainnet nodes, one per operator, and stagenet still uses http because only one of its nodes has a certificate that verifies.
+  - **Why it matters:** with a remote node and no second node answering, every payment is held and no height is reported.
+  - **How to add a node:** probe it read-only, as on 2026-11-02 (synchronized, restricted, `get_block` by height, the same block hash as the others, a certificate that verifies), and only from an operator not already listed.
 - [ ] The self-update admin-copy question.
 - [ ] An install host that serves the bridge files without redirects (spec change 21).
 - [x] The Atmosphere account to publish under (below; done 2026-10-23).
@@ -54,7 +57,9 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
 
 **2. Build and sign**
 
-- Reproducible bridge builds for linux amd64 and arm64: `CGO_ENABLED=0`, `-trimpath`, pinned Go version, version stamped from the tag. A script produces the binaries, a checksum file, and the unsigned release manifest.
+- Reproducible bridge builds for linux amd64 and arm64: `CGO_ENABLED=0`, `-trimpath`, the Go version pinned in `bridge/go.mod` (go1.27.3 or later, RT-28), version stamped from the tag. **CI builds them** from a clean checkout with provenance (CLAUDE.md tier 3; Wyatt, 2026-10-31): the binaries, a checksum file and the unsigned release manifest.
+- **Before signing, Wyatt rebuilds on the dev box** with the same Go and the same flags and confirms the hashes match CI's. The signing key never goes to CI.
+- Just before publishing, rerun `govulncheck -mode binary` on the release binaries and `pnpm audit` on the release packages (07b F5; nothing called is the bar).
 - Wyatt signs the release manifest offline with the real key and hands back only the signature. Pin the real public key in the bridge (replacing the placeholder), with tests proving that release builds contain neither the placeholder, the dev release key, the `--release-url` dev option, nor the RFC 8032 test keys.
 - GitHub Releases hold the binaries, checksums and signatures. Tags and releases are created only after Wyatt approves.
 
@@ -62,6 +67,9 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
 
 - **Open item (spec change 21, 2026-10-12): no redirects on the wget path.** On a machine without curl, `install.sh` downloads the bridge with `wget --max-redirect=0`, because wget can't limit a redirect's protocol the way curl's `--proto` does. The bridge binaries must therefore be served from `RELEASE_BASE` without a redirect. GitHub Releases asset URLs redirect, so either the install host serves the binaries itself, or `RELEASE_BASE` points at an address that answers directly. Test the published install command on a machine with wget and no curl.
 - **The install docs list what the wallet host needs:** Linux with systemd, `sh`, curl or wget, `sha256sum`, and `sudo` or a root login.
+- **The install docs say to use a wallet made for this shop, not one with history** (spec change 46's known limit, 2026-11-01). A wallet restored from keys stops at the first gap of 200 unused subaddresses, so a reused wallet paired as new can hand out addresses that already received payments.
+- **The install docs say a site behind a proxy that ends https must give EmDash its public address the way EmDash documents it** (`siteUrl`, `EMDASH_SITE_URL` or `SITE_URL`; RT-20's known limit, Wyatt 2026-11-06). The Site URL in Settings › General alone isn't enough: the plugin gets the right address, but every visitor's tip is refused with a 403. The tip page's note for the admin ("See Coffer's install guide") points here, so this section must exist before release. Warn first that setting one of these moves passkey sign-in to that address, and passkeys made at the old address stop working, so a sole admin with no email set up could be locked out. Link EmDash's guide: https://docs.emdashcms.com/reference/configuration/#reverse-proxy-setup.
+- **Build the admin page's banner and toast text from spec change 42** (Wyatt's decision of 2026-11-06, exact text there; replaces item 3's earlier proposal). Tests in `plugin/tests/routes/admin-site.test.ts` and `admin-route.test.ts` change to match.
 
 **4. Registry (spec change 41):** `publisher` is Wyatt's DID (the DID, never the handle); `@emdash-cms/plugin-cli` is pinned exactly; `license`, `author`, the `security` contact URL and `repo` (`https://github.com/dwightsabeast/coffer`) are filled in.
 

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 
-import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -24,7 +24,9 @@ async function setup() {
 	const h = await createPluginRuntimeTestHost();
 	host = h;
 	await h.fixtures.plugin.kv("state:pairing", { codeHash: "x".repeat(43), expiresAt: Date.now() + 600_000, used: false });
-	await h.fixtures.plugin.storage("pool", "1", { addrIndex: 1, address: fakeSubaddress(1, "Q"), status: "free" });
+	// A paired site whose pool row came from that key (spec change 45: checkout hands out only the paired key's rows).
+	await h.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);
+	await h.fixtures.plugin.storage("pool", "1", { addrIndex: 1, address: fakeSubaddress(1, "Q"), status: "free", keyId: KEY_IDS.test1 });
 	await h.http.respond("https://api.kraken.com/0/public/Ticker?pair=XMRUSD", new Response(JSON.stringify({ error: [], result: { XXMRZUSD: { c: ["150.00", "1.0"] } } })));
 	return h;
 }

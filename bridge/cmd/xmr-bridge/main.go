@@ -27,7 +27,7 @@ const usage = `usage:
   xmr-bridge uninstall [--delete-data]
   xmr-bridge version
   xmr-bridge run --config <file>
-  xmr-bridge pair --config <file> --code <one-time code>
+  xmr-bridge pair --config <file> --code <one-time code>   (--code - reads it from stdin)
   xmr-bridge status --config <file>
   xmr-bridge notify --pid <bridge pid> [txid]   (run by monero-wallet-rpc's --tx-notify)
 `

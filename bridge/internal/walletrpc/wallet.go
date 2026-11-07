@@ -40,6 +40,14 @@ func (c *Client) OpenWallet(ctx context.Context, filename string, password secre
 	return c.untimed().call(ctx, "open_wallet", map[string]any{"filename": filename, "password": password.Reveal()}, &r)
 }
 
+// Store saves the open wallet to disk (RT-32): wallet-rpc otherwise saves only when it stops cleanly, so a kill or a power
+// loss forgets addresses created since. ctx alone bounds it, like OpenWallet: a large wallet can take longer than the
+// client's timeout.
+func (c *Client) Store(ctx context.Context) error {
+	var r struct{}
+	return c.untimed().call(ctx, "store", struct{}{}, &r)
+}
+
 // CloseWallet saves and closes the open wallet.
 func (c *Client) CloseWallet(ctx context.Context) error {
 	var r struct{}
@@ -96,4 +104,35 @@ func (c *Client) HasSubaddress(ctx context.Context, index uint32) (bool, error) 
 		return false, fmt.Errorf("walletrpc: get_address: asked for index %d, got another answer", index)
 	}
 	return true, nil
+}
+
+// SubaddressAddresses returns the open wallet's addresses at the given account-0 indexes (spec change 46: the pool
+// check and the probe). Every index must exist: wallet-rpc refuses the whole call when one is out of bounds, so the
+// caller checks first (HasSubaddress on the highest). With no indexes it makes no call.
+func (c *Client) SubaddressAddresses(ctx context.Context, indexes []uint32) (map[uint32]string, error) {
+	out := make(map[uint32]string, len(indexes))
+	if len(indexes) == 0 {
+		return out, nil
+	}
+	var r struct {
+		Addresses []struct {
+			Address string `json:"address"`
+			Index   uint32 `json:"address_index"`
+		} `json:"addresses"`
+	}
+	if err := c.call(ctx, "get_address", map[string]any{"account_index": 0, "address_index": indexes}, &r); err != nil {
+		return nil, err
+	}
+	for _, a := range r.Addresses {
+		out[a.Index] = a.Address
+	}
+	for _, i := range indexes {
+		if out[i] == "" {
+			return nil, fmt.Errorf("walletrpc: get_address: no address for index %d in the answer", i)
+		}
+	}
+	if len(out) != len(indexes) {
+		return nil, errors.New("walletrpc: get_address: the answer holds indexes that weren't asked for")
+	}
+	return out, nil
 }

@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 
 import { type Invoice, type Transfer, newInvoice } from "../../src/core/invoice";
-import { PUBLIC_KEYS } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -35,7 +35,7 @@ async function setup(invoices: Invoice[] = []) {
 	await h.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);
 	await h.fixtures.plugin.kv("state:bridge", { height: H0 + 40, lastSyncAt: Date.now() - 30_000, version: 1, outdated: false });
 	await h.fixtures.plugin.kv("state:setupDone", true);
-	await h.fixtures.plugin.storage("pool", "9999", { addrIndex: 9999, address: ADDR(9999), status: "free" });
+	await h.fixtures.plugin.storage("pool", "9999", { addrIndex: 9999, address: ADDR(9999), status: "free", keyId: KEY_IDS.test1 });
 	await h.http.respond("https://api.kraken.com/0/public/Ticker?pair=XMRUSD", new Response(JSON.stringify({ error: [], result: { XXMRZUSD: { c: ["150.00", "1.0"] } } })));
 	for (let i = 0; i < invoices.length; i += 50) await Promise.all(invoices.slice(i, i + 50).map((inv) => h.fixtures.plugin.storage("invoices", inv.id, inv)));
 	return h;
@@ -141,6 +141,26 @@ describe("Needs a decision", () => {
 			},
 			OPEN_PRODUCT(4),
 		]);
+	});
+
+	it("[T03] not your wallet (spec change 46): red, Expire recommended, saying the payments went to someone else", async () => {
+		await setup([invoice(4, { reviewReason: "not_your_wallet", settledAt: T0, transfers: [transfer()] })]);
+		const b = await load();
+		expect(banner(b, "inv_0004")).toMatchObject({ variant: "error", title: "Address not from your wallet" });
+		const t = toggle(b, "inv_0004") as B;
+		expect(text(t)).toContain("This address wasn't from your wallet: your wallet host found it among addresses someone else added. Payments to it went to them, not to you.");
+		expect(text(t)).toContain("Recommended: expire it; if a buyer paid, they paid the thief.");
+		expect(actions(t)).toEqual([{ type: "button", action_id: "invoice_action", label: "Expire", style: "primary", value: "expire:inv_0004" }, OPEN_PRODUCT(4)]);
+	});
+
+	it("[P02] paid to your previous wallet (spec change 46, D2): yellow; check that wallet's app, then mark it settled or expire it", async () => {
+		await setup([invoice(4, { reviewReason: "wallet_changed", transfers: [transfer()] })]);
+		const b = await load();
+		expect(banner(b, "inv_0004")).toMatchObject({ variant: "alert", title: "Paid to your previous wallet" });
+		const t = toggle(b, "inv_0004") as B;
+		expect(text(t)).toContain("Something arrived before you connected a different wallet, and Coffer can't follow that wallet any more.");
+		expect(text(t)).toContain("Recommended: check your previous wallet's app, then mark it settled or expire it.");
+		expect(actions(t).map((a) => a.label)).toEqual(["Mark settled", "Expire", "Open product"]);
 	});
 
 	it("reversed with the settling transfer still held, now flagged: Received says what was reported", async () => {

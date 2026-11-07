@@ -204,7 +204,7 @@ Effect on the admin budget: none.
 Effect on the trust contract: none.
 Wyatt's decision (2026-10-04): accepted with the 3d plan. Wyatt updates the live spec and `docs/spec.md`.
 
-## 13. The remote-node cross-check: what is compared, when, with whom, and how the site hears of it  (status: accepted, 2026-10-04)
+## 13. The remote-node cross-check: what is compared, when, with whom, and how the site hears of it  (status: accepted, 2026-10-04; item 4 amended 2026-11-02, see below)
 Found in: phase 03 session 3e plan
 Spec says: Bridge service, duty 6: "Cross-check on remote nodes: before reporting a transfer as confirmed, compare the block hash at its height with a second node. A mismatch holds the transfer at 0 confirmations and turns a health check red." Open question 12: which second nodes to use by default.
 Evidence (reasoning, before code): the wallet trusts its node's view of the chain. Comparing "the block hash at its height" means asking the configured node for that hash, and a dishonest node could serve the wallet a fabricated block yet answer that question honestly. Asking the second node about the txid directly would close that, but tells the second node's operator which transactions this wallet host cares about.
@@ -221,6 +221,25 @@ Proposal (Wyatt's decisions, 2026-10-04):
 5. **The site:** the bridge sends an optional `checks` field in the sync body (the plugin ignores unknown fields today); the plugin shows it on the admin page in phase 04. Until then it shows in `xmr-bridge status` and the log.
 Effect on the admin budget: none (no setting; your own node needs nothing).
 Effect on the trust contract: none for the plugin. The bridge makes outbound requests to the listed public nodes only when the configured node is remote.
+
+**Item 4 amended (Wyatt, 2026-11-02, with spec change 47 and RT-26; built in `4615ceb`):**
+- **The change:** with a remote node, while no second node answers, mined transfers are held at 0 confirmations, instead of passing the configured node's counts through. The same holds when a block can't be fetched from either node.
+- **Why:** the reported height now fails closed (spec change 47), so confirmations do too. Otherwise a dishonest remote node with no second node reachable could claim any depth.
+- **Unchanged:** the shop's own node.
+- **The check:** still "unavailable", but no longer amber in effect. Payments don't settle until a second node answers, and the detail now says so.
+- **Mainnet:** the built-in mainnet list is still empty, so a remote mainnet node holds every payment until it's chosen. That makes the list a release-1 blocker, as recorded on the before-phase-09 list.
+- **Spec text to fold in (Wyatt):** duty 6's second sentence, "… A mismatch, or no second node answering, holds the transfer at 0 confirmations and turns a health check red."
+
+**Items 3 and 4 amended again (Wyatt, 2026-11-02; built in `1162b8f`):**
+- **Mainnet's list is https only:** the certificate is checked, no redirect is followed, and a plain-http entry is never used.
+  - The list: `node.monerodevs.org:18089`, `xmr-node.cakewallet.com:18081`, `ravfx.its-a-node.org:18081`. These are the three of Wyatt's seven candidates whose certificates verified in the read-only probe, and all seven agreed on height and block hash (`~/xmr-pay-dev-data/mainnet-second-nodes-probe-2026-11-02.txt`).
+  - Growing the list is on phase 09's checklist.
+- **Stagenet keeps its http list:** only `stagenet.xmr.kernal.eu` has a certificate that verifies (`~/xmr-pay-dev-data/stagenet-second-nodes-https-probe-2026-11-02.txt`). It's the public-node live step's configured node, so an https-only list would leave that step with no second node.
+- **Skipped by operator, not only by host:** a second node is skipped when it shares the configured node's operator. The operator is the host's last two labels; an IP address or a single label is its own. So `node2.monerodevs.org` no longer vouches for `node.monerodevs.org`.
+- **A second opinion before holding:** on a mismatch, one more second node from a different operator is asked, once per check. If it agrees with the configured node, the payment counts, on that node's confirmations. If it disagrees, or there's none to ask, the payment is held as before, and the detail names both.
+- **Spec text to fold in (Wyatt):**
+  - duty 6: "… with a second node from a built-in list (https only on mainnet), never one run by the configured node's operator. A mismatch is checked with one more node from another operator before the transfer is held";
+  - open question 12: the mainnet list above.
 
 ## 14. The plugin is renamed Coffer (slug `coffer`)  (status: proposed, 2026-10-05; the rename itself is Wyatt's decision, the spec text is for him to fold in)
 Found in: Wyatt's request before phase 03 session 3h. Code changed in commit `2f0bdf1`.
@@ -1241,6 +1260,10 @@ Effect on the trust contract: none. The `Origin` header is still read only on th
 Decisions for Wyatt: whether to change the wording (item 3) now, before 07b, or leave it for phase 09; and the exact text.
 Wyatt's decision (2026-10-25): item 3 in **phase 09**, not before 07b. In 7g, only items 2 and 4 (the code comment and the checklist row). The exact text is still to approve when phase 09 builds it.
 Built in 7g (2026-10-25): items 2 and 4. Live on 1.3.1, the dev site (no `siteUrl`, no Site URL, setup address `http://localhost:4321`) still hands Coffer localhost, and the admin page shows the red banner, or the browser's https origin when there is one, as on 1.1.0.
+Wyatt's decision (2026-11-06, RT-20's known limit): item 3's proposed text is replaced. The banner no longer tells admins to change EmDash's address settings, because of the lockout risk. **Build in phase 09, with this exact text;** the two titles don't change.
+- Saved address unusable: "EmDash's address for this site is `${site.saved}`, not a public https address, so a wallet host on another machine can't use it. If this site is behind a proxy that ends https, visitors' tips are also refused until EmDash knows its public address. See EmDash's guide for sites behind a proxy: https://docs.emdashcms.com/reference/configuration/#reverse-proxy-setup. Before changing anything, make sure you'll still be able to sign in afterward: a passkey only works at the address where it was made. If you can already sign in at your public https address, open this page there and Coffer uses it."
+- No saved address: "EmDash has no address for this site, so a wallet host on another machine can't connect to it. If this site is behind a proxy that ends https, visitors' tips are also refused until EmDash knows its public address. See EmDash's guide for sites behind a proxy: https://docs.emdashcms.com/reference/configuration/#reverse-proxy-setup. Before changing anything, make sure you'll still be able to sign in afterward: a passkey only works at the address where it was made. If you can already sign in at your public https address, open this page there and Coffer uses it."
+- The toast at `admin.ts:1071`: "This site has no public https address"
 
 ## 43. Five security candidates from the matrix (C02–C06)  (status: accepted, 2026-10-25, as suggested)
 Found in: `docs/security-matrix.md`, "Candidates not in the spec" (Wyatt's audit, 2026-10-25), checked against the code in the tagging session at `eb63872`.
@@ -1260,3 +1283,582 @@ Wyatt's decision (2026-10-25): go with the suggested decision for each.
 - C04: accepted; now T28. Both CI steps still to build: `govulncheck` goes through the dependency ask first (CLAUDE.md, "Dependencies"), and `pnpm audit`'s scope and level are set then.
 - C05: deferred to release 1.x; stays a candidate, and the report lists it under Known limits.
 - C06: accepted; now T29, with `TestNeverPrinted`, `TestWalletErrorsDontLeakSecrets` and `TestInstallLog` tagged; 07b's journal scan checks the rest.
+
+## 44. What a stolen bridge key reaches (RT-08)  (status: accepted as a draft, 2026-10-31; final wording after the fix sessions)
+Found in: 07b pass 1, round 1, group D (`docs/redteam-findings.md`, RT-08; `plugin/tests/redteam/stolen-key.test.ts`, D2).
+Spec says: Security model, "Forged payment events (signing key stolen)": "Every sync is Ed25519-signed. The result is free goods, not lost funds."
+Evidence: holding the paired key, a forged sync added a pool address the attacker chose, and the next tipper's checkout was handed it. So a stolen key doesn't only forge a received tip; it can route real tippers' money to the thief, on an intact site, with no control of the pay page.
+Proposal (Wyatt's draft, for the spec's row, matrix T03 and the public report): "A stolen bridge key can't spend from or read your wallet, but until you re-pair it can send new tips to the thief's wallet, and your Tips page may still show them as received. If tips listed there are missing from your wallet app, re-pair."
+Effect on the admin budget: none for the wording. A detection feature from the fix sessions might add a Health line, which would come back here first.
+Effect on the trust contract: none for the wording.
+Wyatt's decision (2026-10-31): RT-08 is High. The fix sessions look for detection (for example the honest bridge checking the site's pool against its own wallet) and fast re-pairing. If nothing holds, it becomes an accepted limit with this wording. Wyatt applies the wording to the live spec. `docs/spec.md` stays a snapshot until then.
+
+## 45. One network per pairing, and a pairing starts the pool afresh (RT-11, RT-29)  (status: accepted, 2026-10-31, with Wyatt's changes below; built 2026-10-31 on `redteam-1`, live re-pair check pending)
+Found in: 07b pass 1. RT-11 (round 1, group L5: a signed sync adds a wrong-network subaddress to the pool). RT-29 (fix planning, 2026-10-31, from the code: a re-pair keeps the previous wallet host's unused pool addresses).
+Spec says:
+- Spec change 36: "The plugin never learns the network … neither pairing nor sync carries it".
+- T20: "a mainnet address in a stagenet site's pool, or the reverse, is refused".
+- The wallet-host failure table, "View key leaked": "Create a new shop wallet, run the installer with it … New payments go to the new wallet."
+- Pairing "forgets the previous host's sync and checks" (spec change 29).
+Evidence:
+- **RT-11:** `protocol.ts:181` admits any address whose network byte it can read; nothing compares it with the site's network, which the plugin doesn't have.
+- **RT-29:** pairing (`handle.ts:96–110`) doesn't touch the pool, and the sync adds an address only if its index isn't there yet (`handle.ts:146`). So after a re-pair with another shop wallet, the old wallet's unused addresses stay and are handed out first.
+  - The bridge tops up from the site's `poolTop`, so the new wallet's addresses go above them. Stagenet followed by mainnet gives a mixed pool with no attacker at all.
+  - With the same network, new payments go to the old wallet until its unused addresses run out, which contradicts the spec's "new payments go to the new wallet".
+  - A thief's unused addresses (RT-08) also survive a re-pair, which contradicts RT-08's "until you re-pair".
+  - Not yet shown by a test. The fix session writes it first.
+Proposal (plugin only; no change to what the bridge sends, and no bridge rebuild):
+1. **Every new pairing drops all unused pool addresses**, whatever their network, and clears the stored network. It happens in the same request that stores the new key.
+   - **Order (Wyatt):** only after the code and the new key's signature have both checked out. Then drop the unused pool and clear the network, and only then store the new key and burn the code.
+   - A failure partway therefore leaves the old pairing working, with the code still usable for a retry. It never leaves a new pairing with the old pool. The old bridge refills the pool on its next sync, which can skip up to 50 numbers for that wallet, the same cost as below.
+   - A test makes a pairing fail after the drops and checks that the old key still syncs and the new key is refused.
+   - Claimed addresses stay, with their invoices. An open invoice from another shop wallet can't be watched by the new host and expires as today. That's unchanged and already stated.
+2. **The site's network** is the network of the first readable address the plugin accepts after a pairing, signed by the newly paired bridge. It's stored in KV next to the bridge key (KV isn't a storage collection, so the trust contract is unchanged). An install with no stored network is treated like a fresh pairing. There's no migration: nobody runs Coffer yet (Wyatt, 2026-10-31).
+3. **A sync address on another network is dropped**, like one whose network can't be read today. Within one sync, the first readable address in the body's order sets the network when none is stored.
+4. **Checkout never hands out a pool address whose network differs from the stored one** (defence in depth). A row like that is skipped like an unreadable one (spec change 36's "claimed with no invoice and skipped").
+5. **The admin page shows the stored network next to the pairing status.** For example "Paired · stagenet", or "Paired · network not known yet (set by the wallet host's first addresses)". The exact text goes in the plan for Wyatt.
+6. **Refused addresses aren't reported on their own.** Reporting them is folded into RT-08's Health line (spec change 46, to come; Wyatt, 2026-10-31).
+Costs checked (2026-10-31, from the code):
+- **The empty pool after a re-pair costs a few seconds, at most.**
+  - Pairing clears `lastSyncAt`, so checkout already answers `WALLET_HOST_SILENT` from the pairing until the new host's first full sync (`checkout.ts:37–40`). It answers `WALLET_HOST_SYNCING` while that host's wallet scans.
+  - A reinstall from keys catches up and rescans before it reports anything (spec change 15), so the site stays silent through that too.
+  - The first full sync gets `poolFree: 0` back. The bridge creates the missing addresses and, with `Soon()` true, sends them on an immediate next sync (`bridgeloop.go:255`, `:490`).
+  - So the only new window is that one round trip, when the wallet was already caught up. A checkout in it gets `NO_ADDRESS_AVAILABLE`, as on any empty pool.
+- **Gaps in the address numbers** (spec change 9: a wallet app looks 200 past the last paid address, and the Health page warns when the highest claimed index minus the highest paid one passes 150):
+  - **Reinstall on a new wallet host** (the common re-pair, a wallet restored from keys): **no gap is added.** `poolTop` is the highest remaining row, a claimed one, so the bridge catches up only to it and then creates from the next number, reusing the dropped ones. It's less work than today's catch-up to the old top.
+  - **Re-pairing a host that keeps its wallet** (`xmr-bridge pair` after a lost key, R08, or re-running the installer with the wallet kept): **up to 50 numbers are skipped each time** (`POOL_TARGET`).
+    - The bridge only ever creates new subaddresses (`create_address`) and never re-sends ones its wallet already has, so the dropped numbers are never offered again.
+    - The new pool starts above the wallet's highest. That's at most the old pool's top plus up to 100 pending addresses, but pending ones are still sent, so only the dropped free rows become a gap.
+    - The spec change 9 warning counts claimed indices, so it sees the gap once those addresses are used. Starting from no gap and with nothing paid in between, three such re-pairs reach the warning (150), and the fourth reaches the wallet app's 200.
+  - **Re-pairing to a different wallet, RT-29's own case: a gap the size of the old shop's history. Confirmed from the code, 2026-10-31.**
+    - Pool rows only ever go from free to claimed (`store.ts:22`, `checkout.ts:193–198`). So every checkout's number stays used, expired ones included, and after the drop `poolTop` is the old wallet's highest claimed index.
+    - The new wallet is fresh. The bridge probes that index (`HasSubaddress`, `get_address` out of bounds), catches up to it without sending anything (`bridgeloop.go:443–455`, `catchUp` at `:497`), and tops up from the next number.
+    - So the new wallet's first pool address comes after the old shop's whole history. Past 200 checkouts, it's beyond a wallet app's lookahead for a wallet that has received nothing, and its tips wouldn't show in the wallet app. The bridge itself sees them, because it created the addresses.
+    - The Health warning is blind to it: it measures from `state:paidTop`, the old wallet's last paid number, which pairing doesn't reset (`store.ts:73–75`, `admin.ts:114–115`).
+    - Today's code has the same gap, from the old top instead, so 45 doesn't cause it. 45 alone doesn't fix it either.
+  - **Fixed in spec change 46 (Wyatt, 2026-10-31), which changes the bridge anyway:**
+    - The bridge tells the site at pairing whether it's the same wallet as before.
+    - A different wallet doesn't inherit the old numbering, and the warning's baseline resets with it.
+    - The same wallet re-offers its own unused subaddresses above `poolTop` (`get_address` by index; Wyatt takes this option), so a re-pair that keeps the wallet skips no numbers either.
+  - **Until 46 lands:** the switch-wallets steps say to raise the wallet app's subaddress lookahead. No such steps exist in the repo's user-facing docs yet. The places are the spec's "View key leaked" row (the live spec, Wyatt's) and phase 09's install docs.
+Tests (fix session, failing first):
+- The two RT-11 expected-fail tests become passing tests.
+- A pairing that fails after the drops: the old key still syncs, the new key is refused, and the code still works for a retry.
+- An RT-29 test: a re-pair to another wallet of the same network gets only the new wallet's addresses, and no old unused one is handed out.
+- A stagenet-to-mainnet re-pair: the old unused addresses are gone, checkout hands out mainnet, and claimed rows and invoices are untouched.
+- No stored network: the next address sets it.
+- A mixed first batch: only the first address's network is kept.
+- Checkout skips a row on another network.
+- The admin page shows the network.
+- A re-pair keeps claimed rows, and `poolTop` falls to the highest claimed one.
+- Matrix rows T20, P02, T03 and R08 get the tags.
+Effect on the admin budget: none (no setting, step or upkeep). The admin page gains the network on the pairing line (Wyatt asked for it).
+Effect on the trust contract: none. Same capabilities, hosts, routes and collections. A KV key and an admin-page text change.
+Related, for spec change 46 (RT-08, next; Wyatt, 2026-10-31):
+- At pairing, the bridge says whether it's the same wallet. A different wallet gets fresh numbering and a reset gap baseline; the same wallet re-offers its own unused subaddresses (above).
+- The bridge checks the site's pool against its own wallet.
+- A stolen key mustn't be able to lock the honest bridge out with far-future sequence numbers, or the check never runs (RT-24's `seq` reach applies here).
+- A refused sync from the honest bridge itself raises the red Health line.
+- Refused wrong-network addresses are reported in that same line.
+- **A stdin option for `xmr-bridge pair`** (Wyatt, 2026-10-31, T29/C06). Today it takes the code only as `--code` on the command line, where other processes on the wallet host can see it while it runs. It's one-time and expires in 15 minutes, but real admins hit the same thing. Accepted for the dev box's stagenet re-pair only.
+Wyatt's decision (2026-10-31): accepted, with three changes:
+1. Keep item 4.
+2. The order inside the pairing request, plus a test for a pairing that fails after the drops (item 1).
+3. Record the different-wallet gap and fix it in spec change 46, with the doc note until then (Costs checked).
+
+Decided while building (Wyatt, 2026-10-31):
+1. **The stored network carries the key's ID:** `state:network` is `{ network, keyId }`, and a record from another key counts as not known. A key ID is the base64 key's first 16 characters.
+2. **The window a running sync leaves is closed, not filed.** A sync already past its signature check when a re-pairing lands can still write after the drop, and a thief can send syncs in bursts through a re-pair on purpose. Every pool row carries the ID of the key whose sync added it, and checkout skips a row from another pairing (claimed with no invoice), like item 4. Also kept: a sync whose key was replaced while it ran is refused (`BAD_SIGNATURE`) before it writes.
+3. **The drop is mark, then delete, not `compareAndDelete`.**
+   - Found while building: checkout claims with `updateIf`, which doesn't change a row's revision (EmDash 1.3.1). So a `compareAndDelete` on a revision read earlier would delete a row claimed in between, leaving its invoice with no pool row and never watched.
+   - The drop marks each free row `status: "dropped"` with an `updateIf` guarded on `status: "free"`, so exactly one of a claim and the drop wins. Then it deletes the marked rows.
+   - A row left "dropped" by a failed pairing is never counted as free or claimed, never handed out, not in `poolTop` or the gap warning, and deleted by the next pairing. Uninstall deletes it like any row.
+   - It's a new value in an existing field; the trust contract's collections and indexes are unchanged.
+   - `compareAndDelete` is reachable from the sandbox (sandbox-workerd 0.9.5 bridges `storage/compareAndDelete`) but isn't used.
+4. **Admin wording:** "Paired · stagenet" (or mainnet, testnet), "Paired · network not known yet", "Not paired". No bracket.
+
+## 46. The honest bridge checks the site's pool, and a re-pair knows whether the wallet changed (RT-08, the rest of RT-29)  (status: accepted, 2026-11-01, with Wyatt's decisions below; the proposal text already includes them; plugin and bridge sides built 2026-11-01 on `redteam-1`, with Wyatt's review of the bridge plan below; live check 2026-11-02: steps 1–5 and 7 pass, step 6's switch passes but its payment proof waits for RT-30 and RT-31, found there; RT-30 and step 5b's race fixed in code 2026-11-02, D4 amended with a 60 s grace, see "Fix sessions" below)
+Found in: 07b pass 1.
+- **RT-08 (High):** a stolen bridge key adds pool addresses that tippers then pay.
+- **RT-24 (Low):** a far-future `seq` freezes an invoice.
+- **Spec change 45's "Costs checked":** a different wallet inherits the old numbering; a host that keeps its wallet skips up to 50 numbers per re-pair.
+- **T29/C06:** the pairing code on `xmr-bridge pair`'s command line.
+
+Spec says:
+- Security model, "Forged payment events (signing key stolen)": "The result is free goods, not lost funds." Spec change 44 drafts the honest wording if nothing better holds.
+- The wallet-host failure table, "View key leaked": "Create a new shop wallet, run the installer with it … New payments go to the new wallet."
+- Spec change 9: a wallet app looks 200 subaddresses past the last one used, and Health warns at a gap of 150.
+
+Evidence:
+- **RT-08:** `plugin/tests/redteam/stolen-key.test.ts`, D2.
+- **The different-wallet gap, on the dev site today:**
+  - The dev site holds 306 claimed rows (indexes 1–305 and 356). After spec change 45's live re-pair, its free rows are 357–405.
+  - A re-pair to a different, fresh stagenet wallet would drop the free rows, and the bridge would catch the new wallet up to `poolTop` 356 (`bridgeloop.go:443–447`). So its first pool address would be index 357.
+  - A wallet app that has seen nothing on that wallet looks only at indexes 1–200, so tips to it wouldn't show in the app. Health measures from the old wallet's `state:paidTop` and wouldn't warn.
+  - This is the test case for the same-wallet check below.
+- **The same-wallet skip:** measured live on 2026-11-01. Numbers 306–355 were skipped by spec change 45's re-pair of the dev box's bridge, which keeps its wallet (progress, "Live re-pair").
+- **What the bridge can already ask its wallet:** `get_address` with an `address_index` list (`walletrpc/wallet.go:81`, `HasSubaddress`). So the bridge can read its own address at any index it has created, and compare it with what the site holds. The site stores nothing new about the wallet.
+
+### Proposal
+
+**1. The honest bridge checks the site's pool (RT-08 detection).**
+- **The site sends the rows to check, as digests (D3).** Every sync response carries `check`, a list of `{ index, digest }`. The digest is the first 16 bytes of SHA-256 of the address string (WebCrypto). Today's response carries indexes only (`handle.ts:208–209`). Sending addresses would let a thief holding the key collect every subaddress the shop ever handed out and link them to one wallet; digests tell it nothing it doesn't already have.
+  - **Only the current wallet's rows**, so a different-wallet re-pair doesn't flag the old wallet's open invoices as foreign.
+  - **Order, at most 150 entries:**
+    1. every free row (at most 50, below);
+    2. every row added in the last 24 hours, any status, settled included, newest first;
+    3. the rows of open invoices;
+    4. a rotation through the rest.
+  - **The rotation moves by the clock:** the next chunk comes every 30 s, not once per response. So a thief that syncs often can't move it along before the honest bridge gets its turn.
+  - **Why the 24 hours:** no row can be marked "checked" on an "ok" report, because a thief holding the key can send "ok" too. A time window keeps each new row in the list for about 5,000 honest syncs. That includes a tip the thief settles with a forged snapshot within seconds.
+  - **Pool rows gain `addedAt`** (site clock, ms). It's a new field with no index, so the trust contract's storage is unchanged.
+- **Free rows are capped at `POOL_TARGET` (50):** once 50 rows are free, further addresses from a sync are ignored. Today each sync can add up to 100 (`MAX_ADDRESSES`) with no total cap, so a thief could push rows past the list's cap.
+- **A wait before hand-out:** checkout takes only free rows whose `addedAt` is at least 45 s old. Every free row is in every check list, so the honest bridge checks each row before any tipper sees it. This prevents RT-08 while the wallet host runs, rather than only detecting it.
+- **The bridge checks them** against its wallet, from an in-memory copy of its own address table (subaddresses never change, so only new indexes are read). It reports in its next sync: `checks.pool = { state: "ok" | "mismatch", bad: [index…] }` (at most 20 indexes).
+  - An index the wallet doesn't hold, or holds with another address, is bad.
+  - On a mismatch the bridge syncs again at once, rather than after its usual 12–15 s.
+- **The site acts on a mismatch:**
+  - **A red Health banner,** sticky until the next pairing (D3): "Coffer found addresses on this site that aren't from your wallet. Someone may have your wallet host's key. Payments to those addresses don't reach you, so Coffer has stopped handing them out. Connect a new wallet host now (in Settings), on a machine you trust, then check Needs a decision." "On a machine you trust" is there because the key most likely came off the wallet host itself. Re-pairing a broken-into machine hands the thief the new key.
+  - **Bad rows get their own status, `bad`.** It's never handed out and never deleted. `poolTop` and the free count ignore it, as they do "dropped".
+    - It isn't "claimed with no invoice": one forged row at index 4,000,000,000 would then lift `poolTop` and start RT-27's catch-up on the honest bridge.
+    - It's a new value in an existing field.
+  - **Every invoice on a bad row goes to `review`**, closed ones included, with a new reason, `not_your_wallet`. So the admin sees which tippers paid an address the wallet doesn't hold, including a tip a thief marked settled within seconds.
+  - **An "ok" report never clears a mismatch.** A thief holding the key could send "ok", but can't stop the honest bridge sending "mismatch".
+- **Health shows when the pool check last reported "ok"** ("never" for a bridge without the check). A thief's forged "ok" refreshes it too, so it shows only that a check is running. A mismatch always wins.
+- **The new review reasons get display text** in the invoice list. Without it, `STATUS_TEXT`'s caller (`admin.ts:452–454`) would show "Needs decision: not_your_wallet" raw. The same goes for `wallet_changed`. The wording is in the build plan, for Wyatt.
+- **Nothing gates the check.** It travels in `checks`, which no `seq` or snapshot rule touches, so a thief can't lock the honest bridge's report out.
+- **What's left:**
+  - While the honest bridge runs, the 45 s wait keeps a thief's row from being handed out before the check reaches it.
+  - While it's stopped, nothing checks. A thief's rows wait in the pool and are caught on the honest bridge's first sync after it's back. They're handed out in the meantime, and the 24-hour window and `not_your_wallet` review list the affected tips.
+- **Spec change 44's wording** is finalised from this after the build. For example: "…while your wallet host is running, Coffer refuses addresses that aren't from your wallet; if it's stopped, tips can go to the thief until it's back, and Coffer then lists them".
+
+**2. Refused syncs from the wallet host are shown, not silent.**
+- **The current key:** a request whose signature verifies with the current key but is refused afterwards (`INVALID_BODY`, `UNSUPPORTED_VERSION`, or the `seq` bound in item 5) is recorded with its code and time. Health shows it as red: "The site is refusing your wallet host's updates (<code>) since <time>." Today such a sync fails silently on the site's side.
+- **The previous key:** after a re-pair, a request signed by the previous key is recorded as "the previous wallet host is still running". This needs the previous public key kept (D4).
+  - The record is rate-limited (at most one KV write a minute), so an old key can't drive writes.
+  - Health shows a plain line, with the pairing time (D4): "Your previous wallet host is still contacting this site; its updates are refused. If you moved to a new wallet host at <time>, shut the old one down (on it: sudo systemctl disable --now xmr-bridge). If you re-paired the same one, leave it running: someone else has the old key, and the re-pair already locked them out. If you didn't connect a wallet host at <time>, someone else did: connect yours again now."
+  - After item 1's banner, the likeliest re-pair is on the same machine, hence the middle case.
+- **Other networks:** addresses refused for another network (spec change 45, item 6) count as a pool mismatch, with the same banner. An honest bridge never sends one, because its own first address set the network.
+
+**3. At pairing, the bridge says whether it's the same wallet.**
+- **The probes:** the pairing response, and every response until the bridge has answered, carries `probes`, one `{ wallet, index, digest }` per wallet the site has used (the digest as in item 1). At most 10 wallets, most recent first.
+  - Each wallet's probe is its lowest-index row, stored in `state:wallets` when the wallet is first seen, not read from the rows later.
+- **The check:** the bridge creates subaddresses up to each probe's index if it lacks them. That's normally index 1, which costs nothing, because either wallet uses index 1 anyway. It then compares its address's digest at that index.
+- **The answer:** its next sync carries `wallet: { match: <wallet> | null, receivedTop: <index> }`. `receivedTop` is the wallet's highest index with a transfer, from the `get_transfers` read the re-offer needs anyway (item 4).
+- **Until the answer arrives,** for the new key the site:
+  - accepts no addresses. The pool is empty after spec change 45's drop, so checkout has nothing to hand out in that time (`NO_ADDRESS_AVAILABLE`, as on any empty pool);
+  - sends an empty watch list and applies no snapshots. Today a re-pair to a different wallet gets the old wallet's watch list. The new wallet host reports those indexes empty, so `mergeSnapshot` sends a settled tip still under `FINAL_DEPTH` to review "reversed", with an alert;
+  - keeps the restore-height suggestion, worked out across all wallets' watched invoices.
+
+  That's one round trip after the wallet is ready.
+- **A bridge that never answers** gets no addresses. There's no fallback: with no version bump (D5), it only matters when an older bridge pairs to a site with history, and live step 2 updates the dev box's bridge before any re-pair.
+
+**4. Each wallet keeps its own numbering.**
+- **Site-side numbers:** the site numbers a wallet's rows `wallet × 2³² + its own index` (wallet 0 is every row stored so far, so there's no migration), kept in `state:wallets` (KV). On the wire the bridge and the site speak only the wallet's own indexes:
+  - addresses and snapshots are the wallet's indexes;
+  - `poolTop` and `watch` count only the current wallet's rows, translated back.
+  - `addrIndex` stays unique and keeps its index, so the trust contract's storage is unchanged. 2³² is past Monero's subaddress index range, so no two wallets collide, and the site numbers stay below 2⁵³.
+  - **One helper** joins and splits the number, with an assert that the result is a safe integer (D1). Every reader of `addrIndex` uses it:
+    - `poolTop` (`store.ts:127`), `poolHas` and `poolAdd`, and `invoiceForIndex` (`store.ts:130`);
+    - the sync's address step (`handle.ts:191`), `notePaid` with `state:paidTop` (`handle.ts:194`, which becomes per wallet), the snapshot step (`handle.ts:198`) and the watch list (`handle.ts:208`);
+    - checkout's free query (`checkout.ts:197`);
+    - the gap warning's numbers (`admin.ts:88`, `:118`) and its text's two "#" numbers (`admin.ts:174`);
+    - the invoice's "#index" (`admin.ts:600`);
+    - the dev scripts that read `addrIndex` (`scripts/dev-invoices.mjs`, `scripts/redteam/scan-at-rest.mjs`, and the dev-only counts tool), where they need it.
+  - **`parseSyncBody` bounds indexes (D1):** address and snapshot indexes must be in 1..2³²−1, or the body is `INVALID_BODY`. Otherwise a stolen key's index 2³²+k would land in the next wallet's range. It would be outside the current wallet's check list, yet tagged with the current key, so checkout could hand it out.
+  - The admin page shows the wallet's own index (`addrIndex mod 2³²`), so "#356" stays what the wallet app calls it.
+- **No match:** a new wallet number.
+  - The bridge starts above max(the highest index its wallet has created, `receivedTop`). For a fresh wallet that's index 1, within any wallet app's lookahead.
+  - Its gap baseline (`paidTop`) starts at `receivedTop`, not 0. Otherwise a returning wallet that starts at 406 would show a false 406-address gap.
+- **A match:** that wallet's numbering and baseline resume. So switching back to an earlier wallet reuses nothing.
+- **The same wallet re-offers its own unused subaddresses** (Wyatt, 2026-10-31), **only after it answered "match"**:
+  - **Which:** the indexes above that wallet's `poolTop` on the site that the wallet already created and that have no transfers. It reads them with `get_address` and checks them with `get_transfers`.
+  - **Order:** they go in before any new one, so a re-pair that keeps the wallet skips no numbers.
+  - **How it ends:** the bridge's pending list and `l.known` keep it from offering one twice. The site skips an index it already holds (`poolHas`), as today.
+  - **Why only on a match:** with no match, the site doesn't know the wallet's history. Unused below the bridge's start could mean "handed out and never paid".
+- **When a wallet's rows can all disappear:** only on uninstall with "delete data", which also clears every KV key, `state:wallets` included (`store.ts:153–163`). The 30-day purge clears buyer data only (`housekeeping.ts:28`). A returning wallet then looks new, and the no-match rule above applies.
+- **Known limit for release 1** (corrected 2026-11-01 from `TestLiveShopWallet`, Wyatt):
+  - **What a restore finds:** a wallet restored from keys stops at the first gap of 200 unused subaddresses (wallet2's lookahead). In the live test, the restored shop wallet's next index was 10 while it held payments up to index 305. It found 261–305 only after creating up to 1110 and rescanning.
+  - **The consequence on a "no match" for a wallet with history** (both sides rebuilt, or a reused wallet paired as new):
+    - `create_address` can hand out addresses that **already received payments**, not only unpaid ones;
+    - and `receivedTop` can be far too low (9 instead of 305 in the live test), so the gap baseline is too.
+    - A payment to such an address, late or not, is credited to the new invoice. For tips that's a misattributed tip; for orders (release 2) it means free goods.
+  - **A match is fine:** the catch-up creates up to `claimedTop` and rescans, so the wallet's own history is found before anything new is handed out.
+  - **The docs say to use a wallet made for this shop,** not one with history (phase 09's install docs).
+  - On pass 2's list.
+- **Open invoices of another wallet** can't get evidence from the new host (decision D2):
+  - those with something received go to `review` with reason `wallet_changed`;
+  - those with nothing received expire at their deadline with reason `wallet_changed`. This is a stated exception to "expire on evidence": no evidence can come from a wallet that isn't connected.
+  - Resuming that wallet later doesn't reopen them. An admin sees them in the lists as today.
+  - **For release 2 (pass 2):** a buyer who pays an old wallet's address after a switch gets an expired order, so orders need a "paid to a previous wallet" path (D2).
+
+**5. A `seq` bound (RT-24, defence in depth).** A sync whose `seq` is more than 300 s from `x-xmr-ts` × 1000 is refused (`SEQ_OUT_OF_RANGE`).
+- **An honest bridge passes:** both come from its clock.
+- **Its cost:** if the wallet host's clock is stepped back more than 5 minutes after a run, its syncs are refused until the clock catches up. The bridge logs it, `xmr-bridge status` shows it, and item 2 shows it in red on the site.
+- **It's no defence against a stolen key,** which can keep `seq` at the edge of the window and still freeze an invoice's snapshots. That stays inside the stolen-key limit. The pool check (item 1) doesn't depend on `seq`.
+
+**6. `xmr-bridge pair --code -`** reads the code from stdin, one line, so it isn't on the command line while pair runs (T29/C06; Wyatt, 2026-10-31).
+- **The installer's own `xmr-bridge install`** gets the same `--pair -`. `install.sh` passes the code on stdin, so it's out of the bridge's process list.
+- **Still visible:** the code in `curl … | sh -s -- --pair <code>`, and so in the shell's history, as T29 states (single use, 15 minutes).
+- **Not proposed:** an install.sh that prompts for the code. It would add a paste to the admin's steps.
+
+**7. The protocol version.** Recommended: no bump. Nothing is released, the new fields are optional to parse, and the dev box's bridge is replaced in the live check. The alternative is v2 with v1 still accepted (the update banner), plus a bridge that falls back to v1 when an older plugin answers `UNSUPPORTED_VERSION` (decision D5).
+
+### Tests (failing first; the build is plugin, then bridge, then the dev release)
+- **Plugin:**
+  - the `check` list: digests, never addresses; current wallet only; its order, cap, and the clock-driven rotation (a thief syncing often doesn't move it);
+  - the 24-hour window: a row a thief settles within seconds is still in the list;
+  - the free cap: a sync past 50 free rows adds nothing;
+  - **the 45 s wait:** a forged row is never handed out when the honest bridge reports within the window;
+  - a mismatch report: a sticky banner, bad rows to status `bad` (out of `poolTop` and the free count, never deleted), every invoice on a bad row to `not_your_wallet` review, closed ones included, and "ok" never clearing it;
+  - the Health line for the last "ok", and "never";
+  - the display text for `not_your_wallet` and `wallet_changed`;
+  - the refused-sync records, for the current and the previous key, and the previous key's write limit;
+  - the probes, stored in `state:wallets`;
+  - **before the answer:** no addresses accepted, an empty watch list, no snapshots applied (a settled tip under `FINAL_DEPTH` stays settled), and the restore height across all wallets;
+  - `wallet: { match, receivedTop }`: a new wallet numbers from the bridge's start with the baseline at `receivedTop`, a matched wallet resumes, and a bridge that never answers gets no addresses;
+  - the index bound in `parseSyncBody`: 0, 2³²−1, 2³² and above;
+  - the translation of `poolTop`, `watch`, `paidTop`, addresses and snapshots;
+  - **the dev site's shape as a fixture:** 306 claimed rows, then a different-wallet re-pair. Its first pool address is its own index 1, and the gap warning measures from its `receivedTop`;
+  - old-wallet open invoices, received and not received;
+  - the `seq` bound, both directions and the edge;
+  - the admin page's wallet index display.
+- **Bridge (Go):**
+  - the pool check by digest: match, wrong address, missing index, the cap, and the immediate re-sync on a mismatch;
+  - the probe: creating up to the index, then match or no match, with `receivedTop`;
+  - re-offering unused subaddresses after a match, skipping one with transfers; none re-offered without a match; the no-match start above max(created, `receivedTop`);
+  - `--code -` for pair and install;
+  - the `seq` and timestamp agreement.
+  - All against the existing fake wallet, then `TestLiveShopWallet` against stagenet wallet-rpc. The new live part: `get_address` by index on a view-only wallet.
+- **Contract:** `contract/` documents the new fields. Signing is unchanged, so the shared vectors don't change.
+- **Matrix rows:** T03, T04, P02, T20, T29, R08. The pool check folds into T03 and R08, with no new row (D6).
+
+### Live check (after the build; Wyatt's steps marked)
+1. **A dev release on go1.27.3:** `scripts/build-dev-release.sh`; **Wyatt signs** it (`scripts/sign-dev-release.sh`); it's served on 127.0.0.1:8099. It replaces the 30 October release in `~/xmr-pay-dev-data/dev-release/`.
+2. **The upgrade:** **Wyatt runs `sudo xmr-bridge update`**, the installed 8 October build updating itself through the dev key it pins. That also exercises the update path.
+   - Checked: the version, the service is active, syncs carry the new fields, and `status` prints the bridge key (the line the 8 October build probably lacks).
+   - Fallback if the old build can't take the new release: re-run `install.sh`, which keeps the config.
+3. **The pool check, honest:** Health has no pool banner, and the bridge's status shows "ok".
+4. **RT-08, live:**
+   - Claude writes one forged free row, tagged with the current key, into the dev database (the KV shortcut's method, loopback only), as a thief with the key could.
+   - Measured: the time until the honest bridge reports it. Expected within 30 s, inside the 45 s wait.
+   - Then checked: the banner, the row's status `bad`, `poolTop` unchanged, and a checkout never handed it.
+5. **A same-wallet re-pair with the code on stdin:**
+   - **Wyatt runs a script** that pipes the code into `sudo xmr-bridge pair --config /etc/xmr-bridge/config --code -`.
+   - Expected: the answer "match"; the free rows dropped at pairing (357–405 today) re-offered; no numbers skipped.
+6. **A different wallet: Wyatt's test case.**
+   - **The setup:** **Wyatt** re-runs the installer on the dev box with a second stagenet wallet he controls (D7: a new Feather wallet, his seed, its restore height set by hand to the current height; the installer's `--restore-height` defaults to today, `install.go:34`). He types its address and view key at the installer's prompts; they're never in a file Claude reads. Claude issues the code when he's at the terminal.
+   - **Just before it:** Claude opens a fresh unpaid tip on the shop wallet. `inv_e266ef9e2e436bd0` expired at 01:22 UTC on 2026-11-01, so it gives D2 nothing to act on. The "something received" case stays in the tests.
+   - **Expected:**
+     - the answer "no match", so a new wallet number;
+     - its first pool address is its own index 1, not 357;
+     - Health's gap reads 0;
+     - the fresh unpaid tip expires at its deadline with reason `wallet_changed` (D2).
+   - **The proof:** Wyatt pays a small stagenet tip from his Feather buyer wallet to the new wallet's first address, using `pay-script` as in 3h. It settles in Coffer, and it shows in the second wallet's own app with no lookahead change.
+7. **Back to the shop wallet:**
+   - **Wyatt** re-runs the installer with the shop wallet.
+   - Expected: the answer "match wallet 0"; the first pool address is 357, because wallet 0's 357–405, dropped in step 6, are re-offered; the baseline is wallet 0's again.
+8. **The record:** evidence to `~/xmr-pay-dev-data/46-*.txt`, and a bundle at the end.
+
+**Live check, as run (2026-11-02; details in `docs/progress.md`):**
+- **Step 2 had no `xmr-bridge update` command.** The dev build updated itself from the served release in a minute, which also showed that a self-update never refreshes the root-owned admin copy (the open admin-copy question).
+- **Steps 6 and 7 needed `uninstall --delete-data` first:** the installer refuses another address on a machine that hosts one.
+- **Step 4 used two forged rows (Wyatt):** a held index the site lacked, and `claimedTop` + 100,000. Both were bad within one sync, and a checkout got neither.
+- **Step 5 ran twice:** by installer (5a) and by `pair --code -` with the service running (5b).
+- **Step 6's second wallet had history:** RT-30 (the probe answered before the scan) and RT-31 (old transfers count toward a new invoice). D2's `wallet_changed` expiry passed; the payment proof waits for the fixes and a truly new wallet.
+- **Step 7 expected `claimedTop` + 1 (359)**, not a fixed 357: earlier steps claimed rows.
+
+**Fix sessions (2026-11-02, after the live check; Wyatt's rules):**
+- **RT-30 (`73781ec`):** item 3's probe is answered only once the wallet has scanned to its node's height. The node must also be synchronized and online, and is read fresh. Until then the site keeps waiting. Answering drops pending addresses that have received, and index 1, created to answer, is one of them.
+- **D4 amended, step 5b's race (`307c104`):** the test was red. A sync the previous key signed just before a same-machine re-pair, arriving just after it, raised "Your previous wallet host is still running".
+  - Now the previous key's requests in the first 60 s after a pairing are refused but not recorded. An old host still running is recorded at its first sync after that.
+  - `state:previousKey` holds `{ publicKey, pairedAt }` in one write. A string from before reads as `pairedAt` 0, so it gets no grace.
+- **The bridge side of 5b (`b33fc21`):** a body built under the old pairing is never sent, under either key.
+  - A key changed mid-sync drops the body, and a fresh sync follows under the new key.
+  - The old pairing's pool report, probe answer, re-offer and watch list are dropped at a new key. Pending addresses stay.
+  - That state is tagged with its key and dropped on any key change, mid-sync or between syncs (Wyatt confirmed, 2026-11-02).
+  - Otherwise a stale "mismatch" would raise item 1's sticky banner on the new pairing.
+- **Spec text to fold in (Wyatt):** item 2's previous-key line: "… is recorded as 'the previous wallet host is still running', except in the first minute after a pairing, when a sync already on its way from the same machine can still arrive."
+
+Effect on the admin budget: none for setup. The new Health lines appear only when something is wrong, and no setting, step or upkeep is added. Switching wallets needs no lookahead change any more, so the doc note planned in spec change 45 isn't needed.
+
+Effect on the trust contract:
+- **No change** to capabilities, hosts, routes, collections or indexes.
+- **New KV state:** `state:wallets` (with each wallet's probe), the pool check's state, the refused-sync records, and the previous public key (D4).
+- **Pool rows:** a new field, `addedAt`, and two new values of `status`, `bad` and (from 45) `dropped`. No new collection or index.
+- **Wording:** CLAUDE.md's list of what the plugin stores ("only the bridge's public key, a hash of the pairing code, and a salt") gains "and the previous bridge's public key" (D4), updated at build time with Wyatt's OK.
+- **The probes and the `check` list** send digests, not addresses (D3). A key holder learns no address it didn't already have, and no wallet material.
+
+### Decisions for Wyatt
+- **D1. Numbering per wallet as `wallet × 2³² + index`** (item 4), which keeps the storage indexes as they are. The alternative is a new unique index on (wallet, index), which changes the trust contract. Recommended: 2³².
+- **D2. Open invoices of a wallet that's no longer connected.** Something received → `review` (`wallet_changed`); nothing received → expired at their deadline (`wallet_changed`), an exception to "expire on evidence". The alternative is all of them to review, which can be many unpaid tips. Recommended: the split.
+- **D3. The pool check's actions:** the sticky banner, quarantined free rows, and `not_your_wallet` review for open invoices. Plus the banner's exact wording.
+- **D4. Keep the previous public key** for item 2's "previous wallet host still running" line, which changes the trust contract's wording; or drop that line. Recommended: keep it.
+- **D5. The protocol version:** no bump (recommended) or v2 with a fallback.
+- **D6. A new matrix row for the pool check**, or fold it into T03. Recommended: fold into T03 and R08.
+- **D7. The second stagenet wallet** for live step 6: a new one Wyatt makes, holding its seed himself, or an existing one of his. Not the buyer wallet, which pays the test tip.
+
+Wyatt's decisions (2026-11-01; his draft answers, reviewed with Claude against the code in the same session, then amended by him). The proposal above is written to match:
+- **D1.** `wallet × 2³² + index`, split and joined by one helper that every reader uses, with a safe-integer assert (the list is under item 4). `parseSyncBody` bounds address and snapshot indexes to 1..2³²−1.
+- **D2.** The split, for release 1. For release 2 (pass 2): a "paid to a previous wallet" path for orders.
+- **D3.** Accepted, with these additions:
+  - only the current wallet's rows;
+  - digests, not addresses (also for item 3's probes);
+  - the 24-hour window, any status, with `addedAt`;
+  - the rotation by the clock, every 30 s;
+  - free rows capped at `POOL_TARGET`;
+  - the 45 s wait before hand-out;
+  - quarantine as status `bad`, never deleted and out of `poolTop`;
+  - every invoice on a bad row to `not_your_wallet` review, closed ones included;
+  - Health's last "ok" ("never" without the check);
+  - display text for the new review reasons;
+  - the banner's wording, with "on a machine you trust".
+- **D4.** Keep the previous key, with the three-case wording under item 2, and the write limit.
+- **D5.** No bump.
+- **D6.** Fold into T03 and R08.
+- **D7.** A new Feather stagenet wallet Wyatt makes and holds the seed for, with its restore height set by hand to the current height.
+- **Item 3 (Wyatt):**
+  - Until the answer: no addresses, an empty watch list, no snapshots applied; the restore height across all wallets.
+  - No fallback for a bridge that never answers.
+- **Open check (Wyatt):**
+  - Rows vanish only on uninstall with "delete data".
+  - Re-offer only on a match; a no-match start above max(created, `receivedTop`); the baseline from `receivedTop`; probes kept in `state:wallets`.
+  - The reuse on a "no match" for a wallet with history (both sides rebuilt, or a reused wallet) is a known limit for release 1, on pass 2's list. Corrected 2026-11-01: a restored wallet stops at the first 200-address gap, so already-paid addresses can be handed out again and `receivedTop` can be far too low (item 4's known limit).
+- **Live check (Wyatt):**
+  - Step 6 opens a fresh unpaid tip, since `inv_e266ef9e2e436bd0` expired at 01:22 UTC.
+  - Step 7 expects 357 first.
+
+Wyatt's review of the bridge plan (2026-11-01), built the same day:
+1. **Numbering cues come only from rows the site has handed out.**
+   - Why: `poolTop` counts free rows, which a key thief can add. One forged free row 99,999 above the wallet's highest would have made the honest bridge create ~100,000 subaddresses, repeatably. And holding a report back during a catch-up would have let a forged row outlast the 45 s wait.
+   - **The plugin** sends `claimedTop`: the current wallet's highest claimed row, in its own numbering. Free, `bad` and `dropped` rows don't count, and it's 0 while the site waits for the probe answer.
+   - **The bridge:** `claimedTop`, never `poolTop`, drives the catch-up, the "behind" check and the re-offer floor. It catches up no further than `claimedTop + 50` (POOL_TARGET), which replaces the 100,000 gap first planned as RT-27's bound. A check-list index the wallet doesn't hold above that limit is bad at once, with nothing created.
+   - **A mismatch is reported as soon as it's found,** even mid catch-up. Only "ok" waits for a catch-up to finish.
+   - **The re-offer floor** is the `claimedTop` of the first response after the answer, not the 0 sent while waiting.
+2. **Probes are always index 1.**
+   - **The bridge** sends the digest of its own index-1 address (`probeDigest`) with its answer, and with every sync until one carrying it succeeds (not one attempt). The site keeps the first as the wallet's probe. Wallet 0 on an existing site uses its row at index 1, read at pairing before the drop.
+   - **To answer a probe,** the bridge creates at most index 1. A probe at any other index is a malformed response.
+   - Why: a wallet's first-seen row is index 1 only for a fresh wallet. A reused wallet might first appear at 301, and a later switch to a fresh wallet would create 301 subaddresses to answer, starting it past its wallet app's lookahead. "Create up to it" also had no bound.
+   - **Found while building:** a site with claimed rows but no row 1 (so no probe for wallet 0) still waits, with `probes: []`, and the bridge's "no match" starts a new wallet: the safe start.
+3. **A digest test value:** `contract/test-vectors/address-digest.json` (made by `make-address-digest.mjs` with `node:crypto`), checked by the plugin's, the bridge's and the scripts' tests.
+4. **RT-27 folded in:** the bound above, plus `poolTarget` counting for at most 50.
+
+Also found while building the bridge:
+- **A response that says the site is waiting** took no addresses, so the bridge keeps the addresses it carried pending, rather than dropping them as delivered.
+- **The bridge sends `probeDigest` only once its wallet has index 1.** It creates index 1 only to answer a probe; a fresh wallet's first top-up creates it, and the next sync carries the digest.
+
+## 47. A chain height a remote node can't inflate, and payments older than the invoice don't count (RT-26, RT-31)  (status: accepted, 2026-11-02, with Wyatt's decisions below; the proposal text includes them; built 2026-11-02 on `redteam-1`, see "Built"; live check at the combined session)
+Found in: 07b pass 1. RT-26 came from round 2's white box (Step 3); RT-31 from the fix sessions, in 46's live step 6.
+
+Spec says:
+- **Invoice lifecycle:**
+  - Only counted transfers move an invoice: `unlockTime` "0" and not `doubleSpendSeen`.
+  - A transfer is on time if it's mined at or below `expiresHeight` (spec change 5).
+  - Expire on evidence.
+- **P02:** a fresh subaddress per invoice.
+- **Spec change 16:** the site keeps the highest height it has been sent.
+- **Spec change 17:** a re-pair's suggested restore height is the lowest watched `createdHeight` minus `RESTORE_MARGIN_BLOCKS` (720).
+- **Spec change 13:** with a remote node, the bridge cross-checks payment blocks against a second node from a built-in list. With the shop's own node, it doesn't.
+
+Evidence:
+- **RT-26** (`docs/redteam-findings.md`):
+  - The bridge reports wallet-rpc's `get_height` unchecked.
+  - wallet-rpc's height is the length of the chain its node served, and `wallet2` appends blocks without checking proof of work. So a dishonest remote node can raise the reported height at will.
+  - The site keeps it for good (`handle.ts:312`, `Math.max`), so every later invoice gets a future `createdHeight` and `expiresHeight`.
+  - A re-pair's suggested restore height can then be in the future. The installer uses it as given (`install.go:342–343`).
+  - Test: Go `[T14][R09] [RT-26]`, skipped while open.
+- **RT-31:**
+  - `counted` (`plugin/src/core/invoice.ts:182`) never looks at a transfer's height.
+  - Live: tip `createdHeight` 2,242,155 settled on three transfers mined at 2,230,085 to 2,240,100, before the tip existed.
+- **Why the two go together:** `createdHeight` is the site's stored height at checkout (`checkout.ts:49`), the value RT-26 inflates. A floor taken from an inflated height would ignore honest payments to new invoices: a remote denial of sales, with the money still in the shop's wallet.
+- **RT-30's fix (2026-11-02) closes the path seen live,** an honest admin switching to a used wallet, but not every path to an address that has received before:
+  - payments past a restored wallet's 200-address gap (46's known limit);
+  - a wallet used by another site or app at the same indexes;
+  - old payments a later catch-up rescan finds.
+
+  The floor is the backstop for these.
+
+Constraints the design must keep:
+1. **An honest payment is mined at or above `createdHeight`.**
+   - `createdHeight` is the last height the wallet reported, which trails the real chain: a sync every 12–15 s, and checkout refuses while the host is silent or its node is syncing.
+   - So a payment made after checkout is mined at or above it.
+   - The only exception is a reorg whose fork point lies below `createdHeight`. A reorg deeper than the invoice's `required` confirmations (at most 10, the Strict preset) already breaks fulfilment, whatever the floor.
+2. **Honest heights can rise fast:**
+   - a fresh restore climbing from its restore height;
+   - a bridge back after hours of silence;
+   - a wallet that was behind catching up.
+3. **A stored height that lags the real one is harmful too.** `expiresHeight` comes from it, and `onTime` (`invoice.ts:189`) judges a payment late when it's mined above `expiresHeight`. So a cap that makes the site's height trail the chain would send honest payments to review as late, spec change 20 item 5's problem again.
+4. **The trust contract stays frozen:** the plugin calls no node. Any check against a second node is the bridge's.
+
+Proposal: three parts. Each choice is in the decisions below, with my recommendation.
+1. **RT-26: a height a single node can't inflate.**
+   - **The bridge, with a remote node:** before reporting, it compares the wallet's height with the cross-check's second node (`pickSecond` already reads a synchronized second node's height, `crosscheck.go:204–212`).
+     - A wallet height more than a few blocks above the second node's isn't reported as is: the bridge sends the second node's height instead.
+     - The node check turns "mismatch" with a plain detail, so Health says to use the shop's own node or one the admin trusts.
+     - If no second node answers, the bridge keeps the last height it reported, and the node check says "unavailable".
+   - **With the shop's own node:** unchanged. It's trusted, as in spec change 13.
+   - **The plugin:** no rise limit (D1). It would guard only against a stolen key or a bridge bug, and with D4's reset it could pin the site's height far below the chain.
+   - **Tolerance and persistence (D2):**
+     - "A few blocks" is 10, which must stay below D5's margin.
+     - **The clamp is immediate:** it applies from the first sync where the wallet is more than 10 blocks ahead of the second node (Wyatt, 2026-11-02).
+     - **Only Health's "mismatch" waits:** the node check turns "mismatch" after the disagreement has lasted 5 minutes, so a briefly lagging public node doesn't make Health flap.
+2. **The restore height:**
+   - The installer never takes a suggested restore height above its node's height (or a second node's, with a remote node). Above it, it uses the node's height minus spec change 17's margin, and says so in one line.
+   - The plugin never suggests a restore height above its own stored height.
+3. **RT-31's floor:**
+   - **The rule:** a confirmed transfer (`height > 0`) mined below `createdHeight − margin` doesn't count toward that invoice. An unconfirmed one counts as today, until it's mined.
+   - **The formula (D4):** the floor is `min(createdHeight, the site's current height) − 30`. So an open invoice created under an inflated height heals when a pairing heals the site's height.
+   - **Where:** applied to an invoice's sums and settlement only.
+     - **Not to the paid-top** behind the gap warning (D6): the wallet app sees old payments too.
+     - `counted` itself stays as it is, since it describes money, not invoices.
+   - **The ignored transfer is kept on the invoice,** marked, so the record is complete. The admin page shows it in one line, with the amount (D6).
+4. **Healing at a pairing (D4):**
+   - **What a pairing sets:** the site's stored height becomes the pairing request's height, but only if that's the node's bounded height. It's never set from a wallet still scanning. Between pairings, `Math.max` stays.
+   - **Today's pairing height:** `install.go:84–88` and `pairstatus.go:74–79` send the node's `get_info` height. That reading isn't checked for being synchronized or against a second node, and it's 0 when the node doesn't answer.
+   - **So the build has to:**
+     - bound that reading as in part 1;
+     - send it only from a synchronized, online node;
+     - leave the site's height unchanged when the request carries none (0) or an unbounded one.
+
+### Decisions for Wyatt
+- **D1. Where the height is bounded (RT-26).**
+  - **(a)** The bridge, against the second node, with a remote node only.
+  - **(b)** The plugin, by elapsed time.
+  - **(c)** Both.
+  - Recommended: **(c), with (a) carrying the defence and (b) only as a loose backstop.** For example, at most twice the time-implied block count plus 30 blocks since the last stored height, and never below the reported height on a first sync. (b) alone has no baseline on a first pairing, and if it were tight it would break constraints 2 and 3.
+- **D2. What the bridge does when its wallet runs ahead of the second node:**
+  - send the second node's height;
+  - send its last reported height;
+  - or send no height until they agree.
+  - Recommended: **the second node's height**, with the node check "mismatch". The site's height stays current, and the admin is told.
+- **D3. The restore-height clamp (part 2).** Recommended: **yes, both sides.**
+- **D4. Healing a site already holding an inflated height:**
+  - **(a)** A pairing resets the stored height to the new bridge's first (bounded) report. Today's `Math.max` stays between pairings.
+  - **(b)** Leave it as it is.
+  - Recommended: **(a).** It matches spec change 45's "a pairing starts afresh". The only thing lowered is the base for new invoices; open invoices keep their own heights.
+- **D5. The floor's margin (RT-31).**
+  - **10 blocks:** equal to the deepest `required` preset (Strict). Any reorg deeper than that already breaks fulfilment.
+  - **30 blocks (about an hour):** recommended, three times the deepest preset. It still refuses anything older than about an hour, which would have refused all three of step 6's transfers (the newest was 2,055 blocks old).
+  - **720 blocks (a day, spec change 17's margin):** a day-old payment to a reused address would still count.
+- **D6. Showing ignored old transfers:**
+  - **(a)** One line on the invoice in the admin page: "An older payment to this address was ignored: it was mined before this invoice." This is a wording addition to an existing page; no new page or widget.
+  - **(b)** Not shown: the ignored transfer stays on the invoice record only. The floor runs in the plugin, so the bridge doesn't know.
+  - Never to the buyer: the status route and pay page are unchanged.
+  - Recommended: **(a).**
+- **D7. Order and tests (Wyatt's option A: both in release 1).** RT-26's bound lands first or in the same build as the floor.
+  - **Tests first:**
+    - unskip `[T14][R09] [RT-26]`;
+    - plugin: the floor at the margin's edge, an unconfirmed transfer counted, the RT-31 live shape as a test, and an inflated `createdHeight` with RT-26's bound in place;
+    - installer: the clamp;
+    - live: step 6's rerun covers the floor too.
+
+Wyatt's decisions (2026-11-02):
+- **D1: (a) only, the bridge against the second node. No plugin rise limit.**
+  - A rise limit only guards against a stolen key or a bridge bug, and with D4's reset it could pin the site's height far below the chain.
+  - A just-created wallet reports about 579,994 and climbs while it scans. A rise limit would take months to recover, sending every order's payment to review as late (constraint 3).
+- **D2: the second node's height, with a tolerance of 10 blocks.** It must stay below D5's margin.
+  - "Mismatch" only if the disagreement lasts a few minutes, so a briefly lagging public node doesn't make Health flap.
+  - **Release-2 note (pass 2):** while the height is held because no second node answers, product checkout refuses, as when the node is syncing.
+  - **The span (Wyatt, later the same day):** 5 minutes, for Health's "mismatch" only. The clamp itself applies from the first sync more than 10 blocks ahead.
+- **D3: yes, both sides.**
+- **D4: (a), a pairing resets the site's height**, but only to the pairing request's height, and only if that's the node's bounded height, never a wallet still scanning.
+  - Also: the floor uses `min(createdHeight, the site's current height) − margin`, so open invoices created under an inflated height heal with the site.
+- **D5: 30 blocks.**
+- **D6: (a), with the amount in the line.** The floor applies to an invoice's sums and settlement, not to the paid-top the gap warning uses: the wallet app sees old payments too.
+- **D7: as drafted, plus these tests:**
+  - a re-pair with a wallet still scanning doesn't lower the site's height;
+  - a payment at the edge of D2's tolerance and D5's margin still counts;
+  - an open invoice created under an inflated height counts honest payments once a pairing has healed the height.
+
+Effect on the admin budget:
+- No new setting, prompt or upkeep.
+- One installer line, only when it clamps.
+- Health lines only when a node disagrees for a few minutes.
+
+Effect on the trust contract:
+- **None** to capabilities, hosts, routes, collections or indexes.
+- **The plugin:** a mark on an ignored transfer inside an invoice row (no new index).
+- **The bridge:** already reads the second node's `get_info`.
+
+**Built (2026-11-02, tests first; Wyatt's answers to the build plan: (a) for settled invoices, fail closed with no second node, the pairing height bounded both ways):**
+- **`4615ceb`, the bridge:**
+  - The height bound: the second node's height beyond 10 blocks, from the first sync, and "mismatch" after 5 minutes. With no second node, height 0 and "unavailable".
+  - Spec change 13 amended: with no second node, or a block that can't be fetched, mined transfers are held at 0.
+  - `BoundedHeight` for both pairing paths.
+- **`889d652`, the installer:** a suggestion above the bounded height becomes that height − 720, with one line. With nothing suggested, the wallet starts at the bounded height.
+- **`300fa80`, the plugin:**
+  - **The floor** (`FLOOR_MARGIN_BLOCKS` 30), through `totals(inv, siteHeight)`.
+  - **D6's line:** derived when shown, so settled invoices from before the floor show it too.
+  - **The reset at a pairing,** and the restore suggestion from the healed height.
+  - **Checkout at height 0:** refused, tips included when the host has reported without a height. A site that never synced still answers `NO_ADDRESS_AVAILABLE`.
+- **Found while building:**
+  - **Part 4:** both pairing paths sent the node's raw `get_info` height, and the bounded height now replaces it. The pair command's test was red on 94,954 from a node still catching up.
+  - **The installer's no-suggestion path** also took the node's raw height, so a dishonest remote node could start a new wallet in the future. It now takes the bounded height.
+  - **Visitor tips** never used checkout's height rule (spec change 33 takes them whatever the host's state). Height 0 is now their one exception.
+- **Live check, at the combined session** (one dev release with RT-20):
+  - step 6's rerun, with the old tip `inv_f7ea94de1471f114` as the live view of D6's line, and a fresh tip that shows nothing received until Wyatt pays;
+  - the installer's clamp.
+
+
+## 48. An address the wallet holds is never bad on its index alone; the bridge stops a runaway top-up; a settled invoice keeps its floor (RT-32, RT-33, RT-34)  (status: accepted, 2026-11-06, with Wyatt's decisions below; being built on `redteam-1`)
+Found in: 07b pass 1, fix sessions (the combined live session, step 2, and tracing RT-33 on 2026-11-06).
+
+**The bridge (RT-32):**
+1. **The pool check** compares digests for every index the wallet holds, whatever its number; it's bad only if the digest differs. `claimedTop + maxPool` applies only to indexes the wallet doesn't hold: within it they wait for the catch-up, above it they're bad at once with nothing created, so RT-27 stays closed.
+2. **The wallet is saved after every create** (top-up, catch-up, the probe's index 1), before the addresses go out. Live on 2026-11-06: without the save, the real wallet-rpc forgot a created address after `kill -9`; with it, the address survived. **If the save fails:** a warning in the log and on Health, the addresses still go out, and the next sync tries again. The failure's only cost is a possible false bad row after a crash, and holding addresses back would run the pool dry instead.
+3. **A circuit breaker** stops top-ups and shows a Health error. Payments keep syncing, and the pool check keeps reporting. Only a restart or a new pairing clears it.
+   - **Trigger 1 (`bad_created`):** the pool check finds bad an index the bridge created in this run.
+   - **Trigger 2 (`too_many`):** 100 addresses (2 × `maxPool`) created for the pool in one run without `claimedTop` rising. Catch-up and the probe's index 1 don't count; `claimedTop` rising or a new pairing resets it. It catches rows the site drops without reporting them (spec change 45's wrong-network and unreadable drops).
+   - **A known limit:** someone with a stolen bridge key can trip it by forging a row. Tips then refuse once free rows run out, which fails safe, and RT-08's real alarm still shows.
+4. **On the wire:** optional `checks.topUp` (`state: "stopped"`, `reason: "bad_created" | "too_many"`) and `checks.save` (`state: "failed"`). The plugin writes the admin's text.
+5. **A wallet that lost addresses with no re-pair isn't covered:** a row above the bound that the wallet no longer holds is still reported bad. The realistic way there is a failed save followed by a crash (a full disk, say); a lost wallet file is the other. An ordinary fresh install pairs, and a pairing drops the free rows.
+6. **Shared vector:** `contract/test-vectors/bridge-checks.json`, read by the bridge's and the plugin's tests, covers both stop reasons and a failed save.
+
+**Health's text (Wyatt's, 2026-11-06). Title: "The wallet host stopped adding addresses".**
+- `bad_created`: "It found a problem with an address it had just created, so it stopped rather than keep repeating."
+- `too_many`: "It created far more addresses than tips have used, so it stopped rather than keep going."
+- Then: "Payments are still tracked. Tips keep working for now: {n} free addresses are left. To restart it, run sudo systemctl restart xmr-bridge on the wallet host. If it stops again, its log has the details: sudo journalctl -u xmr-bridge"
+- **With one free address:** "Tips keep working for now: 1 free address is left."
+- **With none (Wyatt):** "No free addresses are left, so Coffer can't take new tips." Not "tips have stopped": an empty pool is a fallback case in the theme (`theme/src/tip.ts`, `FALLBACK_CODES`), so a site with spec change 18 A's address still shows it, and the plugin can't know whether it set one.
+- **A failed save, amber (Wyatt). Title: "The wallet host can't save its wallet".** "Payments are still tracked, and it keeps trying. Until a save works, a crash could make it forget new addresses and then wrongly report them as not from your wallet. Check that the wallet host's disk isn't full (df -h). Details are in its log; on the wallet host, run: sudo journalctl -u xmr-bridge"
+
+**The floor (RT-33, RT-34):**
+1. **A settled invoice is judged on the floor it settled under,** stored as `settledFloor` when it settles. One settled with no stored floor, before the floor existed, has no floor for totals or the watch list.
+2. **A healed height stops the floor rising.** When the `createdHeight` of an invoice that hasn't settled is above the site's height, `floorPin` is stored once and never rises:
+   `siteHeight − 30 − 2 × (blocks expected since createdAt, at 2 minutes each)`. The estimate lets a payment mined long before the heal count. Its cost: on an inflated invoice only, an old payment to a reused address inside that window could count.
+   - **Honest open tips can be pinned too (Wyatt: fine, recorded):** a re-pair to a node a few blocks behind puts `createdHeight` above the site's height, so the tip gets a pin slightly lower than its normal floor.
+3. **The ignored-payment line uses the same floor as totals,** so nothing counted is ever listed as ignored. The one fallback: a settled invoice with no stored floor keeps today's formula for the line (spec change 47's answer 1(a)).
+   - **Still to change (Wyatt, step 2's rerun, 2026-11-06):** in that fallback the line says the payments "were ignored", but those same transfers settled the tip and count in its totals. For a settled invoice with no stored floor, the line must say they counted. Wording waiting on Wyatt; not built during the live check.
+
+Effect on the trust contract: none. Capabilities, hosts, routes, collections and indexes don't change. The new invoice fields aren't indexed and aren't on the public status route.
+Effect on the admin budget: none. No setting or routine task; a restart only after a fault.
+Live check: RT-32 at step 2's rerun (restore `live-before-step2.db`, the Feather wallet with `--restore-height 2230020`), including one `sudo systemctl restart xmr-bridge` after the pool fills (Wyatt): still no bad rows. Both new banners by eye once, on the dev site. **RT-34: unit-tested, not live (Wyatt, 2026-11-06).** RT-33: unit-tested; its live window has ended.
+
+## 49. Tie a person to an invoice: IDs, transfers and a lookup on the admin page, and the ID for the payer  (status: proposed, 2026-11-06; not built; found by Wyatt during step 2's rerun)
+Found in: the combined live session, step 2's rerun. The Tips list shows no invoice IDs: Wyatt could tell which row was `inv_f7ea94de1471f114` only from its older-payments line. If a tipper, or later a buyer, contacts the admin, the admin can't tie them to a row.
+
+Today:
+- A tip's row (`tipLine`, `plugin/src/admin.ts`) shows no ID, transfers or address. Product invoices already list each transfer's amount, block and transaction ID (`transfersCode`).
+- The Tips view lists the newest 10 of up to 1,000 scanned.
+- The pay page and the status route don't give the payer an ID.
+
+Wyatt's proposal:
+1. Show each invoice's ID on its row, copyable.
+2. Under each row, list each transfer's txid, amount and block (already stored in `transfers[]`).
+3. Show the address in short form.
+4. A lookup box that finds an invoice by ID, txid, address or pay-page token, including tips older than the newest-tips list.
+5. Show the ID to the payer on the pay page and the Tip received card, and put it in the `monero:` URI's description so it lands in their wallet history.
+
+**The pay token works as a secret (checked in the code, 2026-11-06), so never display it anywhere new:**
+- It's 128 bits from a cryptographic RNG, in a unique index, and spec row T09 protects it (no-store, no-referrer, noindex, no framing).
+- It's the only public handle on an invoice. Whoever holds it can read the invoice's status, amounts, address, `monero:` URI (with its description), expiry and settled time, for as long as the row exists. It can't change anything, and the status route doesn't return the buyer's note or contact details, or any txid.
+- So: the lookup may accept a token typed in, but must never show or echo one, and it must not go on a row, in a log or in the URI.
+
+**The invoice ID isn't a secret (checked):** 64 random bits, and no public route accepts it; the status route takes only a 22-character token. Showing it to the payer gives them nothing they could use on the site.
+
+What it would touch:
+- **Items 1-3:** the admin page only, using data already stored. No trust-contract change.
+- **Item 4:** a new input and action on the private admin route. ID (row key), token and address (unique indexes) are direct reads. **A txid has no index:** it's inside `transfers[]`, so it needs either a bounded scan or a new index. A new index changes the storage trust contract, so Wyatt decides.
+- **Item 5:** a new field on the public status response, the theme's pages, and the URI. To check live: whether wallets, Feather first, keep `tx_description` in their history. The description is capped at 100 characters today and carries the entry's title.
+
+Claude's view on release 1: doesn't block. Release 1 is tips only, with nothing to fulfil or refund. Suggested split, for Wyatt to decide: items 1-3 in phase 09, since they're small and display only; items 4-5 before orders exist, as a blocker for release 2.

@@ -4969,3 +4969,27 @@ Stopped here for Wyatt's call on the clamp; 3d not started.
 **The state I leave:** the dev site, the release server and the watcher are running, the bridge is on `https://stagenet.xmr.kernal.eu:38089` with key `lChpFHckCep9yt5h` and the phase 05 wallet (wallet 1). `data.db` still holds step 3's changes, including the `seq` edit and tip `inv_ca1ec50afd39fb95`; `live-before-step3.db` is the restore point, if Wyatt wants it.
 
 **Next:** Wyatt says whether to restore `data.db`, then step 4 (RT-20 live), step 5 (back to the shop wallet), his rulings on RT-32, RT-33 and RT-34, the fixes tests first, one dev release, and step 2's rerun. That rerun can't show RT-33 live: the old tip's 24-hour watch has ended, so RT-33 needs a test.
+
+## 2026-11-06 · Combined live session: step 4 (RT-20 live), before the handoff
+
+- **The watcher:** its stop action is now `tmux kill-session -t built` (Wyatt approved the command), then a check that 4322 is free, with SIGTERM to the pid `ss` names on that port as the fallback, and a log of any workerd left.
+- **Dev site stopped, then `npm run build`** at `f1f016f` (the old `dist` was from 2026-10-30, before RT-20's fix). The new `tip_BJmho54D.mjs` holds `crossSite` with `getPublicOrigin`.
+- **The stop command, tried once for real:** built copy up with `HOST=0.0.0.0 PORT=4322 EMDASH_SITE_URL=https://dev.wyattdilley.com`, home and status route 200, workerd running. `tmux kill-session -t built` exited 0, the port was free after about 2 s, and no workerd was left. Started again: home and status route 200.
+- **Wyatt's question: what does `de558a1` accept as the site's own origin? (from the code, EmDash 1.3.1; not run.)** The request's own origin, or `getPublicOrigin`: `config.siteUrl`, then `EMDASH_SITE_URL` / `SITE_URL`, then the request's origin. It does **not** read Settings › General's Site URL (`site:url`). `locals.emdash.config` is the build-time config; `site:url` only reaches `resolveSiteOrigin` and `getChosenSiteOrigin`, which feed `ctx.site` and outbound links. So an admin who sets only the Site URL gets the right address for plugins and a 403 on the tip button. A gap in RT-20's fix against spec change 42 item 3's proposed banner text; Wyatt decides whether release 1 needs it. The second pass he described applies only if the fix read the whole chain, so it isn't run.
+
+### Passkey sign-in behind a proxy with only the Site URL set (from the code, EmDash 1.3.1, Astro 7.3.5; no browser run)
+
+Wyatt's question, before choosing how to close RT-20's gap. **Corrected the same day:** my first version called Astro's `createRequest`, which the Node adapter doesn't use, and wrongly said the `rpId` becomes `localhost`.
+
+- **Result: a passkey can't sign in at the public address.** `passkey/options.ts:59` and `passkey/verify.ts:41` use `getPublicOrigin`, which doesn't read `site:url`. The adapter (`@astrojs/node` `serve-app.js:64`) calls `createRequestFromNodeRequest`: host from `Host`, protocol from the socket. An in-memory call of that function with a proxy that keeps `Host` gave `http://shop.example.com`, so the `rpId` is right but the accepted origin is http. `@emdash-cms/auth` `authenticate.ts:226` refuses the browser's `https://` origin. Registering a passkey there fails the same way (`register.ts:173`). `EMDASH_ALLOWED_ORIGINS` needs `siteUrl`. A proxy that rewrites `Host` gives `http://localhost:4322` and an `rpId` of `localhost`.
+- **Exception, no gap:** with `security.allowedDomains` in the site's own Astro config and `X-Forwarded-Proto` sent, Astro's `FetchState` (`fetch-state.js`, `#applyForwardedHeaders`) moves both the URL and the request to https, so passkeys and the tip both pass with no `siteUrl`. From reading; the in-memory call stops before that step.
+- **Exception, the gap's real reach:** a production build can't run setup without a configured address (`setup/index.ts:72`, `SITE_URL_REQUIRED`), so a site with none was set up under `astro dev` on loopback. Its admin can keep using a passkey through a tunnel to loopback, or a magic link if email is set up, or a handover session. With only the Site URL set, Coffer's install command is right and every tip gets a 403.
+- **Not traced:** Cloudflare Access on a self-hosted Node site, and whether a session at the old address survives setting `EMDASH_SITE_URL` and restarting.
+- **Wyatt's decision (2026-11-06): option 2.** The tip keeps refusing, the limit is recorded, and the banner stops telling admins to change EmDash's address settings. Exact text and the toast are in spec change 42; built in phase 09.
+- **Built:** the owner's message on that refusal (`theme/src/tip.ts`, `proxyNotSetUp`; two new T17 tests). The built copy on 4322 is still `f1f016f` and doesn't have it; no live run of the message yet.
+
+### Step 4 result: RT-20 first pass passed
+
+Wyatt pressed the tip button on `https://dev.wyattdilley.com/posts/welcome` through his tunnel and reports a pass. The watcher logged one new invoice and one newly claimed address at 00:14:34 UTC on 2026-11-07 (17:14 local, the evening of 2026-11-06), bad rows still 2, no stop. The tip stays unpaid; the bridge points at `localhost:4321`, so it can't settle here. The second pass doesn't apply.
+
+**Next:** step 5 (back to the shop wallet on the own node), on Wyatt's word. Then his rulings on RT-32, RT-33 and RT-34.

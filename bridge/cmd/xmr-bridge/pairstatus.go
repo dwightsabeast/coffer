@@ -189,6 +189,20 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 		}
 		fmt.Fprintf(stdout, "Address check: MISMATCH: the site holds addresses that aren't from this wallet (%s). Someone may have this wallet host's key: on the site's admin page, connect a new wallet host, on a machine you trust\n", strings.Join(idx, ", "))
 	}
+	// Spec change 48: the circuit breaker and a failed save of the wallet.
+	switch st.TopUpStopped {
+	case "":
+	case "too_many":
+		healthy = false
+		fmt.Fprintln(stdout, "Top-up:     STOPPED: it created far more addresses than tips have used. Restart with: sudo systemctl restart xmr-bridge")
+	default:
+		healthy = false
+		fmt.Fprintln(stdout, "Top-up:     STOPPED: it found a problem with an address it had just created. Restart with: sudo systemctl restart xmr-bridge")
+	}
+	if st.StoreFailed {
+		healthy = false
+		fmt.Fprintln(stdout, "Wallet save: FAILED: it keeps trying. See: sudo journalctl -u xmr-bridge")
+	}
 	switch wc := st.WalletCheck; {
 	case wc == nil:
 		fmt.Fprintf(stdout, "Wallet:     height %d\n", st.WalletHeight)

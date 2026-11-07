@@ -92,6 +92,14 @@ type Checks struct {
 	Node   *Check      `json:"node,omitempty"`   // the remote-node cross-check
 	Wallet *Check      `json:"wallet,omitempty"` // the wallet's height against its node's ("ok", "behind", "unavailable"), or "syncing" while the node catches up with the network
 	Pool   *PoolReport `json:"pool,omitempty"`   // spec change 46: the check of the site's pool against this wallet
+	TopUp  *TopUpCheck `json:"topUp,omitempty"`  // spec change 48: set while the circuit breaker has stopped top-ups
+	Save   *Check      `json:"save,omitempty"`   // spec change 48: state "failed" while the wallet can't be saved
+}
+
+// TopUpCheck says the bridge has stopped adding pool addresses and why ("bad_created" or "too_many"; spec change 48).
+type TopUpCheck struct {
+	State  string `json:"state"`
+	Reason string `json:"reason"`
 }
 
 // Check is one check's state ("off", "ok", "unavailable" or "mismatch") and what it means.

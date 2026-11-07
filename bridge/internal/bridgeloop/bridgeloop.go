@@ -51,6 +51,14 @@ const (
 	// maxPool is the spec's fixed pool size (RT-27): a site's poolTarget above it is treated as this, and the catch-up
 	// goes no further than claimedTop + maxPool (spec change 46, Wyatt's review).
 	maxPool = 50
+	// maxPoolCreated is how many addresses one run may create for the pool without claimedTop rising (spec change 48's
+	// second trigger). An honest refill never needs more than maxPool at once.
+	maxPoolCreated = 2 * maxPool
+	// storeLimit bounds one save of the wallet.
+	storeLimit = time.Minute
+	// The circuit breaker's reasons, as sent to the site (spec change 48).
+	stopBadCreated = "bad_created"
+	stopTooMany    = "too_many"
 	// maxReoffer bounds the unused subaddresses a matched wallet re-offers after a re-pair.
 	maxReoffer = 1000
 )
@@ -66,6 +74,8 @@ type Wallet interface {
 	// Spec change 46: addresses by index (the pool check, the probe) and every index with a transfer.
 	SubaddressAddresses(ctx context.Context, indexes []uint32) (map[uint32]string, error)
 	ReceivedIndexes(ctx context.Context) ([]uint32, error)
+	// Store saves the wallet to disk (spec change 48): wallet-rpc otherwise forgets new addresses in a kill or power loss.
+	Store(ctx context.Context) error
 }
 
 // CrossChecker confirms mined transfers against a second node (*crosscheck.Checker); nil when the node is the
@@ -131,6 +141,10 @@ type Status struct {
 	CatchUp *CatchUp `json:"catchUp,omitempty"`
 	// PoolCheck is the last check of the site's pool against this wallet (spec change 46); nil until one.
 	PoolCheck *PoolCheck `json:"poolCheck,omitempty"`
+	// TopUpStopped is the circuit breaker's reason (spec change 48), empty while top-ups run. StoreFailed is set while
+	// the wallet can't be saved.
+	TopUpStopped string `json:"topUpStopped,omitempty"`
+	StoreFailed  bool   `json:"storeFailed,omitempty"`
 }
 
 // PoolCheck is the result of checking the site's check list: "ok", or "mismatch" with the wallet's own indexes.
@@ -196,6 +210,10 @@ type Loop struct {
 	// Status.NodeCheck is the two combined.
 	payCheck    crosscheck.Report
 	heightCheck *crosscheck.Report
+	// Spec change 48's circuit breaker: the indexes this run created for the pool, and how many since claimedTop last
+	// rose. The stop itself is Status.TopUpStopped.
+	createdRun  map[uint32]bool
+	poolCreated int
 	// stateKey is the key the per-pairing state above was built under (46's step 5b, Wyatt): the watch list, the
 	// answer, the pool report and the re-offer belong to one pairing and never go out under another.
 	stateKey string
@@ -420,6 +438,8 @@ func (l *Loop) adoptKey(key ed25519.PrivateKey) {
 		l.answer, l.report, l.reportNow = nil, nil, false
 		l.reofferPending, l.reoffer = false, nil
 		l.waiting = false
+		l.poolCreated, l.st.TopUpStopped = 0, ""
+		l.createdRun = nil
 	}
 	l.stateKey = k
 }
@@ -465,6 +485,13 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 	height, err := w.GetHeight(ctx)
 	if err != nil {
 		return fmt.Errorf("wallet: %w", err)
+	}
+	// Spec change 48: a failed save is tried again every sync, so its warning clears by itself.
+	l.mu.Lock()
+	saveOwed := l.st.StoreFailed
+	l.mu.Unlock()
+	if saveOwed {
+		l.saveWallet(ctx, w)
 	}
 	// RT-26: the height sent is bounded by a second node's with a remote node; height stays the wallet's own, for the
 	// wallet check, the probe and the status file.
@@ -524,6 +551,9 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 	nc := l.st.NodeCheck
 	l.mu.Unlock()
 	checks := &syncclient.Checks{Node: &syncclient.Check{State: string(nc.State), Detail: nc.Detail}, Wallet: l.walletCheck(ctx, height), Pool: report}
+	l.mu.Lock()
+	l.addBreakerChecks(checks)
+	l.mu.Unlock()
 	l.mu.Lock()
 	l.st.WalletCheck = checks.Wallet
 	l.mu.Unlock()
@@ -610,6 +640,9 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 		return nil
 	}
 	l.waiting = false
+	if resp.ClaimedTop > l.claimedTop {
+		l.poolCreated = 0 // tips are using the addresses: spec change 48's count starts again
+	}
 	l.claimedTop = resp.ClaimedTop
 	claimedTop := l.claimedTop
 	reofferPending := l.reofferPending
@@ -628,6 +661,12 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 			l.report = rep
 			l.st.PoolCheck = &PoolCheck{State: rep.State, Bad: rep.Bad, At: l.o.Now()}
 			if rep.State == "mismatch" {
+				for _, b := range rep.Bad {
+					if l.createdRun[b] {
+						l.stopTopUp(stopBadCreated)
+						break
+					}
+				}
 				l.reportNow, l.soon = true, true
 				l.mu.Unlock()
 				l.o.Log.Warn("the site holds addresses that aren't from this wallet", "indexes", rep.Bad)
@@ -671,6 +710,9 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 	// Top up: the site's free addresses plus those already on their way must reach the target, at most maxPool (RT-27).
 	need := min(resp.PoolTarget, maxPool) - resp.PoolFree - len(l.pending)
 	need = min(need, maxAddresses-len(l.pending))
+	if l.st.TopUpStopped != "" {
+		need = 0
+	}
 	if need > 0 && len(l.reoffer) > 0 {
 		take := l.reoffer[:min(need, len(l.reoffer))]
 		l.mu.Unlock()
@@ -686,14 +728,29 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 		l.savePending()
 		need -= len(take)
 	}
+	if need > 0 && l.poolCreated >= maxPoolCreated {
+		// Spec change 48's second trigger: rows are going somewhere nothing reports (spec change 45's drops, or what we
+		// haven't thought of), and tips aren't using them.
+		l.stopTopUp(stopTooMany)
+		need = 0
+	}
 	if need > 0 {
+		need = min(need, maxPoolCreated-l.poolCreated)
 		l.mu.Unlock()
 		created, cerr := l.create(ctx, w, need)
+		if len(created) > 0 {
+			l.saveWallet(ctx, w)
+		}
 		l.mu.Lock()
+		l.poolCreated += len(created)
+		if l.createdRun == nil {
+			l.createdRun = map[uint32]bool{}
+		}
 		// An index the site has already handed out means the wallet is behind after all: never send it (the duplicate
 		// loop of 3h's L3), catch up on the next sync instead. Spec change 46: claimedTop, not poolTop.
 		behind := false
 		for _, a := range created {
+			l.createdRun[a.Index] = true
 			l.known = max(l.known, a.Index)
 			if a.Index <= l.claimedTop {
 				behind = true
@@ -755,6 +812,9 @@ func (l *Loop) sendReport(ctx context.Context, key ed25519.PrivateKey, height ui
 	nc := l.st.NodeCheck
 	l.mu.Unlock()
 	checks := &syncclient.Checks{Node: &syncclient.Check{State: string(nc.State), Detail: nc.Detail}, Pool: report}
+	l.mu.Lock()
+	l.addBreakerChecks(checks)
+	l.mu.Unlock()
 	body := syncclient.Body{V: syncclient.ProtocolV, Seq: l.nextSeq(), Height: height, Addresses: []syncclient.Address{}, Snapshots: []syncclient.Snapshot{}, Checks: checks}
 	if changed, err := l.keyChanged(key); err != nil || changed {
 		return err
@@ -807,6 +867,7 @@ func (l *Loop) index1Digest(ctx context.Context, w Wallet, create bool) (string,
 		if a.Index != 1 || a.Address == "" {
 			return "", fmt.Errorf("wallet-rpc created index %d, not 1", a.Index)
 		}
+		l.saveWallet(ctx, w)
 		l.mu.Lock()
 		l.known = max(l.known, 1)
 		l.pending = append(l.pending, syncclient.Address{Index: 1, Address: a.Address})
@@ -932,19 +993,21 @@ func (l *Loop) walletTop(ctx context.Context, w Wallet, hi uint32) (uint32, erro
 	return lo, nil
 }
 
-// checkPool compares the site's check list with this wallet (spec change 46, item 1). An index the wallet holds with
-// another address is bad; so is one it doesn't hold above claimedTop + maxPool, at once, with nothing created. One it
-// doesn't hold within that is left for the catch-up (within returns the highest such row, up to the limit), and while
-// any is left, a clean list gives no report: only "ok" waits for a catch-up.
+// checkPool compares the site's check list with this wallet (spec change 46, item 1; spec change 48). An index the wallet
+// holds is compared by digest, whatever its number, and is bad only if it differs: an address the bridge created itself
+// never comes back bad on its index alone (RT-32). claimedTop + maxPool applies only to an index the wallet doesn't hold:
+// above it, bad at once with nothing created (RT-27); within it, left for the catch-up (within returns the highest row up
+// to the limit), and while any is left, a clean list gives no report: only "ok" waits for a catch-up.
 func (l *Loop) checkPool(ctx context.Context, w Wallet, entries []syncclient.CheckEntry, claimedTop uint32) (rep *syncclient.PoolReport, within uint32, err error) {
 	limit := uint64(claimedTop) + maxPool
 	var hi uint32
 	for _, e := range entries {
+		hi = max(hi, e.Index)
 		if uint64(e.Index) <= limit {
 			within = max(within, e.Index)
-			hi = max(hi, e.Index)
 		}
 	}
+	// A hostile index costs at most 32 get_address calls here, and creates nothing.
 	top, err := l.walletTop(ctx, w, hi)
 	if err != nil {
 		return nil, within, err
@@ -954,14 +1017,14 @@ func (l *Loop) checkPool(ctx context.Context, w Wallet, entries []syncclient.Che
 	l.mu.Lock()
 	for _, e := range entries {
 		switch {
-		case uint64(e.Index) > limit:
-			bad = append(bad, e.Index)
-		case e.Index > top:
-			missing = true
-		default:
+		case e.Index <= top:
 			if _, ok := l.digests[e.Index]; !ok {
 				lookup = append(lookup, e.Index)
 			}
+		case uint64(e.Index) <= limit:
+			missing = true
+		default:
+			bad = append(bad, e.Index)
 		}
 	}
 	l.mu.Unlock()
@@ -980,7 +1043,7 @@ func (l *Loop) checkPool(ctx context.Context, w Wallet, entries []syncclient.Che
 	}
 	l.mu.Lock()
 	for _, e := range entries {
-		if uint64(e.Index) <= limit && e.Index <= top && l.digests[e.Index] != e.Digest {
+		if e.Index <= top && l.digests[e.Index] != e.Digest {
 			bad = append(bad, e.Index)
 		}
 	}
@@ -993,6 +1056,46 @@ func (l *Loop) checkPool(ctx context.Context, w Wallet, entries []syncclient.Che
 		return nil, within, nil
 	}
 	return &syncclient.PoolReport{State: "ok", Bad: []uint32{}}, within, nil
+}
+
+// saveWallet saves the wallet after a create (spec change 48), before the new addresses go out: wallet-rpc otherwise
+// forgets them in a kill or power loss, and the site's rows would then look foreign. A failure warns in the log and on
+// Health and the addresses still go out: its only cost is a possible false bad row after a crash, while holding them back
+// would run the pool dry. Every sync tries again until a save works. Called without l.mu.
+func (l *Loop) saveWallet(ctx context.Context, w Wallet) {
+	sctx, cancel := context.WithTimeout(ctx, storeLimit)
+	err := w.Store(sctx)
+	cancel()
+	l.mu.Lock()
+	failed := l.st.StoreFailed
+	l.st.StoreFailed = err != nil
+	l.mu.Unlock()
+	switch {
+	case err != nil && !failed:
+		l.o.Log.Warn("saving the wallet", "err", err)
+	case err == nil && failed:
+		l.o.Log.Info("the wallet saved after an earlier failure")
+	}
+}
+
+// stopTopUp trips the circuit breaker (spec change 48): no more addresses are created or re-offered, payments keep
+// syncing, and the site shows a Health error. A restart or a new pairing clears it, so it can't become a slow loop.
+// Called with l.mu held.
+func (l *Loop) stopTopUp(reason string) {
+	if l.st.TopUpStopped == "" {
+		l.st.TopUpStopped = reason
+		l.o.Log.Error("stopped adding addresses", "reason", reason, "claimedTop", l.claimedTop, "createdSinceItRose", l.poolCreated)
+	}
+}
+
+// addBreakerChecks adds the breaker's and the save's state to a sync's checks. Called with l.mu held.
+func (l *Loop) addBreakerChecks(c *syncclient.Checks) {
+	if l.st.TopUpStopped != "" {
+		c.TopUp = &syncclient.TopUpCheck{State: "stopped", Reason: l.st.TopUpStopped}
+	}
+	if l.st.StoreFailed {
+		c.Save = &syncclient.Check{State: "failed"}
+	}
 }
 
 // prepareReoffer lists the wallet's own created, unused subaddresses above the matched wallet's claimedTop (spec change
@@ -1085,6 +1188,7 @@ func (l *Loop) catchUp(ctx context.Context, w Wallet, target uint32) error {
 		}
 		top = as[len(as)-1].Index
 	}
+	l.saveWallet(ctx, w) // a rescan can take hours: a crash during it keeps the addresses
 	l.progress(top, true)
 	l.o.Log.Info("rescanning the wallet", "addresses", top)
 	rctx, cancel := context.WithTimeout(ctx, rescanLimit)

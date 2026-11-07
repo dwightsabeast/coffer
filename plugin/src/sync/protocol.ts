@@ -118,6 +118,10 @@ export interface BridgeChecks {
 	wallet?: { state: "ok" | "behind" | "unavailable" | "syncing" | "starting"; detail?: string };
 	/** Spec change 46: the bridge's check of the site's `check` list against its wallet; `bad` holds its own indexes. */
 	pool?: { state: "ok" | "mismatch"; bad: number[] };
+	/** Spec change 48: the bridge's circuit breaker has stopped top-ups, and why. */
+	topUp?: { state: "stopped"; reason: "bad_created" | "too_many" };
+	/** Spec change 48: the wallet can't be saved to disk right now. */
+	save?: { state: "failed" };
 }
 
 export interface SyncBody {
@@ -187,14 +191,21 @@ function parsePoolCheck(c: unknown): BridgeChecks["pool"] {
 	return { state: c.state, bad };
 }
 
+function parseTopUp(c: unknown): BridgeChecks["topUp"] {
+	if (!isObject(c) || c.state !== "stopped" || (c.reason !== "bad_created" && c.reason !== "too_many")) return undefined;
+	return { state: c.state, reason: c.reason };
+}
+
 /** Checks are information for the admin page: anything malformed is dropped, never a reason to refuse the body. */
 function parseChecks(c: unknown): BridgeChecks | undefined {
 	if (!isObject(c)) return undefined;
 	const node = parseCheck<NonNullable<BridgeChecks["node"]>["state"]>(c.node, NODE_STATES);
 	const wallet = parseCheck<NonNullable<BridgeChecks["wallet"]>["state"]>(c.wallet, WALLET_STATES);
 	const pool = parsePoolCheck(c.pool);
-	if (!node && !wallet && !pool) return undefined;
-	return { ...(node ? { node } : {}), ...(wallet ? { wallet } : {}), ...(pool ? { pool } : {}) };
+	const topUp = parseTopUp(c.topUp);
+	const save: BridgeChecks["save"] = isObject(c.save) && c.save.state === "failed" ? { state: "failed" } : undefined;
+	if (!node && !wallet && !pool && !topUp && !save) return undefined;
+	return { ...(node ? { node } : {}), ...(wallet ? { wallet } : {}), ...(pool ? { pool } : {}), ...(topUp ? { topUp } : {}), ...(save ? { save } : {}) };
 }
 
 /** The probe answer; malformed is dropped (the site keeps waiting for a well-formed one). */

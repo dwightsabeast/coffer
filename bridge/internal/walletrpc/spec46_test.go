@@ -75,3 +75,16 @@ func TestReceivedIndexes(t *testing.T) {
 		}
 	})
 }
+
+func TestStore(t *testing.T) {
+	t.Run("[R08] [RT-32] store calls wallet-rpc's store method", func(t *testing.T) {
+		f, srv := newFake(t)
+		f.results["store"] = `{}`
+		if err := client(f, srv).Store(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if got := f.calls[len(f.calls)-1].Method; got != "store" {
+			t.Fatalf("called %q", got)
+		}
+	})
+}

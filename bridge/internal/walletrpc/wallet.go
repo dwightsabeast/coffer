@@ -40,6 +40,14 @@ func (c *Client) OpenWallet(ctx context.Context, filename string, password secre
 	return c.untimed().call(ctx, "open_wallet", map[string]any{"filename": filename, "password": password.Reveal()}, &r)
 }
 
+// Store saves the open wallet to disk (RT-32): wallet-rpc otherwise saves only when it stops cleanly, so a kill or a power
+// loss forgets addresses created since. ctx alone bounds it, like OpenWallet: a large wallet can take longer than the
+// client's timeout.
+func (c *Client) Store(ctx context.Context) error {
+	var r struct{}
+	return c.untimed().call(ctx, "store", struct{}{}, &r)
+}
+
 // CloseWallet saves and closes the open wallet.
 func (c *Client) CloseWallet(ctx context.Context) error {
 	var r struct{}

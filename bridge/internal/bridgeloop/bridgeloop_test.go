@@ -46,6 +46,21 @@ type fakeWallet struct {
 	probedMax    uint32
 	// RT-30: how often ReceivedIndexes was called.
 	receivedReads int
+	// Spec change 48: saves, the wallet's top at the last one, and a failure to return.
+	stores     int
+	storedNext uint32
+	storeErr   error
+}
+
+func (w *fakeWallet) Store(context.Context) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.stores++
+	if w.storeErr != nil {
+		return w.storeErr
+	}
+	w.storedNext = w.next
+	return nil
 }
 
 func (w *fakeWallet) GetHeight(context.Context) (uint64, error) { return w.height, nil }

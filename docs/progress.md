@@ -5185,3 +5185,38 @@ Plan approved with Wyatt's changes: push the handoff first; hash and WAL checks 
 **CI:** run 42515955689 passed on `32aad54` (step 1). This commit is pushed and its CI is checked below.
 
 **Next:** step 3, spec change 49: items 1–3 go in phase 09, and items 4–5 block release 2. Then the session-end bundle.
+
+## 2026-11-08 · Phase 07b fix sessions · Step 3 of the handoff: spec change 49 placed, then the session-end handoff
+
+**CI:** run 42520126113 passed on `a6e58ce` (step 2: plugin, theme, bridge with the race detector).
+
+**Wyatt's decisions (2026-11-08):** phase 08 builds items 4 and 5. Before 1.0.0's storage contract is frozen, phase 09 decides whether item 4's txid lookup needs a new index. Feather's check in 09b pays through the full `monero:` link or QR.
+
+**Written (docs only):**
+- **`docs/phases/09-release.md`:**
+  - a Wyatt checkbox, and a step 1 bullet for the txid decision (index plus a day-one field in 1.0.0, or a bounded scan measured on the dev site);
+  - a step 3 bullet for items 1–3, with the pay token never on a row (tested under T09), Wyatt's by-eye check, and the newest-10 limit for step 1's review;
+  - a 09b gate for items 4–5 with the Feather check.
+- **`docs/phases/08-store-adapter.md`:** a section for items 4 and 5.
+- **`docs/spec-changes.md` 49:** where each part is scheduled. **`docs/decisions.md`:** a row for the split.
+
+**Wyatt's question, not built: could a "show older tips" control that reads only stored data fit phase 09 without a contract change?** From the code, yes.
+- **An existing pattern:** All invoices already pages with a storage cursor (`invoices_page` and `invoices_newest` actions on the private `admin` route, `plugin/src/admin.ts:793-799`).
+- **The query already exists:** the Tips view already queries `where: { kind: "tip" }, orderBy: { createdAt: "desc" }` (`admin.ts:743`), which is covered by the declared `["kind", "createdAt"]` index.
+- **Nothing in the contract changes:** a `tips_page` action with a cursor adds no route, collection, index, capability, page or widget. Its value is checked the way `invoices_page`'s is, under F04.
+- **Caveats:**
+  - Test tips (no `via`) are filtered out after the query, so a page can show fewer than 10 visitor tips.
+  - Tips past the 30-day purge show without notes.
+  - Each page costs the same Block Kit budget as today's 10.
+- **Effect:** with items 1–3 on each row, any tip can be matched by eye, which eases the newest-10 limit in release 1. It doesn't search by txid.
+- It's a new admin action, so it's Wyatt's call whether phase 09 takes it.
+
+**The state I leave:**
+- **The bridge:** installed on **wallet 0**, the dev box CLI wallet `59nA…etgQ`, own node, key `UZep…`, `82ac08d`. It backs off while the site is stopped and logs failed update checks while the release server is stopped.
+- **`data.db`:** the after-swap state, `redteam/live-after-swap0.db` (SHA-256 `9135c052…3eb0`).
+- **Stopped:** dev site, built copy, watcher, release server. No pairing-code files are left in `~/xmr-pay-dev-data/`.
+- **`origin/redteam-1`:** this entry's commit, pushed. A session-end bundle follows; the next session's entry records its name and hash.
+
+**Next session:**
+1. Wyatt says whether "show older tips" goes in phase 09.
+2. Then the rest of 07b's fix sessions or phase 09, as Wyatt names.

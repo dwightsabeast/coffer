@@ -24,6 +24,7 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
 - [ ] Session 7g (EmDash 1.3 check) is done: `release.requires` and the listing text are in the manifest, and they name versions actually tested (spec change 41, items 3, 4, 9).
 - [ ] A browser with passkey support, for approving each release (spec change 41 A).
 - [ ] The repository is still public: the release service trusts only public GitHub provenance.
+- [ ] Spec change 49 item 4's txid lookup: a new index or a bounded scan, decided before 1.0.0's storage contract is frozen (step 1 below; Wyatt, 2026-11-08).
 
 **Accounts and keys (in this order)**
 
@@ -50,6 +51,10 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
 - Start from `docs/redteam-findings.md` and the matrix (`docs/security-matrix.md`) as phase 07b left them, not from scratch.
 - Walk the spec's Security model table row by row and point to the code and test that covers each threat. Anything uncovered is a blocker.
 - Review: signature and freshness checks, pairing, spam limits, money math, the state machine, admin action validation, buyer-data purge, the pay page's privacy headers, the installer's prompts and file permissions, the systemd hardening, download and update verification, and dependency audits (`pnpm audit`, `govulncheck`, with Wyatt's approval to install it).
+- **Before the storage contract is frozen (Wyatt, 2026-11-08): does spec change 49 item 4's lookup by txid need a new index, or will a bounded scan do?** A txid sits inside `transfers[]`, which has no index.
+  - **If it needs an index:** declare it in 1.0.0, and write the field it reads on every invoice from day one. Check with `emdash-docs` and the plugin types whether EmDash can index a value inside an array; if it can't, the field is a top-level one. Then release 2 stays 1.x with no new consent. It's a storage trust-contract change, so it's a spec change first, and Wyatt decides.
+  - **If a bounded scan works:** 1.0.0 doesn't change. Measure it on the dev site at the scan's cap, as 07b H1 measured the large backlog.
+  - Either way, phase 08 then only builds the lookup.
 - Confirm the manifest's trust contract matches the spec exactly, and the bundle is under its caps. Confirm `release.requires` still names only versions tested (7g, or a later upgrade check).
 - Write `docs/security-review.md` with findings and fixes. Wyatt decides whether an outside review is needed before mainnet.
 - The published security report covers tips. Threats that only orders face stay in it, each marked "covered in release 2", not dropped.
@@ -70,6 +75,14 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
 - **The install docs say to use a wallet made for this shop, not one with history** (spec change 46's known limit, 2026-11-01). A wallet restored from keys stops at the first gap of 200 unused subaddresses, so a reused wallet paired as new can hand out addresses that already received payments.
 - **The install docs say a site behind a proxy that ends https must give EmDash its public address the way EmDash documents it** (`siteUrl`, `EMDASH_SITE_URL` or `SITE_URL`; RT-20's known limit, Wyatt 2026-11-06). The Site URL in Settings › General alone isn't enough: the plugin gets the right address, but every visitor's tip is refused with a 403. The tip page's note for the admin ("See Coffer's install guide") points here, so this section must exist before release. Warn first that setting one of these moves passkey sign-in to that address, and passkeys made at the old address stop working, so a sole admin with no email set up could be locked out. Link EmDash's guide: https://docs.emdashcms.com/reference/configuration/#reverse-proxy-setup.
 - **Build the admin page's banner and toast text from spec change 42** (Wyatt's decision of 2026-11-06, exact text there; replaces item 3's earlier proposal). Tests in `plugin/tests/routes/admin-site.test.ts` and `admin-route.test.ts` change to match.
+- **Spec change 49, items 1–3** (Wyatt, 2026-11-06), on each row in the Tips list and All invoices:
+  - the invoice ID, copyable;
+  - each transfer's txid, amount and block (already in `transfers[]`);
+  - the address in short form.
+  - Admin page only, from data already stored, so the trust contract doesn't change.
+  - **The pay token never appears on a row:** a test checks it, tagged T09.
+  - Wyatt checks the page by eye once it's built, `inv_f7ea94de1471f114` included (2026-11-08).
+  - **The limit this leaves goes in step 1's review:** until item 4 exists, only the newest 10 tips can be matched.
 
 **4. Registry (spec change 41):** `publisher` is Wyatt's DID (the DID, never the handle); `@emdash-cms/plugin-cli` is pinned exactly; `license`, `author`, the `security` contact URL and `repo` (`https://github.com/dwightsabeast/coffer`) are filled in.
 
@@ -108,6 +121,8 @@ After phases 08 and 08b. Same gates as release 1, with these differences:
 - **Version:** registry versions are immutable. Release 1 is 1.0.0 (spec change 41 C). With the trust contract unchanged, release 2 is a minor version, 1.x (new features, no new routes). If phase 08 changed the trust contract (a new index, capability, host or route), it's 2.0.0 (EmDash's rule: major for a broadened contract) and the admin consents again; say so in the release notes. A new public route, or a private route made public, also asks for consent again.
 - **Publishing:** through the same automated release workflow, with a passkey approval (spec change 41 A).
 - **Build:** the release-1 switch is on, and the theme package exports PayButton.
+- **Gate: spec change 49 items 4 and 5 are built (phase 08) and tested** (Wyatt, 2026-11-06).
+  - **The Feather check (Wyatt, 2026-11-08):** does Feather keep the `monero:` URI's `tx_description` in its history? Pay through the full `monero:` link or the QR code, never a copied address and amount: copying drops the description, and that's how Wyatt's test payments have been made so far.
 - **Setup test:** repeat the registry setup test with an order through the store adapter, not only a tip.
 - **Mainnet:** whether to run an orders trial on mainnet, and where, is Wyatt's call. Goods don't ship without pass 2 done.
 

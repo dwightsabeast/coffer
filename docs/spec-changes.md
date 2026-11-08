@@ -1864,4 +1864,8 @@ What it would touch:
 - **Item 5:** a new field on the public status response, the theme's pages, and the URI. To check live: whether wallets, Feather first, keep `tx_description` in their history. The description is capped at 100 characters today and carries the entry's title.
 
 **Wyatt's decision (2026-11-06):** items 1-3 in phase 09; items 4-5 block release 2. It doesn't block release 1, since release 1 is tips only, with nothing to fulfil or refund.
+**Scheduled (Wyatt, 2026-11-08):**
+- Items 1-3: `docs/phases/09-release.md`, step 3.
+- Items 4-5: built in phase 08 (`docs/phases/08-store-adapter.md`); a gate on 09b, with Feather's check paid through the full `monero:` link or QR.
+- Before 1.0.0's storage contract is frozen, phase 09 decides whether item 4's txid lookup needs a new index. If it does, the index and the field it reads go into 1.0.0, so release 2 stays 1.x with no new consent. If a bounded scan does, 1.0.0 doesn't change.
 **The limit this leaves in release 1:** until item 4 exists, only the newest 10 tips can be matched, because older ones aren't on the page.

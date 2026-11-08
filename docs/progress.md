@@ -5220,3 +5220,12 @@ Plan approved with Wyatt's changes: push the handoff first; hash and WAL checks 
 **Next session:**
 1. Wyatt says whether "show older tips" goes in phase 09.
 2. Then the rest of 07b's fix sessions or phase 09, as Wyatt names.
+
+### Addendum: "show older tips" goes in phase 09 (Wyatt, 2026-11-08)
+
+- **Written (docs only):**
+  - `docs/phases/09-release.md` step 3: the `tips_page` action, with tests first: [F04] a malformed or forged cursor, [F04] a non-admin request refused, [T30] test tips filtered, [T09] no pay token.
+  - Step 1's security review lists it as new admin surface after 07b pass 1.
+  - A row in `docs/decisions.md`.
+- **CI on `07c8796`:** run 42525837313 passed (plugin, theme, bridge with the race detector), checked before this commit was pushed. A fresh bundle follows; the next session's entry records its name and hash.
+- **Next session:** phase 09 or the rest of 07b's fix sessions, as Wyatt names.

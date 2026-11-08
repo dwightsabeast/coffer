@@ -59,6 +59,9 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
 - Write `docs/security-review.md` with findings and fixes. Wyatt decides whether an outside review is needed before mainnet.
 - The published security report covers tips. Threats that only orders face stay in it, each marked "covered in release 2", not dropped.
 - The release-1 switch is off in the release build (`checkout` takes tips only), and the theme package exports no PayButton.
+- **New admin surface since 07b pass 1 (Wyatt, 2026-11-08): the `tips_page` action** (step 3).
+  - Review it the way 07b's B2 reviewed the row actions: forged and malformed values, refusals that change nothing, never a crash.
+  - Rows F04 and T30; its tests are listed in step 3.
 
 **2. Build and sign**
 
@@ -82,7 +85,19 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
   - Admin page only, from data already stored, so the trust contract doesn't change.
   - **The pay token never appears on a row:** a test checks it, tagged T09.
   - Wyatt checks the page by eye once it's built, `inv_f7ea94de1471f114` included (2026-11-08).
-  - **The limit this leaves goes in step 1's review:** until item 4 exists, only the newest 10 tips can be matched.
+  - **The limit this leaves goes in step 1's review:** until item 4 exists, a tip can't be found by txid. With "show older tips" below, every tip can still be matched by eye, page by page.
+- **"Show older tips", the `tips_page` action** (Wyatt, 2026-11-08), on the private `admin` route:
+  - **How it pages:** like All invoices' `invoices_page` and `invoices_newest`, with a storage cursor over the query the Tips view already runs (`where: { kind: "tip" }, orderBy: { createdAt: "desc" }`). That's the declared `["kind", "createdAt"]` index.
+  - **No contract change:** no new route, collection, index, capability, page or widget.
+  - **What a page shows:** the rows with items 1–3 above.
+    - Test tips (no `via`) are filtered out after the query, so a page can hold fewer than 10.
+    - Tips past the 30-day purge show without notes.
+    - The totals don't change: they still cover the newest 1,000.
+  - **Tests, written first:**
+    - **[F04] A malformed or forged cursor is refused with an error toast, changes nothing, and never crashes.** Wrong type, empty, oversized, look-alike, another list's cursor, and one built by hand.
+    - **[F04] A non-admin request is refused:** an anonymous user, a signed-in user who isn't an admin, and a request without `X-EmDash-Request`.
+    - **[T30] Test tips are filtered:** they never appear on any page and never count.
+    - **[T09] No page shows a pay token.**
 
 **4. Registry (spec change 41):** `publisher` is Wyatt's DID (the DID, never the handle); `@emdash-cms/plugin-cli` is pinned exactly; `license`, `author`, the `security` contact URL and `repo` (`https://github.com/dwightsabeast/coffer`) are filled in.
 

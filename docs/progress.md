@@ -5097,3 +5097,45 @@ Times UTC, 2026-11-07. Restored `live-before-step2.db` (hash `a46a7baa…`); Wya
 1. **Swap back to wallet 0.** With the site stopped: restore `redteam/live-before-step2-rerun.db` (SHA-256 `1572b9019496663940a9b921a44f7fc066db2ee8601848bb853b8f712d59788c`), then Wyatt uninstalls (`sudo xmr-bridge uninstall --delete-data`). Only then start the site and the release server: a site restored under a running bridge would refuse its key. Issue a code when he's at the prompt; he installs `59nA…etgQ`, reading its details himself with `nano -v ~/.config/xmr-pay-dev/stagenet.env`. Expected: wallet 0, `claimedTop` 359, free rows 360-409, no bad rows beyond 2.
 2. **The Mark settled fix (spec change 48), tests first.** Mark settled stores the floor. Wyatt decides whether the no-floor line then goes (Claude's recommendation) or takes his approved wording. Not built tonight; found by reading the code, not run.
 3. **Spec change 49:** items 1-3 go in phase 09; items 4-5 block release 2.
+
+## 2026-11-08 · Phase 07b fix sessions · Step 1 of the handoff: back to wallet 0, passed
+
+Plan approved with Wyatt's changes: push the handoff first; hash and WAL checks after the restore; the bridge's data folder confirmed gone; the watcher's stop action shown and tried before the install; `--pair "$(cat <file>)"` instead of typing the code; push this entry and check CI. Times UTC.
+
+- **Pushed** `3f4f4c6` to `origin/redteam-1`. CI run 42514858815 passed (plugin, theme, bridge with the race detector).
+- **Before the restore:** backup `redteam/live-before-swap0.db`, SHA-256 `b18068c4e0918a973f0aa8efee946e6c572662efded14fcde301a1888840f112`. That's the same hash as `live-after-step2-rerun.db`, so nothing changed while the site was stopped.
+- **Restore (19:24):** `setup-test-reset.mjs --restore redteam/live-before-step2-rerun.db`; the state it replaced is in `baseline/data.db.before-restore-20261108T192424799Z`. Checked before the site started:
+  - `data.db` SHA-256 `1572b9019496663940a9b921a44f7fc066db2ee8601848bb853b8f712d59788c`, equal to the backup;
+  - no `-wal` or `-shm`, before and after the count read;
+  - counts equal to the backup: 62 invoices, 364 pool rows (312 claimed, 50 free, 2 bad), wallet 0, key `gcczMoiL…`.
+- **Uninstall (Wyatt, `--delete-data`):** `swap0-uninstall-output.txt`. Checked without sudo:
+  - the service is inactive;
+  - `/var/lib/xmr-bridge` (the view-only copy of `58WW…eSZP`), `/etc/xmr-bridge`, the unit file and `/usr/local/bin/xmr-bridge` are gone;
+  - there's no `xmr-bridge` user, and no bridge or `monero-wallet-rpc` process is left.
+- **The watcher's stop action, shown to Wyatt and tried:** `npx astro dev stop` in the site folder, then up to 15 s for 4321 to be free, SIGTERM to the pids `ss` names as the fallback, and a log of any workerd left. Step 4's `tmux kill-session -t built` is gone since step 5.
+  - **Proof run:** a scratchpad copy that logs to the scratchpad, with a baseline of 1, against the agent-started `astro dev`. It tripped at 19:26:57; the stop exited 0; 4321 was free at 19:27:00; `astro dev status` reported none running and no workerd was left.
+  - The site was started again, and the real watcher (`live-step3-watch.py 2`) started at 19:27:25.
+- **Install:**
+  - **Wallet:** the dev box CLI wallet `59nA…etgQ`, details read by Wyatt with `nano -v`.
+  - **The code:** issued at 19:28:12 into `swap0-pair-code.txt` after Wyatt said he was ready; then he pressed Enter.
+  - **Installer:** the log starts at 19:29:14. Own node 127.0.0.1:38081; scan from 2,244,396 (the same as step 5's second install); no clamp line.
+  - **Bridge (journal):** `82ac08d`, up at 19:31:46. Then 19:32:30 `match=true receivedTop=0`, catch-up to 359, caught up 19:32:39, re-offer `from=360 count=0`, `created pool addresses count=50`, once.
+  - **`status`:** paired, key `UZep0Y+m…`, node check off (own node), address check ok, 50 of 50 addresses ready.
+- **Site (read-only):**
+  - wallet 0 current, key `UZep…`; the previous key is kept;
+  - `claimedTop` 359, free rows 360–409, consecutive;
+  - 2 bad rows (306, 100356); wallet and pool checks ok;
+  - invoices unchanged (28 expired, 1 review, 33 settled); no new alert (the one `reversed` alert was already in the backup);
+  - the watcher logged no STOP.
+- **A snag:** the collect script's first run left no output file and its cause isn't known; it's a row in `docs/setup-friction.md`. The script now refuses root, uses an absolute path and prints where it wrote. The second run gave `swap0-output.txt`.
+- **After:** `redteam/live-after-swap0.db`, SHA-256 `9135c05296ab9afd85ed8fdc31450b8026dce23c5b61b88a8c78e14ce5d43eb0`. Its counts match the restore.
+- **Tidied:**
+  - deleted the used `swap0-pair-code.txt` and the expired `3i-pair-code.txt` and `3j-pair-code.txt`;
+  - stopped the watcher, the dev site (`astro dev status`: none) and the release server;
+  - 4321, 4322 and 8099 are free, and no tmux sessions or leftover shells remain.
+
+**Not covered:** a new payment to wallet 0, and the admin page by eye.
+
+**State:** the bridge is installed on wallet 0 (`59nA…etgQ`, key `UZep…`, own node, `82ac08d`). It backs off while the site is stopped and logs failed update checks while the release server is stopped.
+
+**Next:** step 2, the Mark settled fix (spec change 48), tests first. First Wyatt decides whether the no-floor line goes once Mark settled stores the floor (my recommendation), or keeps his approved wording.

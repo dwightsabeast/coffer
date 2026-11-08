@@ -1284,13 +1284,17 @@ Wyatt's decision (2026-10-25): go with the suggested decision for each.
 - C05: deferred to release 1.x; stays a candidate, and the report lists it under Known limits.
 - C06: accepted; now T29, with `TestNeverPrinted`, `TestWalletErrorsDontLeakSecrets` and `TestInstallLog` tagged; 07b's journal scan checks the rest.
 
-## 44. What a stolen bridge key reaches (RT-08)  (status: accepted as a draft, 2026-10-31; final wording after the fix sessions)
+## 44. What a stolen bridge key reaches (RT-08)  (status: accepted, final wording 2026-11-08; RT-08 an accepted limit)
 Found in: 07b pass 1, round 1, group D (`docs/redteam-findings.md`, RT-08; `plugin/tests/redteam/stolen-key.test.ts`, D2).
 Spec says: Security model, "Forged payment events (signing key stolen)": "Every sync is Ed25519-signed. The result is free goods, not lost funds."
 Evidence: holding the paired key, a forged sync added a pool address the attacker chose, and the next tipper's checkout was handed it. So a stolen key doesn't only forge a received tip; it can route real tippers' money to the thief, on an intact site, with no control of the pay page.
 Proposal (Wyatt's draft, for the spec's row, matrix T03 and the public report): "A stolen bridge key can't spend from or read your wallet, but until you re-pair it can send new tips to the thief's wallet, and your Tips page may still show them as received. If tips listed there are missing from your wallet app, re-pair."
 Effect on the admin budget: none for the wording. A detection feature from the fix sessions might add a Health line, which would come back here first.
 Effect on the trust contract: none for the wording.
+**Final wording (Wyatt, 2026-11-08), for the spec's row, matrix T03 and the public report.** It replaces the draft above. The fix sessions' detection (spec change 46) holds while the wallet host runs, and RT-08 is an accepted limit for the case where it's stopped. Wyatt corrected the first sentence: a thief on the wallet host also has the view key.
+
+> A stolen wallet-host key can't spend from your wallet. If it was taken from the wallet host machine, the thief can also see the payments your wallet receives, because the view key is there too, but still can't spend them. While your wallet host is running, Coffer checks every new payment address against your wallet before handing it out, and refuses any that isn't yours; a red banner then tells you to connect a new wallet host. If the thief has also stopped your wallet host, which is likely when the key was taken from that machine, new tips can go to the thief's wallet, and your Tips page may show forged tips as received, until your wallet host is back or you re-pair. Health turns red 5 minutes after your wallet host goes silent. When it's back, Coffer flags tips paid to addresses that weren't yours, if those addresses were added in the last 24 hours. After a longer outage, compare the Tips page with your wallet app. If your wallet host goes silent and you didn't stop it, connect a new wallet host on a machine you trust.
+
 Wyatt's decision (2026-10-31): RT-08 is High. The fix sessions look for detection (for example the honest bridge checking the site's pool against its own wallet) and fast re-pairing. If nothing holds, it becomes an accepted limit with this wording. Wyatt applies the wording to the live spec. `docs/spec.md` stays a snapshot until then.
 
 ## 45. One network per pairing, and a pairing starts the pool afresh (RT-11, RT-29)  (status: accepted, 2026-10-31, with Wyatt's changes below; built 2026-10-31 on `redteam-1`, live re-pair check pending)

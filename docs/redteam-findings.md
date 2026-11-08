@@ -8,31 +8,31 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 
 | ID | Severity | Rows | Pass, round | Title | Status |
 | --- | --- | --- | --- | --- | --- |
-| RT-01 | Low | T21 | 1, 1 | Product-only link and order wording on the admin page for a product invoice already in storage | open |
-| RT-02 | Low | T06 | 1, 1 | A Kraken reply for a different pair is taken as the price | open |
-| RT-03 | Low | T08, F02 | 1, 1 | A tip note with a lone surrogate is stored as is | open |
-| RT-04 | Low | T05 | 1, 1 | Concurrent tips are told "no address" while free addresses remain | open |
-| RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | open |
-| RT-06 | Low | F01 | 1, 1 | The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature | open |
-| RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | open |
-| RT-08 | High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open; spec change 46 built 2026-11-01 (plugin and bridge); live 2026-11-02: forged rows reported bad within one sync and never handed out |
-| RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open |
-| RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open |
+| RT-01 | Low | T21 | 1, 1 | Product-only link and order wording on the admin page for a product invoice already in storage | open; left for release 1 (Wyatt, 2026-11-08): only a database already holding product invoices |
+| RT-02 | Low | T06 | 1, 1 | A Kraken reply for a different pair is taken as the price | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-03 | Low | T08, F02 | 1, 1 | A tip note with a lone surrogate is stored as is | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-04 | Low | T05 | 1, 1 | Concurrent tips are told "no address" while free addresses remain | open; left for release 1 (Wyatt, 2026-11-08): not reproduced live on the Node runner |
+| RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-06 | Low | F01 | 1, 1 | The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature | open; left for release 1 (Wyatt, 2026-11-08): needs the bridge key; pass 2 |
+| RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-08 | Accepted limit (Wyatt, 2026-11-08); was High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open; spec change 46 built 2026-11-01 (plugin and bridge); live 2026-11-02: forged rows reported bad within one sync and never handed out; **accepted limit (Wyatt, 2026-11-08)**: spec change 44's final wording |
+| RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open; left for release 1 (Wyatt, 2026-11-08): needs the bridge key; the unique index holds |
+| RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open; **fix before release 1** (Wyatt, 2026-11-08) |
 | RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | fixed 2026-10-31 (spec change 45) |
-| RT-12 | Medium | T01, R11 | 1, 1 | One expensive plugin request blocks all others on the Node runner for the full 30 s wall | open |
-| RT-13 | Low | F01 | 1, 1 | A slow request body isn't bounded by the 30 s wall; a connection can be held open past it | open |
-| RT-14 | Low | F04 | 1, 1 | The admin handler settles or expires an open tip the release-1 page offers no action for | open |
-| RT-15 | Medium | R11, R13 | 1, 1 | At a spam-cap-sized backlog each sync's watch scan takes ~28 s, within ~2 s of the 30 s wall | open |
-| RT-16 | Low | F04 | 1, 1 | Coffer's sidebar link and dashboard widget show to roles that can't use them | open |
-| RT-17 | Low | F04 | 1, 1 | A non-admin's refusal shows raw JSON in the "Plugin Error" banner | open |
-| RT-18 | Low | T08 | 1, 1 | A tip note's stacked combining marks spill above and below its line on the admin page | open |
-| RT-19 | Low | T13 (setup) | 1, 2 | The installer checks the pairing code last, so an expired code fails only after the keys are typed and wallet-rpc is downloaded | open |
+| RT-12 | Accepted limit (Wyatt, 2026-11-08); was Medium | T01, R11 | 1, 1 | One expensive plugin request blocks all others on the Node runner for the full 30 s wall | open; **accepted limit (Wyatt, 2026-11-08)**: a line in phase 09's install docs and the report; re-checked at the EmDash 1.4.0 check |
+| RT-13 | Low | F01 | 1, 1 | A slow request body isn't bounded by the 30 s wall; a connection can be held open past it | open; left for release 1 (Wyatt, 2026-11-08): the proxy's job; an install-docs line in phase 09 |
+| RT-14 | Low | F04 | 1, 1 | The admin handler settles or expires an open tip the release-1 page offers no action for | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-15 | Medium | R11, R13 | 1, 1 | At a spam-cap-sized backlog each sync's watch scan takes ~28 s, within ~2 s of the 30 s wall | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-16 | Low | F04 | 1, 1 | Coffer's sidebar link and dashboard widget show to roles that can't use them | open; on Wyatt's upstream list (Wyatt, 2026-11-08) |
+| RT-17 | Low | F04 | 1, 1 | A non-admin's refusal shows raw JSON in the "Plugin Error" banner | open; on Wyatt's upstream list (Wyatt, 2026-11-08) |
+| RT-18 | Low | T08 | 1, 1 | A tip note's stacked combining marks spill above and below its line on the admin page | open; left for release 1 (Wyatt, 2026-11-08): cosmetic, admin only |
+| RT-19 | Low | T13 (setup) | 1, 2 | The installer checks the pairing code last, so an expired code fails only after the keys are typed and wallet-rpc is downloaded | open; left for release 1 (Wyatt, 2026-11-08): a docs line in phase 09: get the code last |
 | RT-20 | Medium | T17 | 1, 2 | Behind a proxy that ends https, the tip endpoint refuses every visitor's tip as cross-site | fixed in code 2026-11-02 (`de558a1`); live check passed 2026-11-06 (Wyatt); known limit recorded in its section |
-| RT-21 | Low | T15 | 1, 2 | With the stagenet-only flag, a mainnet shop is refused only after its view key has been asked for | open |
-| RT-22 | Low | T15 (setup) | 1, 2 | Ctrl-C at an installer prompt is ignored; after it, the install goes on and then fails with a misleading node error | open |
-| RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open |
+| RT-21 | Low | T15 | 1, 2 | With the stagenet-only flag, a mainnet shop is refused only after its view key has been asked for | open; left for release 1 (Wyatt, 2026-11-08): the stagenet dev flag only |
+| RT-22 | Low | T15 (setup) | 1, 2 | Ctrl-C at an installer prompt is ignored; after it, the install goes on and then fails with a misleading node error | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open; **fix before release 1** (Wyatt, 2026-11-08) |
 | RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | fixed 2026-11-01 (spec change 46, item 5) |
-| RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open |
+| RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open; on the release 2 list (Wyatt, 2026-11-08) |
 | RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | fixed in code 2026-11-02 (spec change 47); live at the combined session; **release 1** |
 | RT-27 | Medium | T15, F08 | 1, 2 | The bridge takes the site's `poolTop` and `poolTarget` unbounded: one reply can start a catch-up of billions of subaddresses | fixed 2026-11-01 (spec change 46, bridge side) |
 | RT-28 | Low | T28, T27 | 1, 2 | The bridge is built with go1.27.1, which lacks the fixes for two standard-library vulnerabilities that reach it | fixed 2026-10-31 |
@@ -146,6 +146,11 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
   - **The limit while it's stopped:** nothing reports, so after 45 s the thief's row is handed out. A passing test records it, and the 24-hour window and `not_your_wallet` review list the affected tips once the honest host is back.
   - **Bridge side built (2026-11-01):** the bridge checks each `check` list by digest and reports a mismatch at once, before any catch-up; numbering follows `claimedTop` only, so a thief's free rows can't move the honest bridge.
   - **Still to do:** the live check, then spec change 44's final wording.
+- **Ruling (Wyatt, 2026-11-08): accepted limit, not fixed.**
+  - **Why not fixed:** the live check showed prevention while the honest wallet host runs. But the likeliest way to steal the key is from the wallet host itself, and a thief there can also stop the honest bridge. With it stopped, nothing checks, and a forged row goes out after 45 s.
+  - **A second gap:** after the bridge is back, claimed rows are re-checked only if they were added in the last 24 hours.
+  - **Wording:** final, in spec change 44 (Wyatt corrected its first sentence: a thief on the wallet host also has the view key, so can see incoming payments).
+  - **Open question for later:** could the re-check after an outage cover every row added since the bridge's last check, not only the last 24 hours? If that's small, it narrows this gap.
 - **46's step 5b's unproven case (2026-11-02, `307c104`, `b33fc21`):** a sync the previous key signed just before a same-machine re-pair, arriving just after it, *did* raise "Your previous wallet host is still running" (the test was red).
   - **The site:** the previous key's requests in the first 60 s after a pairing are refused but not recorded. An old host still running is recorded at its first sync after that.
   - **The bridge (Wyatt's rule):** a body built under the old pairing is never sent. A key changed mid-sync drops the body, and a fresh sync follows under the new key. The old pairing's report, answer, re-offer and watch list are dropped at a new key, so a stale "mismatch" can't raise the sticky banner on the new pairing.
@@ -201,6 +206,7 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Reach:** to spin on purpose needs a second, hostile plugin installed (Coffer ships no spin route and every Coffer route measured finishes well under 30 s — see H1). The measured fact that matters for Coffer is the serialization: a single slow Coffer request (a large sync, a big admin page) delays concurrent checkouts and status polls by its own duration, up to 30 s. This sets the real ceiling for the H2 flood number and the install-doc rate-limit guidance, and is the mechanism behind the pool-exhaustion outage the spec already states. It's within the sandbox's stated "no CPU cap on Node" limit, so it's likely a Known limit to name in the docs rather than a code change; Wyatt rules.
 - **Also confirmed at G1 (no finding):** network isolation holds — a raw `fetch()` is blocked (403), and `ctx.http` to another host, through user-info, or to an `api.kraken.com.localhost` suffix is refused by the host check; `process`, `node:fs`, `ctx.content.create`, another plugin's storage/KV/settings are all refused. The exposed `ctx.media`/`ctx.taxonomies` **write** methods are gated at the call: `createTerm` under `content:read` returned `Missing capability: taxonomies:write`, so no write landed (one-write limit respected, nothing to report upstream for the write case).
 - **Status:** open.
+- **Ruling (Wyatt, 2026-11-08): accepted limit.** It's within the sandbox's stated "no CPU cap on Node" limit, and waiting on storage or the network doesn't block (L7: 40 of 40 checkouts during a 27 s sync). A line goes in phase 09's install docs and the report. Re-check at the EmDash 1.4.0 check.
 
 ## Observation, group G (for Wyatt, possible upstream report)
 

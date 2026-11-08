@@ -5229,3 +5229,35 @@ Plan approved with Wyatt's changes: push the handoff first; hash and WAL checks 
   - A row in `docs/decisions.md`.
 - **CI on `07c8796`:** run 42525837313 passed (plugin, theme, bridge with the race detector), checked before this commit was pushed. A fresh bundle follows; the next session's entry records its name and hash.
 - **Next session:** phase 09 or the rest of 07b's fix sessions, as Wyatt names.
+
+## 2026-11-08 · Phase 07b fix sessions · Triage of the open findings, and the handoff before phase 09
+
+Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
+
+**Wyatt's rulings (all of my calls taken; recorded in `docs/decisions.md` and the findings table):**
+- **RT-08: accepted limit** (was High).
+  - Prevention holds while the honest wallet host runs (live 2026-11-02).
+  - A thief who took the key from the wallet host can also stop it. Then new tips can go to the thief's wallet until the host is back or the admin re-pairs.
+  - The final wording is in spec change 44, with Wyatt's correction: a thief there has the view key too, so can see incoming payments.
+- **RT-12: accepted limit** (was Medium): a docs line; re-checked at the EmDash 1.4.0 check.
+- **Fix before release 1:**
+  - **RT-05:** put an IPv6 /64 in one bucket; about ½ session.
+  - **RT-07:** claim the code first with `ctx.kv.compareAndSet`, then a live `c6` rerun; about 1 session. Not changed by spec changes 45–48; 45 moved the burn to the end of pairing, which widened the window.
+  - **RT-15:** scan newest first, then cut the per-sync cost; 1–2 sessions. The session starts with a re-measure on the built copy, since spec changes 46–48 added per-sync work after the 10-30 figure.
+  - **The Lows** RT-02, RT-03, RT-10, RT-14, RT-22 and RT-23, together; about 1 session.
+- **Left for release 1:** RT-01, RT-04, RT-06, RT-09, RT-18 and RT-21. RT-13 and RT-19 get docs lines in phase 09.
+- **Release 2 list:** RT-25 (phase 09's 09b section). **Wyatt's upstream list:** RT-16 and RT-17.
+
+**Question for later (in `docs/decisions.md`, "Still to decide"):** could RT-08's re-check after an outage cover every row added since the bridge's last check, not only the last 24 hours? If that's small, it narrows the accepted gap.
+
+**What's left before phase 09** (its first checkbox: 07b done, no High open, every Medium fixed or accepted):
+1. RT-07 (1 session, plus live `c6`).
+2. RT-15 (1–2 sessions, re-measure first; built copy, no sudo).
+3. RT-05 (½ session).
+4. The six Lows (about 1 session).
+5. **The EmDash 1.4.0 check** through `docs/emdash-upgrade-checklist.md` (decided 2026-10-31; its 7-day mark has passed). It re-checks RT-12 and RT-13 there; a dependency upgrade, so Wyatt approves it first.
+6. Wyatt's answer to the RT-08 re-check question, if it's to go in before phase 09.
+
+**Not done this session:** matrix T03's text isn't updated to the final wording yet (spec change 44 holds it). The next fix session does that with RT-07's matrix row.
+
+**State:** unchanged from the step 3 entry: the bridge on wallet 0, with everything else stopped. A bundle follows.

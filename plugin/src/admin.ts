@@ -11,7 +11,7 @@ import type { PluginContext } from "emdash/plugin";
 import { MAX_OPEN_TOTAL, checkoutHeight, claimAndStore, newIds } from "./checkout";
 import type { MoneroNetwork } from "./core/address";
 import { DUST_ATOMIC, GAP_ALERT, GOODS_ENABLED, LATE_WINDOW_MS, MAX_REQUIRED, PRESETS, RECONFIRM_BLOCKS, SILENT_MS, type Speed, TEST_TIP_REQUIRED, UNPAID_RUN_ALERT } from "./core/constants";
-import { type Invoice, counted, isOpen, newInvoice, totals, ignoredOld } from "./core/invoice";
+import { type Invoice, counted, isOpen, newInvoice, totals, ignoredOld, storeSettledFloor } from "./core/invoice";
 import { atomicToXmr } from "./core/money";
 import { ownIndex, walletOf, walletRange } from "./core/walletindex";
 import { isWatched } from "./core/watch";
@@ -951,7 +951,11 @@ async function invoiceAction(ctx: PluginContext, value: unknown, now: number): P
 		next.status = verb === "settle" ? "settled" : "expired";
 		next.adminFinal = true;
 		next.finalAt ??= now;
-		if (verb === "settle") next.settledAt ??= now;
+		if (verb === "settle") {
+			next.settledAt ??= now;
+			// The status changes, the money doesn't (Wyatt, 2026-11-08): payments below the floor stay out of its totals.
+			storeSettledFloor(next, (await ctx.kv.get<BridgeState>(KV.bridge))?.height);
+		}
 		delete next.reviewReason;
 		delete next.pendingExpiry;
 		delete next.reconfirmingSince;

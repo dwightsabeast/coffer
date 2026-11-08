@@ -212,21 +212,24 @@ export interface Totals {
 /**
  * RT-31's floor (spec change 47, D4 and D5): the lowest height a confirmed transfer may be mined at and still count
  * toward this invoice. min(createdHeight, the site's height), so an invoice created under a height a dishonest node
- * inflated heals when a pairing heals the site's height; siteHeight 0 (unknown) leaves createdHeight alone.
+ * inflated heals when a pairing heals the site's height. A site height that isn't a positive whole number (unknown, or
+ * whatever a KV read returned) leaves createdHeight alone, so the floor is never NaN and never near 0 (Wyatt,
+ * 2026-11-08: either would make every old transfer count).
  */
-const movingFloor = (inv: Pick<Invoice, "createdHeight">, siteHeight: number) =>
-	(siteHeight > 0 ? Math.min(inv.createdHeight, siteHeight) : inv.createdHeight) - FLOOR_MARGIN_BLOCKS;
+const movingFloor = (inv: Pick<Invoice, "createdHeight">, siteHeight: unknown) =>
+	(typeof siteHeight === "number" && Number.isSafeInteger(siteHeight) && siteHeight > 0 ? Math.min(inv.createdHeight, siteHeight) : inv.createdHeight) - FLOOR_MARGIN_BLOCKS;
 
-type FloorFields = Pick<Invoice, "createdHeight"> & Partial<Pick<Invoice, "status" | "settledFloor" | "floorPin">>;
+type FloorFields = Pick<Invoice, "createdHeight"> & Partial<Pick<Invoice, "settledFloor" | "floorPin">>;
 
 /**
- * Spec change 48 (RT-33, RT-34): the floor an invoice settled under never moves, one fixed by a healed height never
- * rises, and a settled invoice with neither settled before the floor existed, so it has none. Otherwise the moving floor.
+ * Spec change 48 (RT-33, RT-34): the floor an invoice settled under never moves, and one fixed by a healed height never
+ * rises. Otherwise the moving floor. Every way into settled stores a floor (a sync and Mark settled), so 1.0.0 has no
+ * settled invoice without one; a pre-floor dev row is judged on the moving floor (Wyatt, 2026-11-08).
  */
 export function floorHeight(inv: FloorFields, siteHeight: number): number {
 	if (inv.settledFloor !== undefined) return inv.settledFloor;
 	if (inv.floorPin !== undefined) return inv.floorPin;
-	return inv.status === "settled" ? 0 : movingFloor(inv, siteHeight);
+	return movingFloor(inv, siteHeight);
 }
 
 /** Mined before this invoice could have been paid: an old payment to a reused address (RT-31), never counted toward it. */
@@ -234,11 +237,9 @@ export const belowFloor = (inv: FloorFields, t: Pick<Transfer, "height">, siteHe
 
 /**
  * The spendable transfers below the floor: shown to the admin as ignored (D6), never to the buyer. The same floor as
- * totals, so nothing counted is listed. The one exception (spec change 47's answer 1(a)): a tip settled before the floor
- * existed counts them, and still says they were older.
+ * totals, so nothing counted is listed.
  */
-export const ignoredOld = (inv: Invoice, siteHeight: number) =>
-	inv.transfers.filter((t) => counted(t) && (inv.status === "settled" && inv.settledFloor === undefined ? t.height > 0 && t.height < movingFloor(inv, siteHeight) : belowFloor(inv, t, siteHeight)));
+export const ignoredOld = (inv: Invoice, siteHeight: number) => inv.transfers.filter((t) => counted(t) && belowFloor(inv, t, siteHeight));
 
 /**
  * Spec change 48: where the floor stops when a healed height leaves createdHeight above the site's height. The honest
@@ -249,10 +250,17 @@ export const ignoredOld = (inv: Invoice, siteHeight: number) =>
 const healedFloor = (inv: Pick<Invoice, "createdAt">, at: { now: number; chainHeight: number }) =>
 	at.chainHeight - FLOOR_MARGIN_BLOCKS - 2 * Math.ceil(Math.max(0, at.now - inv.createdAt) / BLOCK_TARGET_MS);
 
-/** Settling fixes the floor it happened under (spec change 48). A later re-settle keeps the first. */
+/**
+ * Settling fixes the floor it happened under (spec change 48): a sync's settle and the admin's Mark settled both store
+ * it. A later re-settle keeps the first.
+ */
+export function storeSettledFloor(inv: Invoice, siteHeight: unknown): void {
+	inv.settledFloor ??= inv.floorPin ?? movingFloor(inv, siteHeight);
+}
+
 function markSettled(inv: Invoice, now: number, chainHeight: number): void {
 	inv.settledAt = now;
-	inv.settledFloor ??= inv.floorPin ?? movingFloor(inv, chainHeight);
+	storeSettledFloor(inv, chainHeight);
 }
 
 /**

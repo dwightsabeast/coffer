@@ -127,27 +127,10 @@ describe("RT-34: a healed height stops the floor rising", () => {
 	});
 });
 
-describe("RT-33: a tip settled before the floor existed", () => {
-	const preFloor = (): Invoice => {
-		const inv = tipAt(2_242_155, T0);
-		inv.status = "settled";
-		inv.settledAt = T0;
-		inv.finalAt = T0;
-		const h = 2_242_160;
-		inv.transfers = [mined(2_240_100, h), mined(2_230_165, h), mined(2_230_085, h)];
-		return inv;
-	};
-	it("[R10][T14] [RT-33] stays settled with no alert, leaves the watch list, and stores no floor", () => {
-		const r = at(preFloor(), 2_244_000, T0 + 6 * HOUR);
-		expect(r.invoice.status).toBe("settled");
-		expect(r.events.filter((e) => e.type === "alert")).toEqual([]);
-		expect(r.invoice.settledFloor).toBeUndefined();
-		expect(isWatched(r.invoice, T0 + 6 * HOUR)).toBe(false);
-	});
-	it("[R10][P02] [RT-33] its old payments still show on the ignored line: spec change 47's answer 1(a), the one fallback", () => {
-		expect(ignoredOld(preFloor(), 2_244_000)).toHaveLength(3);
-	});
-});
+// RT-33's two tests for a tip settled before the floor existed ("stays settled with no alert", and its old payments on
+// the ignored line as spec change 47's answer 1(a)) were replaced on 2026-11-08 (Wyatt): Mark settled now stores the
+// floor, so 1.0.0 can't create a settled invoice without one, and the no-floor fallback is gone. What a pre-floor dev
+// row shows now is in tests/routes/admin-settle-floor.test.ts.
 
 describe("the ignored line and totals use the same floor (Wyatt, spec change 48)", () => {
 	it("[P02] [RT-34] nothing counted in totals ever appears on the ignored line, at any height, inflated or honest", () => {

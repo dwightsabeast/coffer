@@ -5139,3 +5139,49 @@ Plan approved with Wyatt's changes: push the handoff first; hash and WAL checks 
 **State:** the bridge is installed on wallet 0 (`59nA…etgQ`, key `UZep…`, own node, `82ac08d`). It backs off while the site is stopped and logs failed update checks while the release server is stopped.
 
 **Next:** step 2, the Mark settled fix (spec change 48), tests first. First Wyatt decides whether the no-floor line goes once Mark settled stores the floor (my recommendation), or keeps his approved wording.
+
+## 2026-11-08 · Phase 07b fix sessions · Step 2 of the handoff: Mark settled stores the floor (spec change 48)
+
+**Wyatt's decisions (2026-11-08):**
+- Drop the ignored line's no-floor wording and the no-floor fallback. 1.0.0 can't create a settled invoice without a floor once Mark settled stores one.
+- Marking settled changes the status, not the money. Totals count only transfers at or above the floor, never the requested amount, and the settled count rises by one.
+- A test for a missing or non-number `state:bridge` height.
+- Answer 1(a) no longer applies (`docs/decisions.md`, the RT-33 record).
+- No live look now; he checks the admin page by eye after spec change 49's rows are built.
+
+**What the code did before the change, run with the new tests:**
+- A checkout tip in review (`wallet_changed`) with 0.0007 XMR, all below its floor, marked settled: Received went from 0.001 to **0.0017 XMR**, and no floor was stored.
+- One transfer above the floor and one below: both added (0.0017).
+- A pre-floor settled row: its old payments counted (0.0013).
+- The requested amount was never added; totals only sum transfers.
+
+**Built:**
+- **`core/invoice.ts`:** `storeSettledFloor` (the pin, else the moving floor), used by a sync's settle and by Mark settled.
+- **The fallback removed:** `floorHeight` is `settledFloor ?? floorPin ?? movingFloor`, and `ignoredOld` is `belowFloor` alone.
+- **The height guard:** `movingFloor` treats a site height that isn't a positive whole number as unknown, so the floor is `createdHeight − 30`.
+- **`admin.ts`:** the settle verb stores the floor from `state:bridge`'s height. A reversed tip keeps its first floor.
+
+**Tests:**
+- **New:** `plugin/tests/routes/admin-settle-floor.test.ts`, 15 tests: Wyatt's case, the case with a later heal, one transfer above and one below, the stored floor and the pin, a reversed tip, 10 bad `state:bridge` heights, and the `inv_f7ea…` shape.
+- **Replaced:** `rt34.test.ts`'s two RT-33 tests checked the removed fallback.
+- **Mutation checks:**
+  - **Without the admin's floor store:** 11 fail. Wyatt's case at first didn't; with the fallback gone, the moving floor gave the same answer at the test's height. So I added the heal (the site drops below the old payments' blocks). It then fails with 0.0017.
+  - **Without the height guard:** 3 fail (heights 1.5, `true`, `"12"`). The other bad values never pass `> 0`.
+- **Results:**
+  - Typecheck clean, validate passes, bundle 73.1 KB.
+  - Default config: 472 passed, 12 expected fail, 1 skipped (459 before, +15 −2).
+  - Goods config: 101 passed, 1 skipped.
+  - Log: `~/xmr-pay-dev-data/plugin-tests-48-settle.txt`.
+
+**What old dev rows show:** simulated on `live-after-swap0.db` at height 2,246,511, and tested on the row's shape. Only `inv_f7ea94de1471f114` changes.
+- **Admin page:** settled, 0 XMR, with "Older payments to this address were ignored: 0.0003 XMR in 3 transfers, mined at blocks 2,230,085 to 2,240,100, before this tip."
+- **Tips Received:** drops from 0.023095718039 to 0.022795718039 XMR. The settled count stays at 21.
+- **Status route:** it re-evaluates without storing, so it answers `review` with 0 received.
+
+**Docs:** spec change 48 (floor items 1 and 3, and the decision), `docs/decisions.md`, the RT-33 record, and matrix rows T14, R10 and P02.
+
+**Not covered:** nothing live (Wyatt's decision). Theme and contract tests weren't rerun; neither uses the floor.
+
+**CI:** run 42515955689 passed on `32aad54` (step 1). This commit is pushed and its CI is checked below.
+
+**Next:** step 3, spec change 49: items 1–3 go in phase 09, and items 4–5 block release 2. Then the session-end bundle.

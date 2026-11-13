@@ -214,12 +214,13 @@ try {
 	check("status: seen (under the floor)", r.data?.status === "seen" && r.data.receivedAtomic === p1.amount, `status ${r.data?.status}, received ${r.data?.receivedAtomic}`);
 	// A time-locked transfer of the full amount beside it: never counted (spec "Payment logic").
 	const locked = { ...part(inv.amountAtomic), unlockTime: "99999999" };
-	r = await sync(syncBody({ snapshots: [{ index, transfers: [at(p1, 0, 0), at(locked, 0, 0)] }] }));
+	// The sync itself must be accepted: a refused one would also leave the status as it was.
+	const lockedSync = await sync(syncBody({ snapshots: [{ index, transfers: [at(p1, 0, 0), at(locked, 0, 0)] }] }));
 	r = await status();
-	check("a time-locked transfer of the full amount isn't counted", r.data?.status === "seen" && r.data.receivedAtomic === p1.amount, `status ${r.data?.status}, received ${r.data?.receivedAtomic}`);
-	r = await sync(syncBody({ snapshots: [{ index, transfers: [at(p1, 0, 0), at(locked, 0, 0), at(p2, 0, 0)] }] }));
+	check("a time-locked transfer of the full amount isn't counted", lockedSync.data?.ok === true && r.data?.status === "seen" && r.data.receivedAtomic === p1.amount, `sync ${show(lockedSync).slice(0, 40)}; status ${r.data?.status}, received ${r.data?.receivedAtomic}`);
+	const restSync = await sync(syncBody({ snapshots: [{ index, transfers: [at(p1, 0, 0), at(locked, 0, 0), at(p2, 0, 0)] }] }));
 	r = await status();
-	check("status: the rest arrives: confirming", r.data?.status === "confirming" && r.data.receivedAtomic === inv.amountAtomic, `status ${r.data?.status}, received ${r.data?.receivedAtomic}`);
+	check("status: the rest arrives: confirming", restSync.data?.ok === true && r.data?.status === "confirming" && r.data.receivedAtomic === inv.amountAtomic, `status ${r.data?.status}, received ${r.data?.receivedAtomic}`);
 	for (let c = 1; c <= required; c++) {
 		r = await sync(syncBody({ height: FAKE_HEIGHT + c, snapshots: [{ index, transfers: [p1, locked, p2].map((t) => at(t, c, FAKE_HEIGHT + 1)) }] }));
 		const s = await status();
@@ -227,9 +228,9 @@ try {
 		check(`sync: ${c} of ${required} confirmations: ${want}`, r.data?.ok === true && s.data?.status === want, `status ${s.data?.status}, confirmations ${s.data?.confirmations}`);
 	}
 	seq -= 10; // a snapshot older than the one that settled the invoice
-	r = await sync(syncBody({ height: FAKE_HEIGHT + required, snapshots: [{ index, transfers: [] }] }));
+	const olderSync = await sync(syncBody({ height: FAKE_HEIGHT + required, snapshots: [{ index, transfers: [] }] }));
 	r = await status();
-	check("an older seq with the payment gone changes nothing", r.data?.status === "settled", `status ${r.data?.status}`);
+	check("an older seq with the payment gone is accepted and changes nothing", olderSync.data?.ok === true && r.data?.status === "settled", `sync ${show(olderSync).slice(0, 40)}; status ${r.data?.status}`);
 	check("final status", r.data?.status === "settled" && r.data.receivedAtomic === inv.amountAtomic && r.data.settledAt !== null, `settled at ${r.data?.settledAt}, received ${r.data?.receivedAtomic}`);
 } catch (err) {
 	failures++;

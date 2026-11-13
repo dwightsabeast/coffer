@@ -5341,3 +5341,18 @@ Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
 - Which cost fix: read each row once (about half), a time budget, or an index on a "watched until" field (a storage contract change, before 1.0.0).
 
 **Next step:** plan RT-15's fix with Wyatt's choice, tests first.
+
+### Addendum: Wyatt's decisions for RT-15's fix, the other live scripts, and the index question (2026-11-13)
+
+- **Decisions** (row in `docs/decisions.md`): time slices walking back from now, half-open bounds, no `orderBy`; read-once, slices and a required scan budget of about 12 s (oldest rows cut, Health warning); no "watched until" index for 1.0.0; the seed gets a flood shape and a dense-burst shape with spread `created_at` before measuring; a boundary test.
+- **Pushed:** `origin/redteam-1` at `0c0f4a9`; CI was still running when this was written.
+- **Do the other live scripts treat a refused sync as a failure?**
+  - `round1-live.mjs`: yes. Its one real sync (the pairing) is checked for `ok`.
+  - `round2-live.mjs`: yes. `freshSite` throws on a refused pairing or address push; C6 and J1 check each sync's answer.
+  - `dev-e2e.mjs`: **two checks didn't,** both of the "nothing changes" kind, which a refused sync also satisfies: "a time-locked transfer of the full amount isn't counted" and "an older seq with the payment gone changes nothing". Both now also need the sync's `ok`, as does "the rest arrives". Run live on the dev site after the change: ALL AS EXPECTED, exit 0 (backup `redteam/e2e-20261113.db`, restored: 62 invoices, 364 pool rows, the bridge's key present).
+  - All three count `seq` up from their start time, as `backlog-live` did. None runs for 5 minutes, and in each a refused sync now fails loudly, so they're left as they are.
+- **Does adding an index in a 1.x need more than a backfill?** From EmDash's docs (Storage, "Adding indexes"; Manifest, "Trust contract"; the admin's update flow) and 1.3.1's code; not tried on a site:
+  - EmDash creates an added index the next time the plugin loads (`CREATE INDEX IF NOT EXISTS` on the JSON field), over the rows already there.
+  - It needs a new plugin version. A major version is asked for "when the change breaks an existing query or uniqueness assumption"; a plain added index breaks neither. The Manifest page says "a major version for a broadened contract" without saying whether an added index broadens it.
+  - The update flow asks the admin to confirm again when permissions or MCP tools are added or a route goes from private to public. An index isn't on that list.
+  - So beyond the version bump: **the backfill is ours,** since old rows lack the new field and a range query on it won't match them (the old scan has to stay as the fallback until the backfill finishes); a downgrade drops the index; and CLAUDE.md's own rule ("any broadening is a major version") is Wyatt's to read for this case.

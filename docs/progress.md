@@ -5356,3 +5356,26 @@ Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
   - It needs a new plugin version. A major version is asked for "when the change breaks an existing query or uniqueness assumption"; a plain added index breaks neither. The Manifest page says "a major version for a broadened contract" without saying whether an added index broadens it.
   - The update flow asks the admin to confirm again when permissions or MCP tools are added or a route goes from private to public. An index isn't on that list.
   - So beyond the version bump: **the backfill is ours,** since old rows lack the new field and a range query on it won't match them (the old scan has to stay as the fallback until the backfill finishes); a downgrade drops the index; and CLAUDE.md's own rule ("any broadening is a major version") is Wyatt's to read for this case.
+
+## 2026-11-13 · Phase 07b fix sessions · RT-15 Part 2, step 1: the new seed shapes overturn the 27 s figure; stopped before the fix
+
+**CI:** run 43478679522 passed on `0c0f4a9`.
+
+**Wyatt approved Part 2** (slices, read-once, a required 12 s budget) and asked for the seed to spread `created_at` first. Step 1 only was done:
+- `backlog-live.mjs seed --shape flood|burst` (expired unpaid tips; each row its own `created_at`).
+- Today's unchanged code on the built copy, three syncs each:
+
+  | Seed | Rows | Whole sync |
+  | --- | --- | --- |
+  | Old seed (one `created_at` for all) | 20,100 | 27.6 s |
+  | Flood (spread over 8 days) | 15,360 | 0.9 s |
+  | Flood | 20,100 | 1.1 s |
+  | Flood | 25,000 | 1.2–1.3 s |
+  | Burst (one minute) | 5,000 | 0.4 s |
+  | Burst (one minute, rows sharing milliseconds) | 20,000 | 1.5–1.6 s |
+
+**What it means:** the 27–28 s measured on 10-26, 10-30 and this morning came from the seed giving every row one `created_at`, which EmDash's paging handles badly. Real rows get a millisecond stamp each. This morning's "quadratic" conclusion and its "seed artifact for the recent scan only" caveat were wrong; RT-15's finding carries the correction and what's left (0.9 s at the spam cap's maximum, rows read twice, the cap keeping the oldest tips, no time budget).
+
+**Stopped here** (CLAUDE.md: evidence against what the plan assumed). No plugin code or test was written for Part 2. Wyatt decides whether slices and the budget still go ahead, in full or reduced, and RT-15's severity.
+
+**State:** `data.db` restored from `redteam/rt15b-before.db` (62 invoices, 364 pool rows, the bridge's key present). Built copy and dev site stopped, ports free. `plugin/dist` and the site's `dist` are clean builds of the committed plugin code. Commits local from `0372a22` on; `origin/redteam-1` is at `0c0f4a9`. A bundle follows.

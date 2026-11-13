@@ -4,6 +4,12 @@
 //
 //   node scripts/redteam/backlog-live.mjs seed [--count 20100]   with the site stopped: clone settled tips + one open
 //                                                                 probe, all watch candidates, into _plugin_storage
+//                                             [--shape flood]    expired, untouched tips spread evenly over the tips'
+//                                                                 8-day lookback, each row's created_at its own: what an
+//                                                                 unpaid-checkout flood leaves (default count 15,360:
+//                                                                 40 per 30 minutes, the spam cap)
+//                                             [--shape burst]    the same tips packed inside one minute two hours ago,
+//                                                                 several to a millisecond (default count 5,000)
 //                                             [--past-cap]       the probe is an expired tip in its late window instead,
 //                                                                 so it isn't in the open query and the cap can drop it
 //                                                                 (an unordered scan reads oldest rows first: round 2)
@@ -30,13 +36,15 @@ const value = (name, fallback) => {
 	return i === -1 ? fallback : args[i + 1];
 };
 if (cmd !== "seed" && cmd !== "run" && cmd !== "time") {
-	console.error("usage: node scripts/redteam/backlog-live.mjs seed [--count 20100] [--past-cap] | run [--site <loopback URL>] [--built] | time [--site <loopback URL>] [--syncs 3] [--kv <key>]");
+	console.error("usage: node scripts/redteam/backlog-live.mjs seed [--count 20100] [--shape settled|flood|burst] [--past-cap] | run [--site <loopback URL>] [--built] | time [--site <loopback URL>] [--syncs 3] [--kv <key>]");
 	process.exit(2);
 }
 
 const site = loopbackUrl(value("--site", DEFAULT_SITE));
 const route = (name) => routeOn(site, name);
-const COUNT = Number(value("--count", "20100"));
+const SHAPE = value("--shape", "settled");
+if (!["settled", "flood", "burst"].includes(SHAPE)) throw new Error("--shape must be settled, flood or burst");
+const COUNT = Number(value("--count", { settled: "20100", flood: "15360", burst: "5000" }[SHAPE]));
 const PAST_CAP = args.includes("--past-cap");
 const BUILT = args.includes("--built");
 const SYNCS = Number(value("--syncs", "3"));
@@ -70,6 +78,47 @@ if (cmd === "seed") {
 		"INSERT INTO _plugin_storage (plugin_id, collection, id, data, revision, created_at, updated_at) VALUES (?, ?, ?, ?, '0', ?, ?)",
 	);
 	const stamp = new Date(now).toISOString();
+	const LOOKBACK_MS = 7.9 * 24 * 3_600_000; // just inside the tips scan's 8 days, so the oldest rows don't age out mid-run
+	// When row n was created, for the spread shapes. flood: evenly over the lookback, newest first. burst: inside one
+	// minute two hours ago, in 5 ms steps, so rows share milliseconds.
+	const createdFor = (n) => (SHAPE === "flood" ? now - Math.round(((n + 0.5) / COUNT) * LOOKBACK_MS) : now - 2 * 3_600_000 + Math.floor((n * 60_000) / COUNT / 5) * 5);
+	// An expired tip nobody paid: a watch candidate for 7 days while the wallet host hasn't reported its address empty
+	// for a day (seq stays at its creation), which is what a flood during an outage leaves.
+	function unpaid(n) {
+		const index = BASE_INDEX + n;
+		const id = `inv_rt_h1_${n.toString(16).padStart(10, "0")}`;
+		const subaddress = fakeAddress(index);
+		const createdAt = createdFor(n);
+		const inv = {
+			id,
+			token: `rt${randomBytes(15).toString("base64url")}`.slice(0, 22),
+			kind: "tip",
+			asset: "xmr",
+			chain: "monero",
+			network: "stagenet",
+			fiat: null,
+			rate: null,
+			expectedAtomic: null,
+			minAtomic: "100000000",
+			required: 2,
+			subaddress,
+			addrIndex: index,
+			status: "expired",
+			createdAt,
+			expiresAt: createdAt + 30 * 60_000,
+			createdHeight: H - 10,
+			expiresHeight: H - 4,
+			seq: createdAt,
+			finalAt: createdAt + 30 * 60_000,
+			transfers: [],
+			uriDescription: "Tip",
+			via: "checkout",
+		};
+		const at = new Date(createdAt).toISOString();
+		insert.run(PLUGIN, "invoices", id, JSON.stringify(inv), at, at);
+		insert.run(PLUGIN, "pool", String(index), JSON.stringify({ addrIndex: index, address: subaddress, status: "claimed", invoiceId: id }), at, at);
+		return index;
+	}
 	// A settled stagenet tip whose one transfer is shallow (3 confirmations), so it is still watched (settled until
 	// 10 deep). Pool row claimed so a snapshot's index resolves to this invoice.
 	function settled(n) {
@@ -144,11 +193,11 @@ if (cmd === "seed") {
 
 	db.exec("BEGIN");
 	const indexes = [];
-	for (let n = 0; n < COUNT; n++) indexes.push(settled(n));
+	for (let n = 0; n < COUNT; n++) indexes.push(SHAPE === "settled" ? settled(n) : unpaid(n));
 	const probe = openProbe();
 	db.exec("COMMIT");
 	const total = db.prepare("SELECT COUNT(*) c FROM _plugin_storage WHERE plugin_id = ? AND collection = 'invoices'").get(PLUGIN).c;
-	log(`seeded ${COUNT} settled tips + 1 ${PAST_CAP ? "expired (past-cap)" : "open"} probe (index ${probe.index}); invoices now ${total}`);
+	log(`seeded ${COUNT} ${SHAPE === "settled" ? "settled tips" : `expired unpaid tips (${SHAPE})`} + 1 ${PAST_CAP ? "expired (past-cap)" : "open"} probe (index ${probe.index}); invoices now ${total}`);
 	log(`probe id ${probe.id} at index ${probe.index}`);
 	db.close();
 	process.exit(0);

@@ -286,11 +286,31 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 
     Evidence: `~/xmr-pay-dev-data/redteam/h1-2026-11-13T171232507Z.txt` (20,100), `h1-2026-11-13T171506737Z.txt` (5,000), `h1-2026-11-13T171524624Z.txt` (10,000).
   - **The two scans are about 99% of a sync, and they read the same rows twice.** At 20,100 rows each read its capped 20,000; merged, 20,039 distinct invoices. The open scan took 0.05 s. Building the watch with the pool counts took 0.12–0.14 s, the check list 0.08–0.10 s, events and the purge 0.06 s. The response's own cost (the client's time minus the handler's) was about 0.05 s, so round 1's guess that bounds-checking a 20,000-entry `watch` matters is wrong. Spec changes 46–48 added nothing that shows at this size.
-  - **The cost is quadratic in the rows a scan matches, not linear:** doubling the rows multiplied the time by 3.4 (5,000 to 10,000) and 4.3 (10,000 to 20,100).
+  - **(Corrected below: true only of the old seed.) The cost is quadratic in the rows a scan matches, not linear:** doubling the rows multiplied the time by 3.4 (5,000 to 10,000) and 4.3 (10,000 to 20,100).
   - **Why (EmDash 1.3.1, `emdash/dist/context-ErV7UdQY.mjs`, `query`):** each 100-row page is its own SQL query, `… ORDER BY created_at, id LIMIT 101` after the cursor. SQLite's plan for the tips scan (`EXPLAIN QUERY PLAN` on the seeded database): `SEARCH … USING INDEX idx_plugin_coffer_invoices_kind_createdAt` then `USE TEMP B-TREE FOR ORDER BY`. The index finds the matching rows, but every page then sorts all of them to return 100. So a scan of N rows costs about N/100 pages times N rows.
   - **An `orderBy` doesn't avoid the sort.** EmDash's ordered form starts with `ORDER BY (case when <field> is null then 1 else 0 end)`, which no index can serve. Its first page at 10,000 rows took 34.6 ms in SQLite alone, against 9.2 ms for an unordered page at the same size. So "newest first" through `orderBy` keeps the watch right when the cap truncates, but makes each page dearer, not cheaper. To be measured through the plugin in the fix session.
-  - **A seed artifact, for the "recent" scan only:** the seed gives all 20,100 rows one `created_at`. That scan's plan walks `idx_plugin_storage_list` by `created_at` and sorts only ties, so on a real flood, with spread-out `created_at` values, it may cost much less than measured here. The tips scan's per-page sort doesn't depend on that. A seed with spread timestamps would settle it; not done today.
+  - **(Corrected below: it's both scans.) A seed artifact, for the "recent" scan only:** the seed gives all 20,100 rows one `created_at`. That scan's plan walks `idx_plugin_storage_list` by `created_at` and sorts only ties, so on a real flood, with spread-out `created_at` values, it may cost much less than measured here. The tips scan's per-page sort doesn't depend on that. A seed with spread timestamps would settle it; not done today.
   - **What it means for the size of the problem:** at the spam cap's own maximum (about 15,400 rows) the quadratic fit gives roughly 16 s a sync, and with the cap holding each scan to 200 pages, the 30 s wall would be reached at roughly 22,000 matching rows (an estimate from the fit, not measured). What cuts the cost is the number of rows a scan matches; reading each row once instead of twice roughly halves it.
+- **Correction (2026-11-13, later the same day): the 27–28 s was the seed's doing.** Wyatt asked for seeds with spread `created_at` before the fix was measured. On today's unchanged code, built copy, three syncs each (`backlog-live.mjs seed --shape …`, then `time`):
+
+  | Seed | Rows | Whole sync | Watch |
+  | --- | --- | --- | --- |
+  | Old seed: settled tips, one `created_at` for every row | 20,100 | 27.6 s | 20,000 |
+  | Flood: expired unpaid tips spread over the 8-day lookback (the spam cap's own maximum) | 15,360 | 0.86–0.92 s | 13,651 |
+  | Flood, same spread | 20,100 | 1.11–1.15 s | 17,864 |
+  | Flood, same spread | 25,000 | 1.21–1.28 s | 22,218 |
+  | Burst: inside one minute, 5 ms apart | 5,000 | 0.42–0.45 s | 5,001 |
+  | Burst: inside one minute, several rows to a millisecond | 20,000 | 1.54–1.62 s | 20,000 |
+
+  Evidence: `~/xmr-pay-dev-data/redteam/h1-2026-11-13T185001005Z.txt`, `…185013152Z.txt`, `…185025378Z.txt`, `…185121724Z.txt`, `…185138622Z.txt`.
+  - **What that means:** every run since 2026-10-26 used a seed that gave all its rows one `created_at`. EmDash pages by `(created_at, id)`, and with one value for every row each page had to pass over all of them. With a timestamp per row, as real checkouts get (millisecond stamps, kept when a row is updated; the dev site's 62 real invoices have 62 different ones), the same code is about 25 times faster at the same size and grows roughly in line with the rows.
+  - **Can an attacker make the slow case?** Not that I can see: it needs thousands of rows created in the same millisecond, and checkout is held to 40 open invoices per 30 minutes. The 20,000-row burst, a few rows per millisecond, took 1.6 s.
+  - **What's left of this finding:**
+    1. At the spam cap's maximum a sync takes about 0.9 s on the dev box, about 4 times the spec's 0.2 s estimate, and far from the wall.
+    2. The two scans still read the last two days' tips twice.
+    3. When the 200-page cap truncates, the tips scan still keeps the oldest rows. On the 25,000-row flood the "recent" scan (the last two days) put the newest rows back, so the watch held 22,218. The 10-30 probe was dropped because the old seed's rows all fell inside both scans.
+    4. No time budget: nothing but the row cap bounds a sync's scan time on a slow host.
+  - **The severity is Wyatt's to rule again** (it was Medium on the strength of "within 2 s of the wall").
 - **Status:** open.
 
 ## Round 1, Manual layer: A3 and B1 (Wyatt, 2026-10-29 UTC)

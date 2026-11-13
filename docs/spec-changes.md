@@ -1874,7 +1874,7 @@ What it would touch:
 - Before 1.0.0's storage contract is frozen, phase 09 decides whether item 4's txid lookup needs a new index. If it does, the index and the field it reads go into 1.0.0, so release 2 stays 1.x with no new consent. If a bounded scan does, 1.0.0 doesn't change.
 **The limit this leaves in release 1:** until item 4 exists, only the newest 10 tips can be matched, because older ones aren't on the page.
 
-## 50. A pairing code is claimed before anything else is written (RT-07)  (status: accepted, 2026-11-13: the release rule; item 4 waits for Wyatt's nod)
+## 50. A pairing code is claimed before anything else is written (RT-07)  (status: accepted, 2026-11-13, items 1-4; built and live the same day)
 Found in: 07b pass 1, RT-07 (round 1 on the test host; live 3 of 3 on 2026-10-29 and 2026-11-02, `scripts/redteam/round2-live.mjs c6`).
 Spec says:
 - Security model, pairing row, and T13: the code is "single-use"; "a second use fails".
@@ -1884,6 +1884,6 @@ Proposal (plugin only; no change to what the bridge sends):
 1. **Claim first.** After the code and the new key's signature have both checked out, and before any other write, the request marks the code used with one conditional KV write (`ctx.kv.getVersioned`, then `ctx.kv.compareAndSet` on that revision). Only one request can win it. A request that loses gets `PAIRING_REJECTED`, like any used code, and writes nothing.
 2. **Release on error (Wyatt, 2026-11-13).** If a later write of that pairing throws, the handler marks the code unused again (a conditional write on the claim's revision) before the error leaves. So 45's sentence holds for a failed write: the old pairing works and the code pairs on a retry.
 3. **What 45's sentence no longer covers:** a site that is killed between the claim and the end of the pairing leaves the code spent. The admin presses the button for a new code, which the bridge's hint for a refused code already says. Not simulated live.
-4. **A side effect, for Wyatt's nod:** today a pairing in flight writes its old state back at the end, so a code the admin issues during it is overwritten and dead. With the claim, nothing is written at the end, so that newer code stays valid for its 15 minutes. The older code's pairing still completes, as today. A release never revives an old code over a newer one.
+4. **A side effect (accepted by Wyatt, 2026-11-13):** today a pairing in flight writes its old state back at the end, so a code the admin issues during it is overwritten and dead. With the claim, nothing is written at the end, so that newer code stays valid for its 15 minutes. The older code's pairing still completes, as today. A release never revives an old code over a newer one.
 Effect on the admin budget: none.
 Effect on the trust contract: none. The same KV key (`state:pairing`) with the same fields; no route, collection, index, capability, setting or host. It relies on `ctx.kv.compareAndSet` (EmDash 1.3.1, the floor), listed in `docs/emdash-upgrade-checklist.md`.

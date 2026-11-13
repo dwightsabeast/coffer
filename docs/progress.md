@@ -5300,3 +5300,8 @@ Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
 **What's left before phase 09:** RT-15 (re-measure first), RT-05, the six Lows, the EmDash 1.4.0 check, and the RT-08 re-check question.
 
 **Next step:** RT-15, starting with a re-measure of the per-sync cost on the built copy (`scripts/redteam/backlog-live.mjs`).
+
+### Addendum: Wyatt's answers (2026-11-13)
+
+- Spec change 50, item 4 accepted: a code issued while another pairing is in flight stays valid. The entry's status is updated; no code change.
+- Push `redteam-1`: done with this commit. CI's result and this commit's bundle go in the next session's entry.

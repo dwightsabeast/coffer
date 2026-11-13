@@ -14,7 +14,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-04 | Low | T05 | 1, 1 | Concurrent tips are told "no address" while free addresses remain | open; left for release 1 (Wyatt, 2026-11-08): not reproduced live on the Node runner |
 | RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | open; **fix before release 1** (Wyatt, 2026-11-08) |
 | RT-06 | Low | F01 | 1, 1 | The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature | open; left for release 1 (Wyatt, 2026-11-08): needs the bridge key; pass 2 |
-| RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | **fixed** 2026-11-13 (spec change 50), live `c6` 3 of 3 |
 | RT-08 | Accepted limit (Wyatt, 2026-11-08); was High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open; spec change 46 built 2026-11-01 (plugin and bridge); live 2026-11-02: forged rows reported bad within one sync and never handed out; **accepted limit (Wyatt, 2026-11-08)**: spec change 44's final wording |
 | RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open; left for release 1 (Wyatt, 2026-11-08): needs the bridge key; the unique index holds |
 | RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open; **fix before release 1** (Wyatt, 2026-11-08) |
@@ -121,7 +121,11 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Evidence:** vitest output, round 1.
 - **Live, round 2 (Node runner, 2026-10-29):** reproduced in 3 of 3 rounds (`scripts/redteam/round2-live.mjs c6`, evidence `~/xmr-pay-dev-data/redteam/round2-c6-2026-10-29T025321523Z.txt`): both simultaneous pair requests got `ok`, the second key was stored each time, and the first key's next sync got `BAD_SIGNATURE`.
 - **Root cause (round 2, white box):** the pairing branch checks the code (`pairingCodeMatches`), then stores the key and marks the code used in two separate writes (`plugin/src/sync/handle.ts:102–107`). Nothing makes check-and-burn one step, so two requests that both check before either burns both win. On the Node runner, the live run shows the two requests do overlap, despite RT-12's one-at-a-time pattern for long requests. The fix needs a burn that only one request can win, for example a conditional write if the storage API offers one, or a per-code lock held across the check and the write.
-- **Status:** open.
+- **Fix (2026-11-13, spec change 50, commit `c05c815`):** after the code and the signature check out, and before any other write, the request claims the code: `ctx.kv.getVersioned`, then `ctx.kv.compareAndSet` on that revision, marking it used. Only one request's write applies; the other gets `PAIRING_REJECTED` and writes nothing. If a later write of the pairing throws, the claim is released (a conditional write on the claim's revision), so spec change 45's retry holds; a site killed mid-pairing leaves the code spent. Nothing is written to the pairing state at the end, so a code issued during a pairing is no longer overwritten.
+- **Tests:** the red-team C6 test is a normal test now (5 rounds; the winner syncs, the loser doesn't). `handle.test.ts` holds two requests at the first write after the claim; `store.test.ts` checks the claim on a KV with revisions.
+- **Live after the fix (dev site, Node runner, 2026-11-13):** `round2-live.mjs c6`, 3 of 3 rounds: one `ok`, the other `PAIRING_REJECTED`; the winner's key stored and syncing, the loser's next sync `BAD_SIGNATURE` (evidence `~/xmr-pay-dev-data/redteam/round2-c6-2026-11-13T164250177Z.txt`). `PAIRING_REJECTED` rather than `NOT_PAIRED` shows the loser was past the active-code check when it lost the claim, so the requests did overlap.
+- **Not covered:** a site killed between the claim and the end of a pairing (stated in spec change 50, not simulated).
+- **Status:** fixed.
 
 ## Observations, round 1 (no finding)
 

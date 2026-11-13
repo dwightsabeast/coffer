@@ -5261,3 +5261,42 @@ Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
 **Not done this session:** matrix T03's text isn't updated to the final wording yet (spec change 44 holds it). The next fix session does that with RT-07's matrix row.
 
 **State:** unchanged from the step 3 entry: the bridge on wallet 0, with everything else stopped. A bundle follows.
+
+## 2026-11-13 · Phase 07b fix sessions · RT-07 fixed (spec change 50), live `c6` passed
+
+**The last session's bundle:** `~/xmr-pay-dev-data/bundles/coffer-redteam-1-20261108-07c2bba.bundle`, SHA-256 `2c1e7fa04ef170912be6cdfbcf61628aec2fc04880ae88933c981f19d255468f`.
+
+**Wyatt's ruling (2026-11-13, in `docs/decisions.md`):** release on error. The pairing code is claimed first; a failed write puts it back, so spec change 45's retry holds. Only a site killed mid-pairing leaves the code spent.
+
+**Built (commits `7aa7b57` spec change 50, `c05c815` the fix):**
+- **`plugin/src/sync/handle.ts`:** after the code and signature checks, `store.claimPairing` before any other write; a lost claim returns `PAIRING_REJECTED`. 45's steps run in a `try`; a throw calls `store.releasePairing`, then rethrows. The final write of the pairing state is gone.
+- **`plugin/src/store.ts`:** `claimPairing` (`ctx.kv.getVersioned`, then `compareAndSet` on that revision) and `releasePairing` (a conditional write on the claim's revision; never throws). `setPairing` is removed from `SyncStore`.
+- **No trust-contract change:** the same KV key and fields; no route, collection, capability, setting or dependency.
+- **`scripts/redteam/round2-live.mjs c6`:** every round also checks that the keys that sync are exactly the ones told they paired.
+- **Docs:** spec change 50; a decisions row; matrix T13 Covered (21 Covered, 6 Partial, 3 Planned, 1 Gap, counted from the table); matrix T03 now carries spec change 44's final wording and RT-08 as an accepted limit (left over from 11-08); RT-07's finding; an upgrade-checklist row for `ctx.kv.compareAndSet`.
+
+**Tests, written first and seen red (8 failing before the fix):**
+- `handle.test.ts`: two pair requests held at the first write after the claim: one `ok`, one `PAIRING_REJECTED`, the winner's key stored, the loser's sync `BAD_SIGNATURE`; a second request while one is in flight is refused and writes nothing; a code issued during a pairing stays active; a release never revives a code over a newer one; a failure at the wallet-state write leaves the code usable. 45's "fails after the drops" test passes unchanged.
+- `store.test.ts`: the claim on a KV with revisions (two at once, one applied; missing, used and replaced codes; release; a failing release doesn't throw).
+- `redteam/sync.test.ts`: C6's race is a normal test now, 5 rounds.
+
+**Results:**
+- Plugin: typecheck clean, validate passes, bundle 73.5 KB. Default config 482 passed, 11 expected fail, 1 skipped (45 files); goods config 101 passed, 1 skipped.
+- Script tests: 49 passed.
+- **Live `c6` on the dev site (`astro dev`, Node runner): 3 of 3 rounds PASS.** One `ok` each round; the other got `PAIRING_REJECTED` and its next sync `BAD_SIGNATURE`. Evidence: `~/xmr-pay-dev-data/redteam/round2-c6-2026-11-13T164250177Z.txt`.
+- Not run: theme and bridge suites (nothing of theirs changed). CI hasn't seen these commits: not pushed.
+
+**Not covered:** a site killed between the claim and the end of a pairing (the code is spent; stated in spec change 50). The Cloudflare runner (release 1 is Node only).
+
+**The state I leave:**
+- `data.db` restored from `redteam/rt07-before.db` (SHA-256 `9135c052…3eb0`, the same as `live-after-swap0.db`): 62 invoices, 364 pool rows, the bridge's key present. The state the run left is in `baseline/data.db.before-restore-20261113T164521510Z`.
+- The dev site is stopped (ports 4321 and 4322 free, no tmux sessions). The site's `node_modules` plugin build is the new one. The bridge is still installed on wallet 0 and backs off while the site is stopped.
+- `redteam-1` is two commits plus this entry ahead of `origin/redteam-1` (`07c2bba`). A bundle follows.
+
+**For Wyatt:**
+1. A nod on spec change 50, item 4: a code issued while another pairing is in flight stays valid (it used to be overwritten).
+2. Whether to push `redteam-1` (then CI).
+
+**What's left before phase 09:** RT-15 (re-measure first), RT-05, the six Lows, the EmDash 1.4.0 check, and the RT-08 re-check question.
+
+**Next step:** RT-15, starting with a re-measure of the per-sync cost on the built copy (`scripts/redteam/backlog-live.mjs`).

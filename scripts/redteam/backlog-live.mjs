@@ -10,6 +10,10 @@
 //   node scripts/redteam/backlog-live.mjs run                     with the site running: pair, time syncs, check the
 //                                                                 cap and its Health warning, drain, settle the probe
 //                                            [--built]           the built copy: no dev sign-in, so the Health read is skipped
+//   node scripts/redteam/backlog-live.mjs time [--syncs 3]        with the site running: pair, then time that many empty
+//                                              [--kv <key>]       syncs and nothing else (no drain, no flood). --kv logs
+//                                                                 one of the plugin's KV values after each sync, for a
+//                                                                 temporary build that records its own stage timings there
 //
 // Loopback only. The run step pairs a fresh in-memory key through the KV shortcut and reads the admin Health line
 // through EmDash's own dev sign-in (dev mode). It never calls cleanupCofferRows (that wipes the baseline fixtures);
@@ -25,8 +29,8 @@ const value = (name, fallback) => {
 	const i = args.indexOf(name);
 	return i === -1 ? fallback : args[i + 1];
 };
-if (cmd !== "seed" && cmd !== "run") {
-	console.error("usage: node scripts/redteam/backlog-live.mjs seed [--count 20100] [--past-cap] | run [--site <loopback URL>] [--built]");
+if (cmd !== "seed" && cmd !== "run" && cmd !== "time") {
+	console.error("usage: node scripts/redteam/backlog-live.mjs seed [--count 20100] [--past-cap] | run [--site <loopback URL>] [--built] | time [--site <loopback URL>] [--syncs 3] [--kv <key>]");
 	process.exit(2);
 }
 
@@ -35,10 +39,13 @@ const route = (name) => routeOn(site, name);
 const COUNT = Number(value("--count", "20100"));
 const PAST_CAP = args.includes("--past-cap");
 const BUILT = args.includes("--built");
+const SYNCS = Number(value("--syncs", "3"));
+const KV_KEY = value("--kv", null);
+if (cmd === "time" && (!Number.isInteger(SYNCS) || SYNCS < 1 || SYNCS > 50)) throw new Error("--syncs must be 1..50");
 // A height well above the real stagenet height (2236600 at the baseline), so the seed can't be confused with real
 // payments. Seeded transfers sit a few blocks below it, so settled tips start shallow and stay watch candidates.
 const H = 2_300_000;
-const BASE_INDEX = 100_000; // above the baseline's max pool index (338), so addrIndex/subaddress stay unique
+const BASE_INDEX = 200_000; // above wallet 0's pool rows on the dev site (a "bad" row sits at 100356 since spec change 46's live tests), so addrIndex/subaddress stay unique
 const CAP_ROWS = 20_000; // 200 pages of 100 (spec change 35, condition 2)
 
 const OUT = evidencePath(`h1-${new Date().toISOString().replace(/[:.]/g, "")}.txt`);
@@ -185,6 +192,18 @@ try {
 	if (Array.isArray(r.data?.probes)) {
 		r = await sync({ wallet: { match: r.data.probes.some((p) => p.wallet === 0) ? 0 : null, receivedTop: 0 } });
 		check("answered the wallet probe", r.data?.ok === true && !Array.isArray(r.data?.probes), `${r.status} ${r.code ?? ""}`);
+	}
+	if (cmd === "time") {
+		const kvValue = () => db.prepare("SELECT data FROM _plugin_storage WHERE plugin_id = ? AND collection = '__kv' AND id = ?").get(PLUGIN, KV_KEY)?.data ?? "(none)";
+		log(`the sync before the timed ones (the pairing, or the probe answer) took ${r.ms.toFixed(0)}ms${KV_KEY ? `  ${KV_KEY}: ${kvValue()}` : ""}`);
+		for (let n = 1; n <= SYNCS; n++) {
+			r = await sync({});
+			check(`time: sync ${n} of ${SYNCS} finishes under 30 s`, r.status === 200 && r.data?.ok === true && r.ms < 30_000, `${r.ms.toFixed(0)}ms status ${r.status} ${r.code ?? ""} watch ${watchOf(r)?.length ?? "?"}`);
+			if (KV_KEY) log(`  ${KV_KEY}: ${kvValue()}`);
+		}
+		log(`evidence: ${OUT}`);
+		db.close();
+		process.exit(failures === 0 ? 0 : 1);
 	}
 	const freeBase = probeIndex + 1;
 	const freeAddrs = Array.from({ length: 60 }, (_, i) => ({ index: freeBase + i, address: fakeAddress(freeBase + i) }));

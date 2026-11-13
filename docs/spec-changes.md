@@ -1873,3 +1873,17 @@ What it would touch:
 - Items 4-5: built in phase 08 (`docs/phases/08-store-adapter.md`); a gate on 09b, with Feather's check paid through the full `monero:` link or QR.
 - Before 1.0.0's storage contract is frozen, phase 09 decides whether item 4's txid lookup needs a new index. If it does, the index and the field it reads go into 1.0.0, so release 2 stays 1.x with no new consent. If a bounded scan does, 1.0.0 doesn't change.
 **The limit this leaves in release 1:** until item 4 exists, only the newest 10 tips can be matched, because older ones aren't on the page.
+
+## 50. A pairing code is claimed before anything else is written (RT-07)  (status: accepted, 2026-11-13: the release rule; item 4 waits for Wyatt's nod)
+Found in: 07b pass 1, RT-07 (round 1 on the test host; live 3 of 3 on 2026-10-29 and 2026-11-02, `scripts/redteam/round2-live.mjs c6`).
+Spec says:
+- Security model, pairing row, and T13: the code is "single-use"; "a second use fails".
+- Spec change 45, item 1: "only then store the new key and burn the code. A failure partway therefore leaves the old pairing working, with the code still usable for a retry."
+Evidence: the pairing branch checks the code, then burns it only after the drops, the key and the wallet state are written (`plugin/src/sync/handle.ts`). Two requests that both check before either burns both get `ok`; one key is kept and the other bridge is told it paired. 45 moved the burn to the end, which widened the window.
+Proposal (plugin only; no change to what the bridge sends):
+1. **Claim first.** After the code and the new key's signature have both checked out, and before any other write, the request marks the code used with one conditional KV write (`ctx.kv.getVersioned`, then `ctx.kv.compareAndSet` on that revision). Only one request can win it. A request that loses gets `PAIRING_REJECTED`, like any used code, and writes nothing.
+2. **Release on error (Wyatt, 2026-11-13).** If a later write of that pairing throws, the handler marks the code unused again (a conditional write on the claim's revision) before the error leaves. So 45's sentence holds for a failed write: the old pairing works and the code pairs on a retry.
+3. **What 45's sentence no longer covers:** a site that is killed between the claim and the end of the pairing leaves the code spent. The admin presses the button for a new code, which the bridge's hint for a refused code already says. Not simulated live.
+4. **A side effect, for Wyatt's nod:** today a pairing in flight writes its old state back at the end, so a code the admin issues during it is overwritten and dead. With the claim, nothing is written at the end, so that newer code stays valid for its 15 minutes. The older code's pairing still completes, as today. A release never revives an old code over a newer one.
+Effect on the admin budget: none.
+Effect on the trust contract: none. The same KV key (`state:pairing`) with the same fields; no route, collection, index, capability, setting or host. It relies on `ctx.kv.compareAndSet` (EmDash 1.3.1, the floor), listed in `docs/emdash-upgrade-checklist.md`.

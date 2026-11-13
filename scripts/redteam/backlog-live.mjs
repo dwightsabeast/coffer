@@ -157,7 +157,9 @@ if (cmd === "seed") {
 // ---- run ----
 const key = newKey();
 let seq = Date.now();
-const body = (fields) => syncBody(fields, { seq: ++seq, height: H });
+// seq follows the clock: the site refuses a seq more than 5 minutes from the request's timestamp (SEQ_OUT_OF_RANGE),
+// and a run lasts longer than that.
+const body = (fields) => syncBody(fields, { seq: (seq = Math.max(seq + 1, Date.now())), height: H });
 const sync = async (fields, extra = {}) => {
 	const bytes = body(fields);
 	const t0 = performance.now();
@@ -263,7 +265,8 @@ try {
 			probeWatched = w.includes(probeIndex);
 		}
 		maxDrainMs = Math.max(maxDrainMs, rr.ms);
-		if (rr.status !== 200 || rr.ms >= 30_000) timingOk = false;
+		// A refused sync is quick, so it must fail this check, not pass it.
+		if (rr.status !== 200 || rr.data?.ok !== true || rr.ms >= 30_000) timingOk = false;
 		if (round % 10 === 0 || probeWatched) log(`drain sync ${round + 1} (indexes ${start}..): ${rr.ms.toFixed(0)}ms ${rr.code ?? "ok"} watch ${w?.length ?? "?"}`);
 		if (memAvailableMiB() < 1536) {
 			log("stopping the drain: under 1.5 GB available");
@@ -294,7 +297,7 @@ try {
 	const sr = await during;
 	const got = fl.results.filter((x) => x.ok && x.value?.data?.token).length;
 	const slow = Math.max(0, ...fl.results.map((x) => x.ms));
-	check("L7: checkouts keep answering during a backlog sync", got >= 1 && fl.stopped === null, `${got}/${fl.results.length} got an address; slowest ${slow.toFixed(0)}ms; sync ${sr.ms.toFixed(0)}ms`);
+	check("L7: checkouts keep answering during a backlog sync", got >= 1 && fl.stopped === null && sr.data?.ok === true, `${got}/${fl.results.length} got an address; slowest ${slow.toFixed(0)}ms; sync ${sr.ms.toFixed(0)}ms ${sr.code ?? "ok"}`);
 	log(`evidence: ${OUT}`);
 } finally {
 	db.close();

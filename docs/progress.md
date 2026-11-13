@@ -5305,3 +5305,39 @@ Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
 
 - Spec change 50, item 4 accepted: a code issued while another pairing is in flight stays valid. The entry's status is updated; no code change.
 - Push `redteam-1`: done with this commit. CI's result and this commit's bundle go in the next session's entry.
+
+## 2026-11-13 · Phase 07b fix sessions · RT-15: the re-measure (Part 1 of its plan), no fix yet
+
+**CI:** run 43467574210 passed on `4e23bea` (RT-07's fix: plugin, theme, bridge with the race detector). That commit's bundle: `~/xmr-pay-dev-data/bundles/coffer-redteam-1-20261113-4e23bea.bundle`, SHA-256 `48fcd8c175c1729f9c9b8fae6782698742813f5734d7a1889f229ac57f3b45a4`.
+
+**What was run** (built copy on loopback port 4322, Node; no sudo, no money; `data.db` backed up to `redteam/rt15-before.db` first):
+1. **Baseline on today's code,** `backlog-live.mjs run --built` at 20,100 seeded tips with the past-cap probe: pairing sync 27.9 s, first sync 27.8 s, 40 drain syncs all `ok`, slowest 28.1 s. About 0.5 s slower than 10-30 (27.0–27.5 s); about 1.9 s under the 30 s wall. The probe stayed unwatched through all 40. L7: 40 of 40 checkouts answered, slowest 2.1 s. All checks PASS (`h1-2026-11-13T171720106Z.txt`).
+2. **Stage timings,** from a temporary build that wrote each stage's time to one KV key (the patch was never committed; it's gone from the tree and from `plugin/dist`, checked). Three syncs each at 5,000, 10,000 and 20,100 rows:
+
+   | Rows | Whole sync | "Recent" scan | Tips scan | Everything else |
+   | --- | --- | --- | --- | --- |
+   | 5,000 | 1.9 s | 0.9 s | 0.9 s | 0.08 s |
+   | 10,000 | 6.4 s | 3.1 s | 3.2 s | 0.15 s |
+   | 20,100 | 27.6 s | 13.3 s | 13.9 s | 0.35 s |
+
+**What it shows** (details and evidence files in RT-15's finding):
+- The two scans in `watchCandidates` are about 99% of a sync, and they read the same rows twice. The watch list, the check list, the response and spec changes 46–48's work are all small.
+- The cost is quadratic in the rows a scan matches. EmDash 1.3.1 runs one SQL query per 100-row page, and SQLite sorts every matching row for each page (`USE TEMP B-TREE FOR ORDER BY`).
+- An `orderBy` doesn't avoid that sort and costs more per page (34.6 ms against 9.2 ms in SQLite alone at 10,000 rows). So "newest first" through `orderBy` fixes which rows the cap drops but not the time. Not yet measured through the plugin.
+- Caveat: the seed gives every row one `created_at`, which may overstate the "recent" scan on a real flood. The tips scan's sort doesn't depend on it.
+
+**Script changes (`scripts/redteam/backlog-live.mjs`):**
+- A `time` mode (`--syncs`, `--kv`), in CLAUDE.md's table.
+- The seed's index range moved to 200,000: a "bad" pool row at 100356, left by spec change 46's live tests, collided with it (the first seed attempt failed and wrote nothing).
+- **A fault fixed:** `seq` counted up from the start time, and spec change 46's bound refuses a `seq` 5 minutes off the clock. Today's first run had its drain syncs refused after the seventh and still printed PASS for the drain timing and L7. `seq` now follows the clock, and both checks need an `ok` answer. The 2026-11-02 run wasn't affected (no drain syncs, under 5 minutes).
+- No test covers this live script's own logic (none did before). Script tests: 49 passed.
+
+**Not run:** plugin, theme and bridge suites (no shipped code changed). A seed with spread-out `created_at` values. The wallet host's own cost of watching 20,000 addresses. Cloudflare.
+
+**The state I leave:** `data.db` restored from `redteam/rt15-before.db` (62 invoices, 364 pool rows, the bridge's key present). Built copy and dev site stopped, ports free, no tmux sessions. `plugin/dist` and the site's `dist` are clean builds of the committed code. The bridge is on wallet 0. This entry's commits are local; a bundle follows.
+
+**For Wyatt, before Part 2 (the fix):**
+- "Newest first" as decided needs a second look: through `orderBy` it makes each page dearer. Two other ways to get the same result are in the closing message; the fix plan will measure them.
+- Which cost fix: read each row once (about half), a time budget, or an index on a "watched until" field (a storage contract change, before 1.0.0).
+
+**Next step:** plan RT-15's fix with Wyatt's choice, tests first.

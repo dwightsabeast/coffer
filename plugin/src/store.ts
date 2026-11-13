@@ -48,7 +48,8 @@ const MAX_DROP_PAGES = 1000;
  * A scan's safety cap: 200 pages, 20,000 rows. The spam cap allows about 40 invoices every 30 minutes, and tips stay
  * candidates for 8 days, so about 15,400 rows at the most. Reaching it is reported, never silent (spec change 35,
  * condition 2: the scan used to stop at 10 pages without a word, on Node too). Release 1 runs on Node only, where a
- * 15,000-row scan took about 0.2 s; the planned KV watch index (spec change 35, A) replaces the scan.
+ * sync over 15,360 watched rows took about 0.9 s on the built copy (spec change 51, which also says what a capped
+ * scan leaves out); the planned KV watch index (spec change 35, A) replaces the scan.
  */
 export const MAX_SCAN_PAGES = 200;
 

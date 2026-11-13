@@ -414,6 +414,120 @@ describe("a new pairing starts the pool afresh (spec change 45)", () => {
 		expect(store.pool.size).toBe(0);
 	});
 
+	it("[T03][T13][R08] a pairing that fails at a later write (the wallet state) also leaves the code usable, and a retry pairs", async () => {
+		class FailingStore extends MemoryStore {
+			failNext = true;
+			override async setWallets(s: Parameters<MemoryStore["setWallets"]>[0]) {
+				if (this.failNext) {
+					this.failNext = false;
+					throw new Error("storage write failed");
+				}
+				await super.setWallets(s);
+			}
+		}
+		const store = new FailingStore();
+		const { code, state } = await newPairingCode(T0);
+		store.pairing = state;
+		const pairBody = syncBody({ seq: T0 + 1, pair: { code, publicKey: PUBLIC_KEYS.test2 } });
+		await expect(send(store, pairBody, { key: "test2", now: T0 + 1000 })).rejects.toThrow("storage write failed");
+		expect(store.pairing).toEqual(state);
+		expect(errorCode(await send(store, pairBody, { key: "test2", now: T0 + 4000 }))).toBe("ok");
+		expect(store.pairing?.used).toBe(true);
+	});
+
+	// RT-07 (spec change 50). A store that holds every pairing at its first write after the claim (the pool drop), so
+	// two requests can both be past the code check before either goes on.
+	class GatedStore extends MemoryStore {
+		drops = 0;
+		private waiting: Array<() => void> = [];
+		override async poolDropUnused() {
+			this.drops++;
+			await new Promise<void>((go) => this.waiting.push(go));
+			await super.poolDropUnused();
+		}
+		open() {
+			for (const go of this.waiting.splice(0)) go();
+		}
+	}
+	/** Waits until `done()` is true, for at most a second. */
+	async function until(done: () => boolean) {
+		for (let i = 0; i < 200 && !done(); i++) await new Promise((r) => setTimeout(r, 5));
+		expect(done()).toBe(true);
+	}
+
+	it("[T13] [RT-07] two pair requests with one code at the same moment: exactly one wins, and its key is the one stored", async () => {
+		const store = new GatedStore();
+		const { code, state } = await newPairingCode(T0);
+		store.pairing = state;
+		const keys: KeyName[] = ["test1", "test2"];
+		let settled = 0;
+		const sent = keys.map((key) => send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS[key] } }), { key }).finally(() => settled++));
+		// Both are past the code check: each is held at the gate or already refused.
+		await until(() => store.drops + settled >= 2);
+		store.open();
+		const codes = (await Promise.all(sent)).map(errorCode);
+		expect(codes.filter((c) => c === "ok")).toHaveLength(1);
+		expect(codes.filter((c) => c === "PAIRING_REJECTED")).toHaveLength(1);
+		expect(store.drops).toBe(1);
+		const [winner, loser] = codes[0] === "ok" ? keys : [keys[1] as KeyName, keys[0] as KeyName];
+		expect(store.publicKey).toBe(PUBLIC_KEYS[winner as KeyName]);
+		expect(store.pairing?.used).toBe(true);
+		store.open();
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 1 }), { key: winner, now: T0 + 1000 }))).toBe("ok");
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 2 }), { key: loser, now: T0 + 2000 }))).toBe("BAD_SIGNATURE");
+	});
+
+	it("[T13] [RT-07] while one pairing is in flight, a second request with its code is refused and writes nothing", async () => {
+		const store = new GatedStore();
+		const { code, state } = await newPairingCode(T0);
+		store.pairing = state;
+		const first = send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS.test1 } }));
+		await until(() => store.drops === 1);
+		// No key is stored yet, so a refusal here is the claim's and nothing else's.
+		expect(store.publicKey).toBeNull();
+		expect(errorCode(await send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS.test2 } }), { key: "test2" }))).not.toBe("ok");
+		expect(store.drops).toBe(1);
+		expect(store.publicKey).toBeNull();
+		store.open();
+		expect(errorCode(await first)).toBe("ok");
+		expect(store.publicKey).toBe(PUBLIC_KEYS.test1);
+	});
+
+	it("[T13] a code the admin issues during a pairing stays active when that pairing finishes (spec change 50, item 4)", async () => {
+		const store = new GatedStore();
+		const { code, state } = await newPairingCode(T0);
+		store.pairing = state;
+		const first = send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS.test1 } }));
+		await until(() => store.drops === 1);
+		const newer = await newPairingCode(T0 + 500);
+		store.pairing = newer.state;
+		store.open();
+		expect(errorCode(await first)).toBe("ok");
+		expect(store.pairing).toEqual(newer.state);
+		// The older code is gone; the newer one pairs.
+		expect(errorCode(await send(store, syncBody({ seq: T0 + 1, pair: { code, publicKey: PUBLIC_KEYS.test2 } }), { key: "test2", now: T0 + 1000 }))).not.toBe("ok");
+		const second = send(store, syncBody({ seq: T0 + 2, pair: { code: newer.code, publicKey: PUBLIC_KEYS.test2 } }), { key: "test2", now: T0 + 2000 });
+		await until(() => store.drops === 2);
+		store.open();
+		expect(errorCode(await second)).toBe("ok");
+		expect(store.publicKey).toBe(PUBLIC_KEYS.test2);
+	});
+
+	it("[T13] a failed pairing's release never puts its code back over a newer one", async () => {
+		const newer = await newPairingCode(T0 + 500);
+		class FailingStore extends MemoryStore {
+			override async setPublicKey(_k: string): Promise<void> {
+				this.pairing = newer.state; // the admin presses the button while this pairing runs
+				throw new Error("storage write failed");
+			}
+		}
+		const store = new FailingStore();
+		const { code, state } = await newPairingCode(T0);
+		store.pairing = state;
+		await expect(send(store, syncBody({ pair: { code, publicKey: PUBLIC_KEYS.test2 } }), { key: "test2" })).rejects.toThrow("storage write failed");
+		expect(store.pairing).toEqual(newer.state);
+	});
+
 	it("[T20][T03] a pairing body's own addresses set the new pairing's network and carry the new key's ID", async () => {
 		const store = pairedStore("test1");
 		store.network = { network: "stagenet", keyId: KEY_IDS.test1 };

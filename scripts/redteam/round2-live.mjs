@@ -111,7 +111,9 @@ async function c6(db) {
 		const s2 = await signedSync(k2, {});
 		const works = [s1.data?.ok === true ? "key 1" : null, s2.data?.ok === true ? "key 2" : null].filter(Boolean);
 		check(`C6 round ${round}: exactly one of two simultaneous pair requests wins (RT-07)`, wins === 1, `${wins} got ok; stored ${storedIs}; syncs work for ${works.join(", ") || "none"}`);
-		if (wins === 2) check(`C6 round ${round}: a request told it paired can sync`, works.length === 2, `key 1 ${show(s1)}, key 2 ${show(s2)}`);
+		// Every request told it paired can sync, and no other key can (spec change 50).
+		const told = [r1.data?.ok === true ? "key 1" : null, r2.data?.ok === true ? "key 2" : null].filter(Boolean);
+		check(`C6 round ${round}: the keys that sync are exactly the ones told they paired, and the stored key is one of them`, told.join() === works.join() && told.includes(storedIs), `told ${told.join(", ") || "none"}; syncs work for ${works.join(", ") || "none"}; stored ${storedIs}; key 1 pair ${show(r1)}, sync ${show(s1)}; key 2 pair ${show(r2)}, sync ${show(s2)}`);
 	}
 }
 

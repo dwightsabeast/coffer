@@ -366,13 +366,17 @@ describe("C6: pairing abuse", () => {
 		});
 	});
 
-	it.fails("[T13] [RT-07] C6: two pair requests with the same valid code at the same moment: exactly one wins, and its key is the one stored", async () => {
+	it("[T13] [RT-07] C6: two pair requests with the same valid code at the same moment: exactly one wins, and its key is the one stored", async () => {
 		for (let round = 0; round < 5; round++) {
 			const { h, pairCode } = await withCode();
 			const [a, b] = await Promise.all([h.sync(pairBody(pairCode, "test1"), { key: "test1" }), h.sync(pairBody(pairCode, "test2"), { key: "test2" })]);
 			const wins = [ok(a), ok(b)];
 			expect(wins.filter(Boolean), `round ${round}`).toHaveLength(1);
 			expect(await h.host.inspect.setting("bridgePublicKey")).toBe(wins[0] ? PUBLIC_KEYS.test1 : PUBLIC_KEYS.test2);
+			// The one told it paired can sync; the other can't, and was never told it could.
+			const [winner, loser] = wins[0] ? (["test1", "test2"] as const) : (["test2", "test1"] as const);
+			expect(ok(await h.sync({ addresses: [], snapshots: [] }, { key: winner })), `round ${round}`).toBe(true);
+			expect(ok(await h.sync({ addresses: [], snapshots: [] }, { key: loser })), `round ${round}`).toBe(false);
 			await h.host.dispose();
 		}
 		h = undefined;

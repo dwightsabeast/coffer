@@ -11,7 +11,7 @@ import { LATE_WINDOW_MS, TIP_WATCH_MS } from "./core/constants";
 import type { Invoice } from "./core/invoice";
 import { CURRENCIES, rateCacheKey } from "./rates";
 import { ownIndex, walletRange } from "./core/walletindex";
-import type { BridgeState, CheckRow, NetworkRecord, PoolCheckState, PreviousKey, RefusedRecord, RotationState, SyncStore, WalletsState } from "./sync/handle";
+import type { BridgeState, CheckRow, NetworkRecord, PairingClaim, PoolCheckState, PreviousKey, RefusedRecord, RotationState, SyncStore, WalletsState } from "./sync/handle";
 import type { PairingState } from "./sync/pairing";
 
 export const SETTING = { publicKey: "bridgePublicKey", currency: "currency", speed: "speed" } as const;
@@ -80,8 +80,16 @@ export class CtxSyncStore implements SyncStore {
 	getPairing() {
 		return this.ctx.kv.get<PairingState>(KV.pairing);
 	}
-	setPairing(state: PairingState) {
-		return this.ctx.kv.set(KV.pairing, state);
+	async claimPairing(expected: PairingState): Promise<PairingClaim | null> {
+		const current = await this.ctx.kv.getVersioned<PairingState>(KV.pairing);
+		if (!current || current.value.used || current.value.codeHash !== expected.codeHash) return null;
+		// One conditional write on the revision just read: of two requests that both read the unused code, one applies.
+		const write = await this.ctx.kv.compareAndSet(KV.pairing, current.revision, { ...current.value, used: true });
+		return write.applied ? { state: current.value, revision: write.revision } : null;
+	}
+	async releasePairing(claim: PairingClaim) {
+		// Only while the claim's own write is still the stored value: a code issued since is left alone.
+		await this.ctx.kv.compareAndSet(KV.pairing, claim.revision, { ...claim.state, used: false }).catch(() => undefined);
 	}
 	getBridgeState() {
 		return this.ctx.kv.get<BridgeState>(KV.bridge);

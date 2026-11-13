@@ -129,11 +129,26 @@ export function currentWallet(state: WalletsState | null, signerKeyId: string): 
 	return state.current.keyId === signerKeyId ? state.current.wallet : null;
 }
 
+/** A won claim on a pairing code (spec change 50): what was claimed, and the revision the claim left behind. */
+export interface PairingClaim {
+	state: PairingState;
+	revision: string;
+}
+
 export interface SyncStore {
 	getPublicKey(): Promise<string | null>;
 	setPublicKey(publicKey: string): Promise<void>;
 	getPairing(): Promise<PairingState | null>;
-	setPairing(state: PairingState): Promise<void>;
+	/**
+	 * Spec change 50 (RT-07): marks this code used in one conditional write, so of several requests with it only one
+	 * gets a claim. Null when the stored code is another one, is already used or claimed, or is gone.
+	 */
+	claimPairing(expected: PairingState): Promise<PairingClaim | null>;
+	/**
+	 * Puts a claimed code back after its pairing failed, unless the admin has issued a new code since. Never throws:
+	 * the pairing's own error is the one to report.
+	 */
+	releasePairing(claim: PairingClaim): Promise<void>;
 	getBridgeState(): Promise<BridgeState | null>;
 	setBridgeState(state: BridgeState): Promise<void>;
 	/**
@@ -257,37 +272,46 @@ export async function handleSync(input: { body: Uint8Array; headers: Record<stri
 			if (!(await pairingCodeMatches(pairing, body.value.pair.code, now))) return error("PAIRING_REJECTED");
 			const key = decodeBase64(body.value.pair.publicKey, 32);
 			if (!key || !(await verifySignature(key, ts, bytes, signature))) return error("BAD_SIGNATURE");
-			const previous = await store.getPublicKey();
-			replaced = previous !== null;
-			// Spec change 46: on a site from before it, wallet 0's probe is its row at index 1, read before the drop below
-			// can remove it (a free row 1).
-			const prior = await store.getWallets();
-			let probe0: WalletEntry["probe"];
-			if (!prior) {
-				const row1 = await store.poolGet(siteIndex(0, 1));
-				if (row1 && (row1.status === "free" || row1.status === "claimed")) probe0 = { digest: await addressDigest(row1.address) };
+			// Spec change 50 (RT-07): claim the code before anything else is written. Only one request can win it; a
+			// second one with the same code, at the same moment or later, is refused like any used code.
+			const claim = await store.claimPairing(pairing);
+			if (!claim) return error("PAIRING_REJECTED");
+			try {
+				const previous = await store.getPublicKey();
+				replaced = previous !== null;
+				// Spec change 46: on a site from before it, wallet 0's probe is its row at index 1, read before the drop below
+				// can remove it (a free row 1).
+				const prior = await store.getWallets();
+				let probe0: WalletEntry["probe"];
+				if (!prior) {
+					const row1 = await store.poolGet(siteIndex(0, 1));
+					if (row1 && (row1.status === "free" || row1.status === "claimed")) probe0 = { digest: await addressDigest(row1.address) };
+				}
+				// Spec change 45, in this order: drop the unused pool and clear the network, then store the key. A failure
+				// partway leaves the old pairing working and the code usable for a retry (the release below), never a new
+				// pairing holding the old pool.
+				await store.poolDropUnused();
+				await store.clearNetwork();
+				await store.setPublicKey(body.value.pair.publicKey);
+				// Spec change 46, item 2: keep the key this pairing replaced, to tell its requests apart later.
+				// One write holds the key and the pairing's time, so a request can't see the key without the time (5b's grace).
+				if (previous !== null && previous !== body.value.pair.publicKey) await store.setPreviousKey({ publicKey: previous, pairedAt: now });
+				await store.setPreviousSeen(null);
+				await store.setRefused(null);
+				// Spec change 46: a site with history waits for the bridge to say which wallet it holds; a fresh one is wallet 0.
+				// After the key, so a failure before this leaves the old key's wallet state as it was.
+				const list = prior?.list ?? [{ wallet: 0, ...(probe0 ? { probe: probe0 } : {}) }];
+				// History: a probe to match, or any row ever handed out. A site with claimed rows but no probe still waits, and
+				// the bridge's "no match" then starts a new wallet (the safe start).
+				const history = list.some((w) => w.probe !== undefined) || (await store.poolAnyClaimed());
+				await store.setWallets({ current: { keyId: keyId(body.value.pair.publicKey), wallet: history ? null : (list[0]?.wallet ?? 0) }, list });
+				// Spec change 46: a mismatch is sticky until the next pairing (after the key, so a failed pairing keeps it).
+				await store.setPoolCheck({});
+			} catch (e) {
+				// A failed write: put the code back so a retry can pair (spec change 45), then report the failure.
+				await store.releasePairing(claim);
+				throw e;
 			}
-			// Spec change 45, in this order: drop the unused pool and clear the network, then store the key, then burn the
-			// code. A failure partway leaves the old pairing working and the code usable for a retry, never a new
-			// pairing holding the old pool.
-			await store.poolDropUnused();
-			await store.clearNetwork();
-			await store.setPublicKey(body.value.pair.publicKey);
-			// Spec change 46, item 2: keep the key this pairing replaced, to tell its requests apart later.
-			// One write holds the key and the pairing's time, so a request can't see the key without the time (5b's grace).
-			if (previous !== null && previous !== body.value.pair.publicKey) await store.setPreviousKey({ publicKey: previous, pairedAt: now });
-			await store.setPreviousSeen(null);
-			await store.setRefused(null);
-			// Spec change 46: a site with history waits for the bridge to say which wallet it holds; a fresh one is wallet 0.
-			// After the key, so a failure before this leaves the old key's wallet state as it was.
-			const list = prior?.list ?? [{ wallet: 0, ...(probe0 ? { probe: probe0 } : {}) }];
-			// History: a probe to match, or any row ever handed out. A site with claimed rows but no probe still waits, and
-			// the bridge's "no match" then starts a new wallet (the safe start).
-			const history = list.some((w) => w.probe !== undefined) || (await store.poolAnyClaimed());
-			await store.setWallets({ current: { keyId: keyId(body.value.pair.publicKey), wallet: history ? null : (list[0]?.wallet ?? 0) }, list });
-			// Spec change 46: a mismatch is sticky until the next pairing (after the key, so a failed pairing keeps it).
-			await store.setPoolCheck({});
-			await store.setPairing({ ...pairing, used: true });
 			parsed = body.value;
 			signer = body.value.pair.publicKey;
 			paired = true;

@@ -3,7 +3,7 @@
 import type { Invoice } from "../../src/core/invoice";
 import { ownIndex, walletOf } from "../../src/core/walletindex";
 import { siteIndex } from "../../src/core/walletindex";
-import type { BridgeState, CheckRow, NetworkRecord, PoolCheckState, PreviousKey, RefusedRecord, RotationState, SyncStore, WalletsState } from "../../src/sync/handle";
+import type { BridgeState, CheckRow, NetworkRecord, PairingClaim, PoolCheckState, PreviousKey, RefusedRecord, RotationState, SyncStore, WalletsState } from "../../src/sync/handle";
 import { type PairingState, keyId } from "../../src/sync/pairing";
 
 const SEEDS = {
@@ -63,7 +63,20 @@ export class MemoryStore implements SyncStore {
 	async getPublicKey() { return this.publicKey; }
 	async setPublicKey(k: string) { this.publicKey = k; }
 	async getPairing() { return this.pairing; }
-	async setPairing(s: PairingState) { this.pairing = s; }
+	/** Claims by revision. The stored object's identity stands in for the KV revision: any write replaces it. */
+	private claims = new Map<string, PairingState>();
+	async claimPairing(expected: PairingState): Promise<PairingClaim | null> {
+		const read = this.pairing;
+		await Promise.resolve(); // the read and the conditional write are two steps, as in KV
+		if (!read || read.used || read.codeHash !== expected.codeHash || this.pairing !== read) return null;
+		this.pairing = { ...read, used: true };
+		const revision = String(this.claims.size + 1);
+		this.claims.set(revision, this.pairing);
+		return { state: read, revision };
+	}
+	async releasePairing(claim: PairingClaim) {
+		if (this.pairing === this.claims.get(claim.revision)) this.pairing = { ...claim.state, used: false };
+	}
 	/** Wallet 0's gap baseline (state:paidTop); other wallets' are in paidTops (spec change 46). */
 	paidTop: number | null = null;
 	paidTops = new Map<number, number>();

@@ -22,7 +22,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-12 | Accepted limit (Wyatt, 2026-11-08); was Medium | T01, R11 | 1, 1 | One expensive plugin request blocks all others on the Node runner for the full 30 s wall | open; **accepted limit (Wyatt, 2026-11-08)**: a line in phase 09's install docs and the report; re-checked at the EmDash 1.4.0 check |
 | RT-13 | Low | F01 | 1, 1 | A slow request body isn't bounded by the 30 s wall; a connection can be held open past it | open; left for release 1 (Wyatt, 2026-11-08): the proxy's job; an install-docs line in phase 09 |
 | RT-14 | Low | F04 | 1, 1 | The admin handler settles or expires an open tip the release-1 page offers no action for | open; **fix before release 1** (Wyatt, 2026-11-08) |
-| RT-15 | Medium | R11, R13 | 1, 1 | At a spam-cap-sized backlog each sync's watch scan takes ~28 s, within ~2 s of the 30 s wall | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-15 | Low (Wyatt, 2026-11-13); was Medium | R11, R13 | 1, 1 | At a spam-cap-sized backlog a sync takes about 0.9 s, not the spec's 0.2 s, and a capped tips scan drops newer rows (first filed as ~28 s a sync, which was the test seed's doing) | **closed** 2026-11-13 with a wording change (spec change 51), no plugin code; three items on the after-release-1 backlog |
 | RT-16 | Low | F04 | 1, 1 | Coffer's sidebar link and dashboard widget show to roles that can't use them | open; on Wyatt's upstream list (Wyatt, 2026-11-08) |
 | RT-17 | Low | F04 | 1, 1 | A non-admin's refusal shows raw JSON in the "Plugin Error" banner | open; on Wyatt's upstream list (Wyatt, 2026-11-08) |
 | RT-18 | Low | T08 | 1, 1 | A tip note's stacked combining marks spill above and below its line on the admin page | open; left for release 1 (Wyatt, 2026-11-08): cosmetic, admin only |
@@ -250,9 +250,9 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
   - Observation (T30): when an admin marks a reversed tip settled, the tip totals stay at 0 XMR, because its payment is no longer reported.
 - **Status:** open.
 
-## RT-15 — At a spam-cap-sized backlog each sync's watch scan takes ~28 s, within ~2 s of the 30 s wall
+## RT-15 — At a spam-cap-sized backlog each sync's watch scan takes ~28 s, within ~2 s of the 30 s wall (corrected 2026-11-13: about 0.9 s; closed as Low)
 
-- **Rows:** R11, R13. **Severity:** Medium (Wyatt rules). **Pass 1, round 1.** Group H1/L7, live on the dev site: `scripts/redteam/backlog-live.mjs` (`seed --count 20100`, then `run`). Evidence `~/xmr-pay-dev-data/redteam/h1-2026-10-26T195804512Z.txt`.
+- **Rows:** R11, R13. **Severity:** Low (Wyatt, 2026-11-13; was Medium on "within 2 s of the wall", which the correction below withdrew). **Pass 1, round 1.** Group H1/L7, live on the dev site: `scripts/redteam/backlog-live.mjs` (`seed --count 20100`, then `run`). Evidence `~/xmr-pay-dev-data/redteam/h1-2026-10-26T195804512Z.txt`.
 - **What I did:** seeded 20,100 settled stagenet tips (each a watch candidate: one shallow transfer, 3 confirmations) plus one open probe, for ~20,139 invoice rows, then paired a fresh in-memory key and ran signed syncs, timing each. The dev site was in `astro dev`; `data.db` was backed up first and restored to baseline (38 invoices, 338 pool) afterward.
 - **What happened:** every sync that returns a `watch` (which is every sync, including the empty-body pairing sync) took **~28 s**: pair 27.7 s, first backlog sync 27.9 s, the sync under the L7 flood 28.6 s. All three finished under the 30 s wall, but by less than ~2.1 s. The watch was bounded at **20,001** entries out of ~20,103 candidates (102 dropped), so the 200-page cap truncates the watch, and the admin Health banner fired: *"The watch list hit its safety cap — At 20:00 UTC, more recent invoices existed than Coffer reads in one sync (20,000), so some may not be checked for late payments…"* (R13 holds). A payment to a watched invoice settled exactly once, and a repeat sync didn't double-count.
 - **What the spec says:** spec change 35, condition 2 sized the cap to "the most the spam cap allows (40 open invoices per 30 minutes, kept 8 days for tips: about 15,400 rows; cap 200 pages)" and estimated **"about 0.2 s a sync at 15,000 invoices (session 7a)."** R11's claim is that with thousands of open and expired invoices each sync finishes inside the 30 s wall and the backlog drains. The live measurement at 20,100 is ~28 s — about 140× the spec's estimate — leaving thin headroom under the wall.
@@ -311,7 +311,12 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
     3. When the 200-page cap truncates, the tips scan still keeps the oldest rows. On the 25,000-row flood the "recent" scan (the last two days) put the newest rows back, so the watch held 22,218. The 10-30 probe was dropped because the old seed's rows all fell inside both scans.
     4. No time budget: nothing but the row cap bounds a sync's scan time on a slow host.
   - **The severity is Wyatt's to rule again** (it was Medium on the strength of "within 2 s of the wall").
-- **Status:** open.
+- **Wyatt's ruling (2026-11-13): Low, closed with a wording change, no plugin code** (spec change 51).
+  - The spec's 0.2 s estimate gives way to the measured numbers (0.9 s at 15,360 rows, 1.1 s at 20,100).
+  - What the cap drops past 20,000 rows is an accepted limit: the tips between the oldest 20,000 and the last two days. An unpaid flood can't reach 20,000.
+  - The EmDash upgrade checklist gets the flood-seed timing run, failing above 5 s at 20,100 rows on the built copy (`backlog-live.mjs time --max-ms 5000`); first used in the 1.4.0 upgrade.
+  - Reading tips once, scanning newest first and a time budget are backlog items for after release 1. The fix decided earlier the same day (slices, read-once, a 12 s budget) isn't built.
+- **Status:** closed (wording change, 2026-11-13).
 
 ## Round 1, Manual layer: A3 and B1 (Wyatt, 2026-10-29 UTC)
 

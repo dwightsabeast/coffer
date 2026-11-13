@@ -5379,3 +5379,30 @@ Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
 **Stopped here** (CLAUDE.md: evidence against what the plan assumed). No plugin code or test was written for Part 2. Wyatt decides whether slices and the budget still go ahead, in full or reduced, and RT-15's severity.
 
 **State:** `data.db` restored from `redteam/rt15b-before.db` (62 invoices, 364 pool rows, the bridge's key present). Built copy and dev site stopped, ports free. `plugin/dist` and the site's `dist` are clean builds of the committed plugin code. Commits local from `0372a22` on; `origin/redteam-1` is at `0c0f4a9`. A bundle follows.
+
+## 2026-11-13 · Phase 07b fix sessions · RT-15 closed with a wording change (Wyatt's ruling), no plugin code
+
+**Wyatt's ruling** (decisions row; spec change 51):
+1. RT-15 is **Low** (was Medium on "within 2 s of the wall").
+2. The spec's 0.2 s estimate becomes the measured numbers (built copy, dev box: 0.9 s at 15,360 rows, 1.1 s at 20,100). What the cap drops past 20,000 rows is an accepted limit.
+3. The EmDash upgrade checklist gets the flood-seed timing run: fail above 5 s for a 20,100-row flood sync on the built copy. Used in the 1.4.0 upgrade.
+4. Read-tips-once, newest-first scanning and a time budget are backlog items for after release 1 (listed in spec change 51). The morning's fix decision (slices, read-once, a 12 s budget) isn't built.
+5. Push `0372a22`, `c335839` and this commit, then check CI.
+
+**Done:**
+- `docs/spec-changes.md` 51 (accepted wording, the guard, the backlog), RT-15's finding (table row and section: Low, closed), the decisions row (the morning's row marked replaced), matrix R11's text (still Partial), and the checklist's new row plus a line under "EmDash 1.4.0".
+- `backlog-live.mjs time --max-ms <n>`: a timed sync slower than that is a FAIL (default 30000, as before). CLAUDE.md's row names the checklist run and the seed shapes.
+
+**Test results:**
+- Script tests: 49 passed.
+- The checklist run, live on the built copy (20,100-row flood, `--max-ms 5000`): 3 of 3 PASS at 1,190, 1,140 and 1,114 ms (`h1-2026-11-13T225626197Z.txt`).
+- The same with `--max-ms 500`: 3 of 3 FAIL, exit 1, which shows the limit can fail (`h1-2026-11-13T225645412Z.txt`).
+- No plugin file changed, so the plugin suites weren't rerun.
+
+**Not done, for Wyatt:** `plugin/src/store.ts`'s comment on `MAX_SCAN_PAGES` still says "a 15,000-row scan took about 0.2 s". Left alone under "no plugin code"; a one-line comment fix when a later commit touches the file.
+
+**State:** `data.db` restored from `redteam/rt15b-before.db` (62 invoices, 364 pool rows, the bridge's key present). Built copy and dev site stopped, ports free.
+
+**What's left before phase 09:** RT-05, the six Lows (RT-02, RT-03, RT-10, RT-14, RT-22, RT-23), the EmDash 1.4.0 check (a dependency upgrade: Wyatt approves first; it now includes the flood-seed timing run), and the RT-08 re-check question.
+
+**Next step:** RT-05 (an IPv6 /64 counted as one client), plan first.

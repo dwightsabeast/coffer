@@ -20,6 +20,8 @@
 //                                              [--kv <key>]       syncs and nothing else (no drain, no flood). --kv logs
 //                                                                 one of the plugin's KV values after each sync, for a
 //                                                                 temporary build that records its own stage timings there
+//                                              [--max-ms <n>]     FAIL a timed sync slower than this (the EmDash upgrade
+//                                                                 checklist's run: a 20,100-row flood seed, --max-ms 5000)
 //
 // Loopback only. The run step pairs a fresh in-memory key through the KV shortcut and reads the admin Health line
 // through EmDash's own dev sign-in (dev mode). It never calls cleanupCofferRows (that wipes the baseline fixtures);
@@ -36,7 +38,7 @@ const value = (name, fallback) => {
 	return i === -1 ? fallback : args[i + 1];
 };
 if (cmd !== "seed" && cmd !== "run" && cmd !== "time") {
-	console.error("usage: node scripts/redteam/backlog-live.mjs seed [--count 20100] [--shape settled|flood|burst] [--past-cap] | run [--site <loopback URL>] [--built] | time [--site <loopback URL>] [--syncs 3] [--kv <key>]");
+	console.error("usage: node scripts/redteam/backlog-live.mjs seed [--count 20100] [--shape settled|flood|burst] [--past-cap] | run [--site <loopback URL>] [--built] | time [--site <loopback URL>] [--syncs 3] [--kv <key>] [--max-ms <n>]");
 	process.exit(2);
 }
 
@@ -50,6 +52,8 @@ const BUILT = args.includes("--built");
 const SYNCS = Number(value("--syncs", "3"));
 const KV_KEY = value("--kv", null);
 if (cmd === "time" && (!Number.isInteger(SYNCS) || SYNCS < 1 || SYNCS > 50)) throw new Error("--syncs must be 1..50");
+const MAX_MS = Number(value("--max-ms", "30000"));
+if (!Number.isInteger(MAX_MS) || MAX_MS < 1 || MAX_MS > 30_000) throw new Error("--max-ms must be 1..30000");
 // A height well above the real stagenet height (2236600 at the baseline), so the seed can't be confused with real
 // payments. Seeded transfers sit a few blocks below it, so settled tips start shallow and stay watch candidates.
 const H = 2_300_000;
@@ -249,7 +253,7 @@ try {
 		log(`the sync before the timed ones (the pairing, or the probe answer) took ${r.ms.toFixed(0)}ms${KV_KEY ? `  ${KV_KEY}: ${kvValue()}` : ""}`);
 		for (let n = 1; n <= SYNCS; n++) {
 			r = await sync({});
-			check(`time: sync ${n} of ${SYNCS} finishes under 30 s`, r.status === 200 && r.data?.ok === true && r.ms < 30_000, `${r.ms.toFixed(0)}ms status ${r.status} ${r.code ?? ""} watch ${watchOf(r)?.length ?? "?"}`);
+			check(`time: sync ${n} of ${SYNCS} finishes under ${MAX_MS} ms`, r.status === 200 && r.data?.ok === true && r.ms < MAX_MS, `${r.ms.toFixed(0)}ms status ${r.status} ${r.code ?? ""} watch ${watchOf(r)?.length ?? "?"}`);
 			if (KV_KEY) log(`  ${KV_KEY}: ${kvValue()}`);
 		}
 		log(`evidence: ${OUT}`);

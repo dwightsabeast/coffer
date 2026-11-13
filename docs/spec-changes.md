@@ -1887,3 +1887,41 @@ Proposal (plugin only; no change to what the bridge sends):
 4. **A side effect (accepted by Wyatt, 2026-11-13):** today a pairing in flight writes its old state back at the end, so a code the admin issues during it is overwritten and dead. With the claim, nothing is written at the end, so that newer code stays valid for its 15 minutes. The older code's pairing still completes, as today. A release never revives an old code over a newer one.
 Effect on the admin budget: none.
 Effect on the trust contract: none. The same KV key (`state:pairing`) with the same fields; no route, collection, index, capability, setting or host. It relies on `ctx.kv.compareAndSet` (EmDash 1.3.1, the floor), listed in `docs/emdash-upgrade-checklist.md`.
+
+## 51. The watch scan's cost is the measured one, and what the cap drops past 20,000 rows is an accepted limit (RT-15)  (status: accepted, 2026-11-13, Wyatt; wording only, no plugin code)
+Found in: 07b pass 1, RT-15 (H1/L7), re-measured on 2026-11-13 with seeds that give each row its own `created_at`.
+Spec says:
+- Spec change 35, condition 2: "**Cost on Node:** about 0.2 s a sync at 15,000 invoices (session 7a)."
+- The same condition: the scans page "under a safety cap sized to the most the spam cap allows (40 open invoices per 30 minutes, kept 8 days for tips: about 15,400 rows; cap 200 pages). The admin page's Health warns if the cap is ever reached." It doesn't say which rows a capped scan leaves out.
+
+Evidence (today's code, the built copy on the dev box, three syncs each; `scripts/redteam/backlog-live.mjs seed --shape flood`, then `time`; files in `docs/redteam-findings.md`, RT-15):
+
+| Expired unpaid tips, spread over the 8-day lookback | Whole sync |
+| --- | --- |
+| 15,360 (the spam cap's maximum: 40 per 30 minutes for 8 days) | 0.86–0.92 s |
+| 20,100 | 1.11–1.15 s |
+| 25,000 (past the cap) | 1.21–1.28 s |
+
+The 27–28 s that RT-15 first reported came from a test seed that gave every row one `created_at`; real invoices get a millisecond stamp each.
+
+### Accepted wording
+
+1. **Cost on Node** (replaces the 0.2 s estimate): measured on the built copy on the dev box, a sync takes about 0.9 s at 15,360 watched invoices, the spam cap's maximum, and about 1.1 s at 20,100. The Node runner's wall is 30 s.
+2. **What the cap drops** (an accepted limit for release 1). Each scan stops at 200 pages, 20,000 rows, and reads oldest first.
+   - Past 20,000 tips inside the 8-day lookback, the tips scan keeps the oldest 20,000 and leaves out the newer ones.
+   - The "recent" scan still covers every invoice whose window ended in the last two days, so the newest two days stay watched (up to its own 20,000 rows). On the 25,000-row flood the watch held 22,218.
+   - What goes unwatched is the tips between the oldest 20,000 and the last two days. A late payment to one of them isn't seen until older rows leave the lookback. Health shows the cap warning whenever a scan is cut.
+   - An unpaid flood can't reach 20,000: checkout holds it to 40 open invoices per 30 minutes, which is 15,360 over the 8 days.
+3. **Nothing but the row cap bounds a sync's scan time.** Accepted for release 1 on the measured margin (about 1 s against 30 s).
+
+### Guard
+
+The EmDash upgrade checklist gets a row: a 20,100-row flood seed on the built copy, failing if a sync takes more than 5 s (`time --max-ms 5000`). First used in the 1.4.0 upgrade.
+
+### After release 1 (backlog, not planned)
+
+- Read each tip once: the "recent" and tips scans both read the last two days' tips.
+- Scan newest first, so a cut drops the oldest rows, not the newer ones.
+- A time budget for the scans, so a slow host cuts the watch (with the Health warning) before it reaches the wall.
+
+These replace Wyatt's earlier decision of the same day (time slices, read-once and a required 12 s budget before release 1), which rested on the 27 s figure. Spec change 35's option A (a KV watch index) is unchanged.

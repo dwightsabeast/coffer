@@ -1970,3 +1970,25 @@ Spec says:
    `<why>` is one of: "no payment addresses are watched, so there was nothing to check", "no mined payments to check", "no mined payments checked yet" (before the first sync), or "<second node> hasn't reached the block of a mined payment yet, so it is held at 0 confirmations until it has". The off, unavailable and MISMATCH lines are unchanged. With nothing watched the last result is no longer repeated, a mismatch included. The site is sent the same four states as before with these details: no wire change before release 1 (Wyatt). The admin page's field is unchanged; telling the cases apart there waits until after release 1.
 
    **Wording, accepted by Wyatt on 2026-11-14:** "nothing checked" in place of the plan's "nothing to check", because the fourth reason is a payment that exists but couldn't be checked yet; and "none checked since the bridge started" in place of "never checked", because the time isn't kept across a restart.
+
+## 54. The check list's rotation always has room (RT-35)  (status: accepted, 2026-11-14, Wyatt: reserve 25; built the same day)
+Found in: the 07b fix sessions, answering RT-08's open question ("could the re-check after an outage cover every row added since the bridge's last check, not only the last 24 hours?").
+Spec says (spec change 46, item 1): the check list has at most 150 entries, in order: every free row; every row added in the last 24 hours; open invoices' rows; a rotation through the rest, moving every 30 s.
+Evidence:
+- **The rotation already re-checks every claimed row, whatever its age.** The 24 hours only decide which rows go first. A full pass takes (claimed rows ÷ 50) × 30 s.
+- **But the cap was filled before the rotation's turn, and its pointer moved on anyway.** With 50 free rows, 100 rows claimed in the last 24 hours and 120 older claimed rows, none of the 120 was listed in 20 syncs (scratch test, in-memory store). A site with 100 or more tips a day gets there with no attacker.
+- **"Since the bridge's last check" can't be the window.** That time comes from a signed "ok" report, which a thief holding the key can send (spec change 46 already says so of marking rows "checked"). A wider window would also crowd the rotation out more.
+
+### Accepted
+
+1. **The rotation keeps 25 of the 150 entries.** When a new 30-second turn starts, recent and open rows stop at 125, and the turn's chunk is as long as the room left: 25 to 50 claimed rows.
+2. **The pointer moves only past rows that were sent.** For the rest of that turn the chunk keeps its room, so every sync in the turn lists the whole chunk, a thief's sync or the honest bridge's.
+3. **Free rows are unchanged:** all of them, first. The free cap of 50 keeps them inside the list.
+4. **A full pass on a busy site is slower:** (claimed rows ÷ 25) × 30 s when the list is full, for example 6 hours 40 minutes at 20,000 rows; on a quiet site it's unchanged. The rotation also passes rows already listed as recent, which costs it a few turns.
+5. **The 24-hour window stays.**
+
+Effect on the admin budget: none.
+Effect on the trust contract: none. The same `check` field and cap, the same KV keys (`state:recent`, `state:checkRotation`) with the same fields; no route, collection, index, capability, setting or host; no bridge change.
+Built (2026-11-14): `checkList` in `plugin/src/sync/handle.ts`, `CHECK_ROTATION_RESERVE = 25`; three tests in `plugin/tests/sync/poolcheck.test.ts` tagged `[T03] [RT-35]`, red first.
+For the live spec (Wyatt applies): spec change 46's order gains "the rotation always has room for at least 25 rows, and never passes a row it didn't send".
+

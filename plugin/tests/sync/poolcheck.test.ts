@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { addressDigest } from "../../src/core/digest";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { siteIndex } from "../../src/core/walletindex";
-import { CHECK_ROTATE_MS, MAX_CHECK, RECENT_MS, handleSync } from "../../src/sync/handle";
+import { CHECK_ROTATE_MS, CHECK_ROTATION_RESERVE, MAX_CHECK, RECENT_MS, handleSync } from "../../src/sync/handle";
 import { newPairingCode } from "../../src/sync/pairing";
 import { POOL_TARGET } from "../../src/sync/protocol";
 import { type KeyName, MemoryStore, PUBLIC_KEYS, bytesOf, signedHeaders } from "./helpers";
@@ -90,6 +90,69 @@ describe("the check list (spec change 46, item 1)", () => {
 		expect(CHECK_ROTATE_MS).toBe(30_000);
 		const wrapped = ok(await send(store, body({ seq: at(90) }), { now: at(90) })).check?.map((c) => c.index);
 		expect(wrapped?.[0]).toBe(1);
+	});
+
+	// RT-35: a busy day used to fill the list before the rotation's turn, while its pointer moved on regardless.
+	async function busyDay(store: MemoryStore, day: number) {
+		ok(await send(store, body({ seq: at(day), addresses: addrs(1, 50) }), { now: at(day) }));
+		for (let i = 1; i <= 50; i++) claim(store, i, tip(`inv_${i}`, i, HONEST(i), { status: "settled", settledAt: at(day + 5), finalAt: at(day + 5) }));
+		ok(await send(store, body({ seq: at(day + 60), addresses: addrs(51, 50) }), { now: at(day + 60) }));
+		for (let i = 51; i <= 100; i++) claim(store, i, tip(`inv_${i}`, i, HONEST(i), { status: "settled", settledAt: at(day + 65), finalAt: at(day + 65) }));
+		ok(await send(store, body({ seq: at(day + 120), addresses: addrs(101, 50) }), { now: at(day + 120) }));
+		return day + 120;
+	}
+
+	it("[T03] [RT-35] a busy day doesn't crowd the rotation out: with 50 free and 100 recent rows, every older claimed row is still listed, 25 claimed rows a turn", async () => {
+		const store = paired();
+		for (let i = 1001; i <= 1120; i++) store.pool.set(i, { addrIndex: i, address: HONEST(i), status: "claimed", invoiceId: `inv_${i}` });
+		const from = await busyDay(store, 3 * 24 * 3600);
+		expect(CHECK_ROTATION_RESERVE).toBe(25);
+		const old = new Set<number>();
+		// 220 claimed rows at 25 a turn: nine turns. The first four pass the day's own 100, which are listed anyway.
+		for (let k = 1; k <= 9; k++) {
+			const check = ok(await send(store, body({ seq: at(from + k * 30) }), { now: at(from + k * 30) })).check ?? [];
+			expect(check.length).toBeLessThanOrEqual(MAX_CHECK);
+			for (let i = 101; i <= 150; i++) expect(check.map((c) => c.index)).toContain(i); // every free row, always
+			const turn = check.map((c) => c.index).filter((i) => i > 1000);
+			expect(turn.length).toBe(k <= 4 ? 0 : k <= 8 ? 25 : 20);
+			expect((store.rotation?.to ?? 0) - (store.rotation?.from ?? 0)).toBe(k <= 8 ? 24 : 19); // the pointer moved by what was sent
+			for (const i of turn) old.add(i);
+		}
+		expect(old.size).toBe(120);
+	});
+
+	it("[T03] [RT-35] within one 30 s turn every sync lists the whole chunk, also on a busy day: the pointer never passes a row that wasn't sent", async () => {
+		const store = paired();
+		for (let i = 1001; i <= 1120; i++) store.pool.set(i, { addrIndex: i, address: HONEST(i), status: "claimed", invoiceId: `inv_${i}` });
+		const from = await busyDay(store, 3 * 24 * 3600);
+		const sent: number[] = [];
+		for (let k = 1; k <= 9; k++) {
+			const first = (ok(await send(store, body({ seq: at(from + k * 30) }), { now: at(from + k * 30) })).check ?? []).map((c) => c.index).filter((i) => i > 1000);
+			for (let s = 1; s < 30; s += 7) {
+				const again = (ok(await send(store, body({ seq: at(from + k * 30 + s) }), { now: at(from + k * 30 + s) })).check ?? []).map((c) => c.index).filter((i) => i > 1000);
+				expect(again).toEqual(first);
+			}
+			if (k > 4) expect([store.rotation?.from, store.rotation?.to]).toEqual([first[0], first.at(-1)]);
+			sent.push(...first);
+		}
+		// In order, with no gap: what the pointer has passed is exactly what was sent.
+		expect(sent).toEqual(Array.from({ length: 120 }, (_, k) => k + 1001));
+	});
+
+	it("[T03] [RT-35] a thief's row from a month ago, found by the rotation on a busy day, turns bad and its tip goes to review", async () => {
+		const store = paired();
+		for (let i = 1001; i <= 1120; i++) store.pool.set(i, { addrIndex: i, address: i === 1100 ? THIEF(i) : HONEST(i), status: "claimed", invoiceId: `inv_${i}` });
+		store.invoices.set("inv_1100", tip("inv_1100", 1100, THIEF(1100), { status: "settled", settledAt: at(60), finalAt: at(60) }));
+		const from = await busyDay(store, 30 * 24 * 3600);
+		let listedAt = 0;
+		for (let k = 1; k <= 9 && listedAt === 0; k++) {
+			const check = ok(await send(store, body({ seq: at(from + k * 30) }), { now: at(from + k * 30) })).check ?? [];
+			if (check.some((c) => c.index === 1100)) listedAt = from + k * 30;
+		}
+		expect(listedAt).toBeGreaterThan(0);
+		ok(await send(store, body({ seq: at(listedAt + 1), checks: { pool: { state: "mismatch", bad: [1100] } } }), { now: at(listedAt + 1) }));
+		expect(store.pool.get(1100)?.status).toBe("bad");
+		expect(store.invoices.get("inv_1100")).toMatchObject({ status: "review", reviewReason: "not_your_wallet" });
 	});
 
 	it("[T03] capped at 150", async () => {

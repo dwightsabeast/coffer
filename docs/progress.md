@@ -5641,3 +5641,30 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **Left before phase 09:** the RT-08 re-check question in `docs/decisions.md`, "Still to decide". EmDash 1.5.0's check comes after 2026-11-18, about 18:20 UTC.
 
 **Next step:** the RT-08 re-check question, with Wyatt.
+
+## 2026-11-14 · Phase 07b fix sessions · RT-08's re-check question answered; RT-35 found and fixed
+
+**The bundle from the entry above:** `coffer-redteam-1-20261114-5b4b9f5.bundle`, SHA-256 `db9ed690b46ba55759e9201110fc5ac2624c85bb6dc0593a91d44399094f2955`.
+
+**Pushed and green:** `origin/redteam-1` is at `5b4b9f5` (Wyatt's word). CI run 43638238454 passed on it (plugin, theme, bridge): the first CI run on EmDash 1.4.0.
+
+**The question** (decisions, "Still to decide"): could the re-check after an outage cover every row added since the bridge's last check, not only the last 24 hours?
+
+**The answer:**
+- The rotation already re-checks every claimed row, whatever its age; the 24 hours only decide which go first. The RT-08 ruling's "second gap" line said otherwise and is corrected.
+- "Since the bridge's last check" wasn't built: that time comes from a signed "ok" report, which a thief with the key can send.
+- **A different gap turned up, RT-35 (Low, Wyatt):** on a busy site the check list's 150-row cap was full before the rotation's turn while its pointer moved on, so older claimed rows were never re-checked. Scratch test: 0 of 120 older rows listed in 20 syncs.
+
+**Wyatt's decisions:** build the fix now; Low; the rotation keeps 25 rows; correct the ruling.
+
+**Done:** `checkList` in `plugin/src/sync/handle.ts` (`CHECK_ROTATION_RESERVE = 25`; the pointer moves only past rows that were sent; the chunk keeps its room for the rest of its turn). Three `[T03] [RT-35]` tests in `plugin/tests/sync/poolcheck.test.ts`, red first, and red again against the old code after two of them had their turn counts corrected. Spec change 54; the finding; matrix row T03; the decision moved out of "Still to decide". No contract change, no bridge change.
+
+**Test results:** plugin 532 passed, 7 expected fail, 1 skipped (default; three more than before) and 102 passed, 1 skipped (switch on); typecheck; the bundle check (74.7 KB). Theme and bridge: not run, nothing of theirs changed. **Not covered:** nothing live; the fix is unit-tested on the in-memory store only.
+
+**For Wyatt to know:** a full pass of the rotation on a busy site now takes (claimed rows ÷ 25) × 30 s, about 6 hours 40 minutes at 20,000 rows; a quiet site is unchanged. The rotation also spends turns on rows already listed as recent.
+
+**State of the box:** dev site and built copy stopped; `data.db` untouched since the 1.4.0 check's close; `plugin/dist/` holds a build with the fix (the bundle check builds it). The commit is local, not pushed. A session-end bundle follows.
+
+**Left before phase 09:** nothing from the 07b fix list. EmDash 1.5.0's check comes after 2026-11-18, about 18:20 UTC.
+
+**Next step:** phase 09, plan first, when Wyatt names it; or the EmDash 1.5.0 check once it's of age.

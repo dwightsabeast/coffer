@@ -73,6 +73,8 @@ export const MAX_WALLETS = 100;
 export const MAX_CHECK = 150;
 export const CHECK_ROTATION_CHUNK = 50;
 export const CHECK_ROTATE_MS = 30_000;
+/** RT-35: the rows of every check list kept for the rotation, so a busy day's recent and open rows can't crowd it out. */
+export const CHECK_ROTATION_RESERVE = 25;
 export const RECENT_MS = 24 * 3_600_000;
 
 /** A pool row as the check list reads it (site number). */
@@ -514,36 +516,45 @@ async function applyPoolReport(store: SyncStore, report: BridgeChecks["pool"], w
  * then rows added in the last 24 hours, newest first, whatever their status; then open invoices' rows, newest first;
  * then a rotation through the rest that moves on by the clock, every CHECK_ROTATE_MS, so a thief syncing often can't
  * hurry it past the honest bridge. The current wallet's rows only, at most MAX_CHECK, as own indexes and digests.
+ *
+ * RT-35: the rotation always has room. Recent and open rows stop CHECK_ROTATION_RESERVE short of the cap when a new
+ * turn starts, and the turn's chunk is no longer than the room left, so the pointer never passes a row that wasn't
+ * sent. For the rest of that turn the chunk keeps its room, so every sync in it lists the whole chunk.
  */
 async function checkList(store: SyncStore, wallet: number, candidates: Invoice[], now: number): Promise<Array<{ index: number; digest: string }>> {
 	const out: Array<{ index: number; address: string }> = [];
 	const seen = new Set<number>();
+	let cap = MAX_CHECK;
 	const push = (index: number, address: string) => {
-		if (out.length >= MAX_CHECK || seen.has(index) || walletOf(index) !== wallet) return;
+		if (out.length >= cap || seen.has(index) || walletOf(index) !== wallet) return;
 		seen.add(index);
 		out.push({ index, address });
 	};
 	const live = (r: CheckRow | null): r is CheckRow => r !== null && (r.status === "free" || r.status === "claimed");
+	const start = siteIndex(wallet, 0);
+	const rotation = await store.getRotation();
+	const due = !rotation || rotation.wallet !== wallet || now - rotation.at >= CHECK_ROTATE_MS;
+	// The turn under way: its chunk is read first, so the rows below leave it its room.
+	let chunk: CheckRow[] = due ? [] : await store.poolRows({ wallet, status: "claimed", after: rotation.from - 1, through: rotation.to, limit: CHECK_ROTATION_CHUNK });
 	for (const r of await store.poolRows({ wallet, status: "free", limit: MAX_CHECK })) push(r.addrIndex, r.address);
+	cap = MAX_CHECK - (due ? CHECK_ROTATION_RESERVE : chunk.length);
 	for (const e of await store.getRecent()) {
-		if (out.length >= MAX_CHECK) break;
+		if (out.length >= cap) break;
 		if (now - e.at > RECENT_MS || seen.has(e.index) || walletOf(e.index) !== wallet) continue;
 		const r = await store.poolGet(e.index);
 		if (live(r)) push(r.addrIndex, r.address);
 	}
 	const open = candidates.filter((inv) => isOpen(inv) && walletOf(inv.addrIndex) === wallet && !leftBehind(inv)).sort((a, b) => b.createdAt - a.createdAt);
 	for (const inv of open) push(inv.addrIndex, inv.subaddress);
-	const start = siteIndex(wallet, 0);
-	let rotation = await store.getRotation();
-	let chunk: CheckRow[];
-	if (!rotation || rotation.wallet !== wallet || now - rotation.at >= CHECK_ROTATE_MS) {
+	cap = MAX_CHECK;
+	// A new turn: as many rows as there is room for, at most a chunk. With no room at all (more free rows than the free
+	// cap allows, which checkout and sync never leave), the pointer stays where it is.
+	const room = Math.min(CHECK_ROTATION_CHUNK, MAX_CHECK - out.length);
+	if (due && room > 0) {
 		const after = rotation?.wallet === wallet ? rotation.to : start;
-		chunk = await store.poolRows({ wallet, status: "claimed", after, limit: CHECK_ROTATION_CHUNK });
-		if (chunk.length === 0 && after > start) chunk = await store.poolRows({ wallet, status: "claimed", after: start, limit: CHECK_ROTATION_CHUNK });
-		rotation = { wallet, from: chunk[0]?.addrIndex ?? start, to: chunk.at(-1)?.addrIndex ?? start, at: now };
-		await store.setRotation(rotation);
-	} else {
-		chunk = await store.poolRows({ wallet, status: "claimed", after: rotation.from - 1, through: rotation.to, limit: CHECK_ROTATION_CHUNK });
+		chunk = await store.poolRows({ wallet, status: "claimed", after, limit: room });
+		if (chunk.length === 0 && after > start) chunk = await store.poolRows({ wallet, status: "claimed", after: start, limit: room });
+		await store.setRotation({ wallet, from: chunk[0]?.addrIndex ?? start, to: chunk.at(-1)?.addrIndex ?? start, at: now });
 	}
 	for (const r of chunk) push(r.addrIndex, r.address);
 	return Promise.all(out.map(async (e) => ({ index: ownIndex(e.index), digest: await addressDigest(e.address) })));

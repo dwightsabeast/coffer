@@ -38,7 +38,7 @@ The dev site's install: `npm install --save-exact --before=2026-11-07T19:51:45Z`
 | Cloudflare runner's limits | Read only, not re-measured (the spike site's token has expired): `@emdash-cms/cloudflare` 1.4.0 still has `subrequests: 10` and `cpuMs: 50` |
 | `getPublicPluginApiRouteHandler` | Holds: same declaration. Theme tests pass; the pay page answered 200 for an open tip on `astro dev` and 404 for an unknown token on the built copy |
 | `getPublicOrigin` | Holds: `getPublicOrigin` and `getEnvSiteUrl` are byte-identical, still exported and typed in `api/route-utils`. `checkPublicCsrf`'s file differs only in a session write for external auth providers (#4157). The three `[T17] [RT-20]` tests pass. The tip button through the tunnel on the built copy wasn't clicked this time |
-| Block Kit never polls | Holds: nothing in the admin or blocks changelogs adds a refresh. **Changed nearby (#4183):** a Block Kit form block is now a group of fields, not a native `<form>`. The admin route still gets the same interactions (`dev-e2e.mjs` passes); Save on the Settings form in a browser is Wyatt's to click |
+| Block Kit never polls | Holds: nothing in the admin or blocks changelogs adds a refresh. **Changed nearby (#4183):** a Block Kit form block is now a group of fields, not a native `<form>`. The admin route still gets the same interactions (`dev-e2e.mjs` passes), and Wyatt saved the Settings form in a browser: it worked |
 | `ctx.site.url` | Holds: `resolveSiteOrigin` is byte-identical and `readSiteInfo`'s lines are unchanged. Live: the dev site still gives `http://localhost:4321` (red banner); with an `Origin` of `https://pay.example.invalid` the page used that origin |
 | Headers from the page file | Holds. Built copy (`curl -I`, an unknown token, 404): CSP, `cache-control: private, no-store`, `referrer-policy: no-referrer`, `permissions-policy`, `x-content-type-options: nosniff`, `x-robots-tag: noindex, nofollow` |
 | Storage pages and `getMany` | Holds: the plugin context module (`query`, KV, storage) differs from 1.3.1's only in two import names. Store tests pass |
@@ -58,9 +58,9 @@ The five items from the 1.4 release notes:
 
 Also checked: RT-12 (accepted limit) is unchanged. The canary's 60 s spin was stopped at 30,051 ms and a `status` request alongside it waited 30,039 ms (1.3.1: 30,045 and 30,033). The canary's 15 isolation probes gave the same picture as in round 1, with the same two "allowed" (plain http to an allowed host; undeclared `ctx` APIs present, their writes refused). `@emdash-cms/sandbox-workerd` 0.9.6's built code is identical to 0.9.5's.
 
-Not covered: the Cloudflare runner's limits (read only); Save on the Settings form in a browser (Wyatt's); the tip button through the tunnel on the built copy.
+Not covered: the Cloudflare runner's limits (read only); the tip button through the tunnel on the built copy (a tip was made from the Welcome post on the dev site in `astro dev` during the live step, and left unpaid).
 
-The live stagenet tip: `e140` (0.002 XMR, index 360) was created on the dev site with the installed bridge syncing; its result is in `docs/progress.md`.
+The live stagenet tip: `e140` (0.002 XMR, index 360), created on the dev site with the installed bridge syncing and paid by Wyatt from the Feather buyer wallet. Seen at 0 confirmations at 20:17 UTC, 1 at 20:20, settled at 2 by 20:30 (2026-11-14). The admin page lists it as settled.
 
 ### EmDash 1.3.1 (2026-10-25, session 7g; from 1.1.0)
 

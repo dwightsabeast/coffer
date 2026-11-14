@@ -5623,3 +5623,21 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **Carried forward:** RT-23's status lines on a wallet host with a remote node; Ctrl-C after the installer has started changing the machine (phase 09).
 
 **Next step:** Wyatt pays `e140` from the Feather buyer wallet; then record the settlement here, stop the site and the watcher, and make the session-end bundle. After that: the RT-08 re-check question in "Still to decide", then EmDash 1.5.0's check after 2026-11-18 18:20 UTC.
+
+## 2026-11-14 · Phase 07b fix sessions · The EmDash 1.4.0 check, closed: the live tip settled
+
+**The bundle from the entry above:** `coffer-redteam-1-20261114-b1b415f.bundle`, SHA-256 `ae524c6c2615038b54b1299f809a90d84b2ba7087ebc104b7639f76436c3d963`.
+
+**The live tip on 1.4.0:** `e140`, 0.002 XMR, index 360, paid by Wyatt from the Feather buyer wallet. The watcher (`3h-watch.txt`, UTC): new 20:10, confirming at 0 confirmations 20:17:46, 1 confirmation 20:20:04, settled at 2 by 20:30:26 (stagenet took about ten minutes for the second block). The admin page lists it as "Settled"; its pay page still answers 200 with `private, no-store`.
+
+**Wyatt, in the browser:** Save on the Settings form works on 1.4.0 (the Block Kit form change, #4183).
+
+**Also seen:** a tip of about 0.0101 XMR from the Welcome post, made at 20:15 UTC and left unpaid. I take it to be Wyatt's tip-button click through the tunnel; it expires unpaid.
+
+**Still not covered:** the Cloudflare runner's limits (read only); the tip button through the tunnel on the built copy.
+
+**State of the box:** dev site, built copy, watcher and release server stopped; the canary off. `data.db` is the session's starting state plus the installed bridge's syncs, `e140` (settled) and the Welcome tip (still open): 64 invoices, 366 pool rows (read from the database after the site stopped). The dev site and both packages are on EmDash 1.4.0. Commits are local, not pushed. A session-end bundle follows.
+
+**Left before phase 09:** the RT-08 re-check question in `docs/decisions.md`, "Still to decide". EmDash 1.5.0's check comes after 2026-11-18, about 18:20 UTC.
+
+**Next step:** the RT-08 re-check question, with Wyatt.

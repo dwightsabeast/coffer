@@ -29,7 +29,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-19 | Low | T13 (setup) | 1, 2 | The installer checks the pairing code last, so an expired code fails only after the keys are typed and wallet-rpc is downloaded | open; left for release 1 (Wyatt, 2026-11-08): a docs line in phase 09: get the code last |
 | RT-20 | Medium | T17 | 1, 2 | Behind a proxy that ends https, the tip endpoint refuses every visitor's tip as cross-site | fixed in code 2026-11-02 (`de558a1`); live check passed 2026-11-06 (Wyatt); known limit recorded in its section |
 | RT-21 | Low | T15 | 1, 2 | With the stagenet-only flag, a mainnet shop is refused only after its view key has been asked for | open; left for release 1 (Wyatt, 2026-11-08): the stagenet dev flag only |
-| RT-22 | Low | T15 (setup) | 1, 2 | Ctrl-C at an installer prompt is ignored; after it, the install goes on and then fails with a misleading node error | **fixed in code** 2026-11-14 (spec change 53); live check on `coffer-test` pending |
+| RT-22 | Low | T15 (setup) | 1, 2 | Ctrl-C at an installer prompt is ignored; after it, the install goes on and then fails with a misleading node error | **fixed** 2026-11-14 (spec change 53); live check on `coffer-test` passed the same day (Wyatt) |
 | RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | **fixed in code** 2026-11-14 (spec change 53); the admin page left for after release 1 |
 | RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | fixed 2026-11-01 (spec change 46, item 5) |
 | RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open; on the release 2 list (Wyatt, 2026-11-08) |
@@ -585,8 +585,9 @@ Both left the machine blank (files, unit and service user checked). RT-22.
   - The installer treats any stop before its first change as a cancel: it prints "Cancelled. Nothing was changed on this machine." and asks nothing more. All three prompts (address, view key, node) come before the first change. An answer that arrives with or after the Ctrl-C isn't used.
   - This also covers Ctrl-C during a network step before the first change, which used to end with that step's own error.
   - Tests: `TestRedteamCtrlCAtAPromptStopsTheInstaller` runs without its skip, and now also checks the message. New `TestRedteamPrompterCtrlC`: the real prompter with nobody typing, hidden and visible. On a terminal of the dev box, the real prompt code ended at once on Ctrl-C with echo back on (a throwaway program, not kept).
-  - Live on `coffer-test`: waiting on Wyatt's run of `lows2-ctrlc.sh`.
-- **Status:** fixed in code; live check pending.
+  - **Live on a blank `coffer-test`, 2026-11-14 (Wyatt; dev release `0.0.202611141718-dev.f1e7819`, its SHA-256 checked on the container): PASS, both cases.** Ctrl-C at the hidden view-key prompt and at the address prompt each ended the installer at once with exit status 1 and "Cancelled. Nothing was changed on this machine."; no prompt followed; echo was off at the hidden prompt and on again afterwards; the machine was still blank after each. Output: `~/xmr-pay-dev-data/lows2-ctrlc-output.txt`.
+  - Not tried live: Ctrl-C after the installer has started changing the machine (spec change 53, item 4's second half, read from the code).
+- **Status:** fixed; live check passed.
 
 ## RT-23 — `Node check: ok` shows when nothing was checked, and keeps showing an old result
 

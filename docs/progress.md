@@ -5532,3 +5532,22 @@ No code this entry. It records the state for the next session.
 **State of the box:** dev site and built copy stopped; `data.db` untouched; tmux `release` running until the container run is done. A session-end bundle follows.
 
 **Next step:** read `~/xmr-pay-dev-data/lows2-ctrlc-output.txt` and close RT-22's live check. Then the EmDash 1.4.0 check (Wyatt approves the upgrade first) and the RT-08 re-check question, before phase 09.
+
+## 2026-11-14 · Phase 07b fix sessions · The Lows, session 2, closed: RT-22's live check passed on `coffer-test`
+
+**The bundle from the entry above:** `coffer-redteam-1-20261114-0dd947d.bundle`, SHA-256 `f2084a639a2dd6ad5537c41cb5ff6c288afa11611bf88de232e22e5377547b50`.
+
+**Wyatt ran `lows2-ctrlc.sh` on a blank `coffer-test`** (18:40 UTC; dev release `0.0.202611141718-dev.f1e7819`, go1.27.3, SHA-256 checked there). **PASS A and PASS B:**
+- A, Ctrl-C at the hidden view-key prompt: the installer ended at once, exit status 1, said "Cancelled. Nothing was changed on this machine.", asked nothing more; echo off at the prompt, on afterwards; machine still blank.
+- B, Ctrl-C at the address prompt: the same, echo on throughout.
+- Output: `~/xmr-pay-dev-data/lows2-ctrlc-output.txt`. Recorded in RT-22's section, the findings table and matrix row T15.
+
+**Still not covered (unchanged from the entry above):** RT-23's status lines on a live wallet host with a remote node; Ctrl-C after the installer has started changing the machine.
+
+**Open with Wyatt:** the two wording differences in RT-23's status lines (spec change 53, item 5); whether RT-14's narrowing stands (read as yes).
+
+**State of the box:** the `release` tmux session is stopped and port 8099 is free; dev site and built copy stopped; `data.db` untouched. The script made no change to `coffer-test`, so it needs no rollback. Commits are local, not pushed. A session-end bundle follows.
+
+**The six Lows are done** (RT-02, RT-03, RT-10, RT-14, RT-22, RT-23).
+
+**Next step, before phase 09:** the EmDash 1.4.0 check through `docs/emdash-upgrade-checklist.md` (a dependency upgrade: Wyatt approves first; it includes the flood-seed timing run), then the RT-08 re-check question in "Still to decide".

@@ -1,6 +1,6 @@
 ## What you'll need
 
-- **EmDash 1.3.1 or later, hosted on Node.js.** Sites hosted on Cloudflare aren't supported yet.
+- **EmDash 1.4.0 or later, hosted on Node.js.** Sites hosted on Cloudflare aren't supported yet.
 - **A separate, always-on Linux machine with systemd**, such as a small VPS or a home server. The wallet runs there,
   never on your site's server.
 - **Your shop wallet's address and view key.** Never the spend key.

@@ -22,7 +22,7 @@
 	// The hosts EmDash installs this release on (spec change 41 item 3; the 1.3.1 floor is Wyatt's, 2026-10-25). Matches
 	// the emdash peer range in package.json; astro matches the theme's peer.
 	"release": {
-		"requires": { "env:emdash": ">=1.3.1 <2.0.0", "env:astro": ">=7.3.5 <8.0.0" }
+		"requires": { "env:emdash": ">=1.4.0 <2.0.0", "env:astro": ">=7.3.5 <8.0.0" }
 	},
 
 	// Trust contract (spec, "Plugin manifest", revision 69; CLAUDE.md, "Plugin trust contract (frozen)").

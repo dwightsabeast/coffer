@@ -84,12 +84,13 @@ const ENTRY_ID = /^[A-Za-z0-9_-]{1,100}$/;
 
 /**
  * A tip's note as plain text: control characters become spaces, format characters (bidi overrides, zero-width
- * characters) go, runs of whitespace collapse, and the ends are trimmed. Undefined when nothing is left; null when it
- * isn't a string or is longer than TIP_NOTE_MAX.
+ * characters) and lone surrogates (half a character: not text, spec change 53) go, runs of whitespace collapse, and
+ * the ends are trimmed. Undefined when nothing is left; null when it isn't a string or is longer than TIP_NOTE_MAX.
+ * A note over the limit is refused, never cut, so no cut can leave half a pair behind.
  */
 export function cleanNote(raw: unknown): string | null | undefined {
 	if (typeof raw !== "string") return null;
-	const note = raw.replace(/\p{Cc}/gu, " ").replace(/\p{Cf}/gu, "").replace(/\s+/g, " ").trim();
+	const note = raw.replace(/\p{Cc}/gu, " ").replace(/[\p{Cf}\p{Cs}]/gu, "").replace(/\s+/g, " ").trim();
 	if (note === "") return undefined;
 	return [...note].length <= TIP_NOTE_MAX ? note : null;
 }

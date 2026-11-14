@@ -168,7 +168,19 @@ describe("A2: a poisoned price feed", () => {
 		expect(wrong).toEqual([]);
 	});
 
-	it.fails("[T06] [RT-02] A2: a Kraken reply for another pair than the one asked for is not taken as the price", async () => {
+	it("[T06] [RT-02] A2: a reply holding the pair asked for beside another is read from the right entry, in either order", async () => {
+		for (const result of [{ XXMRZEUR: { c: ["90.00", "1"] }, XXMRZUSD: { c: ["150.00", "1"] } }, { XXMRZUSD: { c: ["150.00", "1"] }, XXMRZEUR: { c: ["90.00", "1"] } }, { XMRUSD: { c: ["150.00", "1"] } }]) {
+			h = await redteamHost({ pool: 1 });
+			await h.host.http.respond(KRAKEN("USD"), new Response(JSON.stringify({ error: [], result })));
+			await h.host.http.respond(GECKO("usd"), new Response("down", { status: 502 }));
+			await tip({ amount: { fiatMinor: "500", currency: "USD" } });
+			expect((await h.invoices())[0], JSON.stringify(result)).toMatchObject({ expectedAtomic: "33333333334", rate: { minor: "15000", currency: "USD", source: "api.kraken.com" } });
+			await h.host.dispose();
+			h = undefined;
+		}
+	});
+
+	it("[T06] [RT-02] A2: a Kraken reply for another pair than the one asked for is not taken as the price", async () => {
 		h = await redteamHost({ pool: 1 });
 		await h.host.http.respond(KRAKEN("USD"), new Response(JSON.stringify({ error: [], result: { XXMRZEUR: { c: ["150.00", "1"] } } })));
 		await h.host.http.respond(GECKO("usd"), new Response("down", { status: 502 }));
@@ -203,7 +215,43 @@ describe("A3: hostile tip notes and bodies", () => {
 	// characters and noncharacters are kept (seen in round 1, not promised either way; they render as boxes at worst).
 	const stripped = /[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/u;
 
-	it.fails("[T08][F02] [RT-03] A3: a note with a lone surrogate (text that isn't valid Unicode) is refused or cleaned", async () => {
+	it("[T08][F02] [RT-03] A3: a lone surrogate is removed and the tip kept; a real pair (an emoji) stays whole", async () => {
+		h = await redteamHost({ pool: 8 });
+		const hi = String.fromCharCode(0xd83d);
+		const lo = String.fromCharCode(0xde00);
+		const cases: Array<[string, string | undefined]> = [
+			[`lone${hi}high`, "lonehigh"],
+			[`lone${lo}low`, "lonelow"],
+			[`swapped${lo}${hi}order`, "swappedorder"],
+			[`kept ${hi}${lo} whole`, `kept ${hi}${lo} whole`],
+			[`${hi}${hi}${lo}${lo}`, `${hi}${lo}`],
+			[`${lo} ${hi}`, undefined],
+		];
+		for (const [note, want] of cases) {
+			const r = await tip({ note });
+			expect(code(r), JSON.stringify(note)).toBeUndefined();
+			const stored = (await h.invoices()).find((i) => i.token === data(r)?.token)?.buyer?.note as string | undefined;
+			expect(stored, JSON.stringify(note)).toBe(want);
+		}
+	});
+
+	it("[T08][F02] [RT-03] A3: an emoji at the length limit is kept whole; one character over is refused, never cut", async () => {
+		// The limit counts code points after cleaning, and a note over it is refused, not shortened: nothing cuts a pair.
+		h = await redteamHost({ pool: 5 });
+		const emoji = String.fromCodePoint(0x1f600);
+		const lone = String.fromCharCode(0xd83d);
+		const fits = "a".repeat(139) + emoji;
+		let r = await tip({ note: fits });
+		expect((await h.invoices()).find((i) => i.token === data(r)?.token)?.buyer?.note).toBe(fits);
+		// Lone surrogates go before the count, so they don't use up the limit or push a good note over it.
+		r = await tip({ note: lone + "a".repeat(139) + emoji + lone });
+		expect((await h.invoices()).find((i) => i.token === data(r)?.token)?.buyer?.note).toBe(fits);
+		r = await tip({ note: "a".repeat(140) + emoji });
+		expect(code(r)).toBe("INVALID_REQUEST");
+		for (const inv of await h.invoices()) expect(wellFormed(inv.buyer?.note ?? "")).toBe(true);
+	});
+
+	it("[T08][F02] [RT-03] A3: a note with a lone surrogate (text that isn't valid Unicode) is refused or cleaned", async () => {
 		h = await redteamHost({ pool: 3 });
 		for (const note of ["lone" + String.fromCharCode(0xd800) + "surrogate", "lone" + String.fromCharCode(0xdfff) + "high"]) {
 			const r = await tip({ note });

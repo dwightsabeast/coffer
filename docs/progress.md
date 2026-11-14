@@ -5551,3 +5551,34 @@ No code this entry. It records the state for the next session.
 **The six Lows are done** (RT-02, RT-03, RT-10, RT-14, RT-22, RT-23).
 
 **Next step, before phase 09:** the EmDash 1.4.0 check through `docs/emdash-upgrade-checklist.md` (a dependency upgrade: Wyatt approves first; it includes the flood-seed timing run), then the RT-08 re-check question in "Still to decide".
+
+## 2026-11-14 · Phase 07b fix sessions · Handoff: the Lows are closed; the next session is the EmDash 1.4.0 check
+
+No code this entry. It records Wyatt's answers and the state for the next session.
+
+**The bundle from the entry above:** `coffer-redteam-1-20261114-3691c2c.bundle`, SHA-256 `21bb1fb69de045fced270b4fca594f0c2d886d455b12647fc79db3869b9f8504`.
+
+**Wyatt's answers (2026-11-14):**
+- RT-23's status wording is accepted as built: "nothing checked" and "none checked since the bridge started" (spec change 53, item 5).
+- RT-14's narrowing stands: a tip in review takes only the action its item shows.
+- Push the session's commits: done with this entry, to `origin/redteam-1`. The CI result is checked with `scripts/ci-status.py` and belongs in the next entry.
+
+**Done before phase 09:** all six Lows (RT-02, RT-03, RT-10, RT-14, RT-22, RT-23), RT-05, RT-07, RT-15.
+
+**Left before phase 09:**
+1. **The EmDash 1.4.0 check** (next session).
+2. The RT-08 re-check question in `docs/decisions.md`, "Still to decide".
+
+**The next session: EmDash 1.4.0, through `docs/emdash-upgrade-checklist.md`.** Plan first.
+- **It is a dependency upgrade, so the plan asks Wyatt's approval before anything is installed**, with the exact versions, their release dates against the 7-day minimum age, and what changes in each lockfile.
+- **Where it is pinned now:** `emdash` 1.3.1, `@emdash-cms/plugin-cli` 0.13.4 and `@emdash-cms/plugin-test` 0.2.10 in `plugin/`; `emdash` 1.3.1 in `theme/`; `emdash` 1.3.1 and `@emdash-cms/sandbox-workerd` 0.9.5 on the dev site. Find the versions that go with 1.4.0 for each.
+- **Before the upgrade:** the flood-seed timing run on 1.3.1, for the "before" number: back up `data.db`, `backlog-live.mjs seed --shape flood --count 20100`, then `time --site http://127.0.0.1:4322 --max-ms 5000` on the built copy; `pnpm why dompurify` in each package.
+- **After it:** every row of the checklist's table, then the 1.4.0 section's five items: the timing run again, `Cache-Control` on the pay page and the tip endpoint, deferred tasks in the host tests, what `bundle --validate-only` now does (and what that means for CI and the commit rule), and whether DOMPurify's critical is cleared.
+- **Also re-checked there:** RT-12, the accepted limit (decisions, 07b triage).
+- One heavy process at a time; the lockfile commits summarize their changes.
+
+**Not covered live, carried forward:** RT-23's status lines on a wallet host with a remote node; Ctrl-C after the installer has started changing the machine. Phase 09's install on a real wallet host is the natural place for both.
+
+**State of the box:** working tree clean after this commit; dev site, built copy and the `release` server stopped; `data.db` untouched this session (as restored from `redteam/rt15b-before.db`); `coffer-test` blank. A session-end bundle follows.
+
+**Next step:** the EmDash 1.4.0 check, plan first.

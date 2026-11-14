@@ -257,7 +257,7 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
   - Text after `|` in an action value acts only on the named invoice: it's the goods build's page position, not a second ID.
   - Observation (T30): when an admin marks a reversed tip settled, the tip totals stay at 0 XMR, because its payment is no longer reported.
 - **Fixed 2026-11-13 (spec change 53).** As Wyatt asked, the handler has no list of its own: `rowVerbs` (the All invoices menu: products, goods build) and `reviewVerbs` (a review item's buttons, by reason) build the page, and `offeredVerbs`, their union, is what `invoiceAction` checks. An open tip has neither, so a forged action is refused and nothing changes.
-  - **A narrowing to know about:** a tip in review now takes only the action its item shows. For example a late tip short of its amount shows Expire only, so a forged Mark settled on it is refused; before, the handler took either. A product in review in the goods build keeps both through its row menu, as the page says.
+  - **A narrowing, confirmed by Wyatt on 2026-11-14:** a tip in review now takes only the action its item shows. For example a late tip short of its amount shows Expire only, so a forged Mark settled on it is refused; before, the handler took either. A product in review in the goods build keeps both through its row menu, as the page says.
   - Tests: the `[RT-14]` test flipped. The existing review-queue and goods-menu tests pass unchanged (full suite below).
 - **Status:** fixed.
 

@@ -59,7 +59,17 @@ describe("A9/L4: the way back, deep vectors", () => {
 		}
 	});
 
-	it.fails("[T22] [RT-10] A9: the refused prefixes are matched case-insensitively, so no casing reaches the admin or loops the pay page", () => {
+	it("[T22] [RT-10] A9: every casing of a refused prefix is refused outright, plain, percent-encoded or behind dot segments", () => {
+		const refused = [
+			"/PAY/coffer/tok", "/Pay/Coffer/x", "/pay/COFFER", "/PAY/COFFER/", "/_EMDASH/admin", "/_Emdash/admin", "/_EMDASH", "/_eMdAsH/api/plugins/coffer/status",
+			"/%5F%45MDASH/admin", "/%5fEmdash/admin", "/PAY%2FCOFFER/tok", "/Pay%2fCoffer", "/x/../_EMDASH/admin", "/x/../PAY/Coffer/tok", "/_EMDASH/admin?x=1",
+		];
+		expect(refused.filter((v) => back(v) !== null)).toEqual([]);
+		// A path that only starts with the same letters is still a way back.
+		for (const ok of ["/Payments", "/pay/coffers", "/PAY/cofferx", "/_emdashboard", "/posts/_EMDASH"]) expect(back(ok), ok).toBe(ok);
+	});
+
+	it("[T22] [RT-10] A9: the refused prefixes are matched case-insensitively, so no casing reaches the admin or loops the pay page", () => {
 		const slipped = ["/PAY/coffer/tok", "/Pay/Coffer/x", "/_EMDASH/admin", "/_Emdash/admin", "/PAY%2Fcoffer"].filter((v) => {
 			const r = back(v);
 			return r !== null && (/\/pay\/coffer/i.test(r) || /_emdash/i.test(r));

@@ -5585,6 +5585,8 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 
 ## 2026-11-14 · Phase 07b fix sessions · The EmDash 1.4.0 check: upgraded, every checklist row holds; the live tip waits on Wyatt
 
+**The bundle from the entry above:** `coffer-redteam-1-20261114-02d48f8.bundle`, SHA-256 `3753425dcc73c6ab92ab92abe5816a73f9a750b4a2fedb16a310a743eed0e7da`.
+
 **CI for the last push:** run 43628619379 passed on `02d48f8` (plugin, theme, bridge).
 
 **Wyatt approved the plan with four changes:** `dompurify` as its own commit first, on 1.3.1; the floor raised to 1.4.0; the dev site's install under `--before` with the old lockfile saved; stop on a red suite instead of fixing forward; three timing runs each side, compared by median. He chose 1.4.0 now, 1.5.0 after 2026-11-18 about 18:20 UTC, and a live stagenet tip at the end.

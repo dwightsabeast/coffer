@@ -43,14 +43,14 @@ func TestLiveStagenet(t *testing.T) {
 	c := New(local, "stagenet", DefaultNodes("stagenet"), nil)
 	got, rep := c.Check(ctx, []walletrpc.Transfer{tr(spikeTx)})
 	t.Logf("real payment: %s via %s, confirmations %d -> %d (%s)", rep.State, rep.Node, conf, got[0].Confirmations, rep.Detail)
-	if rep.State != OK || got[0].Confirmations == 0 || got[0].Confirmations > conf {
+	if rep.State != OK || got[0].Confirmations == 0 || got[0].Confirmations > conf || rep.Checked != 1 {
 		t.Fatalf("the real payment didn't check out: %+v", rep)
 	}
 
 	c = New(local, "stagenet", DefaultNodes("stagenet"), nil)
 	got, rep = c.Check(ctx, []walletrpc.Transfer{tr(strings.Repeat("ab", 32))})
 	t.Logf("made-up txid: %s via %s: %s", rep.State, rep.Node, rep.Detail)
-	if rep.State != Mismatch || got[0].Confirmations != 0 {
+	if rep.State != Mismatch || got[0].Confirmations != 0 || rep.Checked != 0 {
 		t.Fatalf("a made-up txid passed: %+v", rep)
 	}
 

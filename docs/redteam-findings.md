@@ -29,8 +29,8 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-19 | Low | T13 (setup) | 1, 2 | The installer checks the pairing code last, so an expired code fails only after the keys are typed and wallet-rpc is downloaded | open; left for release 1 (Wyatt, 2026-11-08): a docs line in phase 09: get the code last |
 | RT-20 | Medium | T17 | 1, 2 | Behind a proxy that ends https, the tip endpoint refuses every visitor's tip as cross-site | fixed in code 2026-11-02 (`de558a1`); live check passed 2026-11-06 (Wyatt); known limit recorded in its section |
 | RT-21 | Low | T15 | 1, 2 | With the stagenet-only flag, a mainnet shop is refused only after its view key has been asked for | open; left for release 1 (Wyatt, 2026-11-08): the stagenet dev flag only |
-| RT-22 | Low | T15 (setup) | 1, 2 | Ctrl-C at an installer prompt is ignored; after it, the install goes on and then fails with a misleading node error | open; **fix before release 1** (Wyatt, 2026-11-08) |
-| RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-22 | Low | T15 (setup) | 1, 2 | Ctrl-C at an installer prompt is ignored; after it, the install goes on and then fails with a misleading node error | **fixed in code** 2026-11-14 (spec change 53); live check on `coffer-test` pending |
+| RT-23 | Low | R13, T14 | 1, 2 | `Node check: ok` shows when nothing was checked, and keeps showing an old result | **fixed in code** 2026-11-14 (spec change 53); the admin page left for after release 1 |
 | RT-24 | Low | T04 | 1, 2 | One snapshot with a far-future `seq` freezes its invoice: every later honest snapshot is ignored | fixed 2026-11-01 (spec change 46, item 5) |
 | RT-25 | Low | P04 | 1, 2 | An invoice waiting in review loses its buyer data 30 days after review began, before the admin decides | open; on the release 2 list (Wyatt, 2026-11-08) |
 | RT-26 | Medium | T14, R09 | 1, 2 | A dishonest remote node can push the reported chain height, which sticks on the site and puts a re-pair's restore height in the future | fixed in code 2026-11-02 (spec change 47); live at the combined session; **release 1** |
@@ -580,7 +580,13 @@ Both left the machine blank (files, unit and service user checked). RT-22.
 - **Why:** `main.go:36` turns SIGINT into a cancelled context (`signal.NotifyContext`) instead of ending the process. The prompts read `/dev/tty` with a blocking read that never looks at that context (`tty.go:55`), and only echo is turned off, so Ctrl-C still raises SIGINT. Every network step before the machine changes (`install.go:268`) uses the cancelled context and fails. That is what saves the machine, and it's also why a good node is reported as not answering.
 - **Reach:** an admin who presses Ctrl-C to cancel sees nothing happen. If they then press Enter or carry on, they get a wrong diagnosis of their node. Nothing changes and no key is stored. Closing the terminal ends the installer (SIGHUP isn't caught).
 - **Fix ideas:** end the installer on the first Ctrl-C at a prompt (restoring echo first), or check the context after each answer and say "cancelled".
-- **Status:** open.
+- **Fixed in code 2026-11-14 (`8d65052`; spec change 53, item 4).** Both fix ideas together:
+  - A prompt that is waiting returns on Ctrl-C (`OpenTTY` takes the command's context), and echo is turned back on.
+  - The installer treats any stop before its first change as a cancel: it prints "Cancelled. Nothing was changed on this machine." and asks nothing more. All three prompts (address, view key, node) come before the first change. An answer that arrives with or after the Ctrl-C isn't used.
+  - This also covers Ctrl-C during a network step before the first change, which used to end with that step's own error.
+  - Tests: `TestRedteamCtrlCAtAPromptStopsTheInstaller` runs without its skip, and now also checks the message. New `TestRedteamPrompterCtrlC`: the real prompter with nobody typing, hidden and visible. On a terminal of the dev box, the real prompt code ended at once on Ctrl-C with echo back on (a throwaway program, not kept).
+  - Live on `coffer-test`: waiting on Wyatt's run of `lows2-ctrlc.sh`.
+- **Status:** fixed in code; live check pending.
 
 ## RT-23 — `Node check: ok` shows when nothing was checked, and keeps showing an old result
 
@@ -592,7 +598,16 @@ Both left the machine blank (files, unit and service user checked). RT-22.
 - **Why:** with no mined transfer, `Check` returns `OK` with the detail "no mined payments to check" (`crosscheck.go:144`). `status` prints the state and the node, never the detail (`pairstatus.go:166`). With nothing watched, `snapshots` returns before the cross-check (`bridgeloop.go:596`), so the last result stays in place (`:607`).
 - **Reach:** an admin reading "ok" can't tell a passed check from no check, or how old a result is. A real mismatch still shows: it's set on the sync that finds it. Whether the site's admin page shows the same (`checks.node` reaches it in the sync body) is checked in Step 3.
 - **Fix idea:** a separate "nothing to check" state, and the time of the last check.
-- **Status:** open.
+- **Fixed in code 2026-11-14 (`f1e7819`; spec change 53, item 5).**
+  - The cross-check's report counts the mined payments it found in their block on a second node (`Checked`). The count is in the status file only.
+  - With nothing watched, the loop sets "no payment addresses are watched, so there was nothing to check" instead of repeating the last result. **To know about:** a mismatch therefore leaves the status line once its tip leaves the watch list. It is still on the site while the tip is watched, and in the bridge's log.
+  - The status file has `nodeCheckedAt`, the last time a payment was really checked. It starts empty with each bridge start.
+  - `xmr-bridge status` prints "ok" only with a count above zero; otherwise "nothing checked", the reason and the age of the last real check. It decides from the count, never from the detail text.
+  - A third case turned up while fixing: a mined payment whose block the second node hasn't reached yet was also a bare "ok". It is now "nothing checked", with a detail that says so.
+  - The site is sent the same state (`ok`) with these details; nothing on the wire changed. **The admin page is unchanged** (Wyatt's rule, 2026-11-13): its Health field shows the state only, and the only thing on the wire that tells the cases apart is the detail text. Left for after release 1.
+  - Tests: `TestRedteamStaleNodeCheck` and `TestRedteamNodeCheckNothingChecked` run without their skips; new `TestRedteamReportCountsWhatWasChecked` (crosscheck), `TestRedteamNodeCheckedAt` (bridgeloop) and three status-line cases. `TestLiveStagenet` passed against the public stagenet nodes with the count asserted (1 for the real payment, 0 for a made-up txid).
+  - Not seen live in `xmr-bridge status`: that needs a paired wallet host on a remote node with a tip being paid. The dev box's bridge uses its own node ("off").
+- **Status:** fixed in code; status lines unit-tested, not seen on a live wallet host.
 
 ## Observation, round 2: what the cross-check's second nodes learn (P05)
 

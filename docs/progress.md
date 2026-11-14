@@ -5500,3 +5500,35 @@ No code this entry. It records the state for the next session.
 **State of the box:** working tree clean; dev site and built copy stopped; `data.db` as restored from `redteam/rt15b-before.db` (62 invoices, 364 pool rows, bridge key present).
 
 **Next step:** session 2 of the Lows, plan first, when Wyatt is at the terminal.
+
+## 2026-11-14 · Phase 07b fix sessions · The Lows, session 2: RT-22 and RT-23 fixed in the bridge; the container check is Wyatt's
+
+**The last session's bundle:** `coffer-redteam-1-20261114-f49df77.bundle`, SHA-256 `0285efed6140d4e0b8869a0a256aa9019d311473c5362aa1c0f98583dd83ff05`.
+
+**Wyatt approved the plan** and took my recommendations: the status lines as proposed, the admin page left for after release 1, the live step on `coffer-test`. RT-14's narrowing was one of the four questions and wasn't a recommendation; I've read his answer as "it stands" and told him so.
+
+**Done, each skipped test red first:**
+- **RT-22 (`8d65052`):** a waiting prompt returns on Ctrl-C and echo comes back on; any stop before the installer's first change ends with "Cancelled. Nothing was changed on this machine." and no more questions. All three prompts come before the first change.
+- **RT-23 (`f1e7819`):** the cross-check counts the mined payments it really checked; with nothing watched the last result isn't repeated; the status file has the time of the last real check; `xmr-bridge status` says "ok (N mined payment(s) checked with <node>, <age> ago)" or "nothing checked (<why>; <when last>)". No wire change; the admin page is unchanged.
+- Details and the wording are in spec change 53, items 4 and 5, and in each finding's section.
+
+**For Wyatt to know:**
+- **Wording differs from the approved plan in two places:** "nothing checked" (not "nothing to check") and "none checked since the bridge started" (not "never checked"). Reasons in spec change 53, item 5.
+- **A mismatch now leaves the status line once its tip leaves the watch list,** because the old result is no longer repeated. It stays on the site while the tip is watched and in the bridge's log.
+- **A third bare "ok" turned up and is fixed with the others:** a mined payment whose block the second node hasn't reached.
+
+**Test results:**
+- Bridge: `gofmt` clean, `go vet` clean, `go test ./...` all packages ok; counted with `-json`: 608 passed, 12 skipped, subtests included (go1.27.3). The race detector passed on `installer` and `bridgeloop`.
+- `TestLiveStagenet` passed against the public stagenet nodes with the new count asserted.
+- The real prompt code on a terminal of the dev box (a throwaway program, not kept): Ctrl-C ended the hidden and the visible prompt at once, echo off then on again.
+- Plugin and theme: not run; nothing of theirs changed.
+- **Not covered:** the status lines on a live wallet host with a remote node (needs a paired install and a tip being paid); what Ctrl-C does after the installer has started changing the machine (still read from the code only).
+
+**Waiting on Wyatt (the live step):**
+- Dev release `0.0.202611141718-dev.f1e7819`, built with `--base` on the dev box's LAN address and served from tmux session `release` on port 8099.
+- `lows2-ctrlc.sh` (in `~/xmr-pay-dev-data/` and in the served folder): on a blank `coffer-test`, Ctrl-C at the view-key prompt and at the address prompt; PASS or FAIL per case; output `lows2-ctrlc-output.txt`. It installs nothing and needs no site, code or key.
+- When the output is back: record it in RT-22's section and the T15 matrix row, then stop the `release` session.
+
+**State of the box:** dev site and built copy stopped; `data.db` untouched; tmux `release` running until the container run is done. A session-end bundle follows.
+
+**Next step:** read `~/xmr-pay-dev-data/lows2-ctrlc-output.txt` and close RT-22's live check. Then the EmDash 1.4.0 check (Wyatt approves the upgrade first) and the RT-08 re-check question, before phase 09.

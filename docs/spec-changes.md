@@ -1950,7 +1950,7 @@ A visitor whose ISP gives more than a /64 (a /56 is 256 of them, a /48 is 65,536
 
 No live run: on the dev site `requestMeta.ip` is never set (07b round 1, L2), so the code is reached only through the test host's `requestMeta`.
 
-## 53. Wording from the Lows: lone surrogates in a tip note, and admin actions only as the page offers them (RT-03, RT-14)  (status: accepted, 2026-11-13, Wyatt; RT-23's status lines to be added when it is built)
+## 53. Wording from the Lows: lone surrogates in a tip note, admin actions only as the page offers them, Ctrl-C in the installer, and the node check's status lines (RT-03, RT-14, RT-22, RT-23)  (status: accepted, 2026-11-13, Wyatt; items 4 and 5 added as built, 2026-11-14)
 Found in: 07b pass 1, RT-03 and RT-14.
 Spec says:
 - Tips: "an optional short note, plain text only, length-limited"; T08: "control and format characters out". Nothing about a lone surrogate (half of a two-part character, which isn't valid text).
@@ -1961,3 +1961,12 @@ Spec says:
 1. **A lone surrogate is removed from a tip's note and the tip is kept** (Wyatt: a visitor's broken character shouldn't fail their tip). It goes with the format characters, before the length is counted. A complete pair, such as an emoji, is kept whole.
 2. **A note is never cut.** Over 140 characters (code points) after cleaning it is refused, so there is no cut that could leave half a character behind.
 3. **The admin handler takes an invoice action only if the page offers it for that invoice as it is now,** and both come from the same lists in the code (Wyatt: no second list to drift). In release 1 that is a review item's buttons; in the goods build also a product's Actions menu. A tip outside "Needs a decision" has no action. A tip in review takes only the action or actions its item shows.
+4. **Ctrl-C in the installer (RT-22).** Before the installer has changed anything, Ctrl-C stops it at once, at a prompt or in a step, and it prints "Cancelled. Nothing was changed on this machine." It asks nothing more, and the terminal shows typing again. All three prompts come before the first change. Once the machine has started changing, Ctrl-C stops the step in progress and nothing is rolled back: what was finished stays, the installer's log says what it did, and running the installer again finishes the job (a used pairing code needs a new one first). That second half is read from the code, not tried live.
+5. **The node check's lines in `xmr-bridge status` (RT-23).** For a remote node whose check has no problem to report, one of:
+   - `Node check: ok (3 mined payment(s) checked with <second node>, 2m0s ago)`
+   - `Node check: nothing checked (<why>; last checked 4h0m0s ago)`
+   - `Node check: nothing checked (<why>; none checked since the bridge started)`
+
+   `<why>` is one of: "no payment addresses are watched, so there was nothing to check", "no mined payments to check", "no mined payments checked yet" (before the first sync), or "<second node> hasn't reached the block of a mined payment yet, so it is held at 0 confirmations until it has". The off, unavailable and MISMATCH lines are unchanged. With nothing watched the last result is no longer repeated, a mismatch included. The site is sent the same four states as before with these details: no wire change before release 1 (Wyatt). The admin page's field is unchanged; telling the cases apart there waits until after release 1.
+
+   **Wording that differs from the plan Wyatt approved** (his to change): "nothing checked" in place of "nothing to check", because the fourth reason is a payment that exists but couldn't be checked yet; and "none checked since the bridge started" in place of "never checked", because the time isn't kept across a restart.

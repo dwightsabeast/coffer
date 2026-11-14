@@ -116,7 +116,7 @@ describe("B2: the review-item actions with forged values", () => {
 	// Break: the release-1 page offers no action at all on a tip that isn't in review, yet the handler takes a forged
 	// Mark settled or Expire for one. Only an admin can send it (B1 covers everyone else), so the reach is the admin's own
 	// records: a tip nobody paid shown as settled, or an open tip closed. Filed as RT-14 (Low).
-	it.fails("[F04] [RT-14] B2: a forged Mark settled or Expire on an open tip, which the page doesn't offer, is refused", async () => {
+	it("[F04] [RT-14] B2: a forged Mark settled or Expire on an open tip, which the page doesn't offer, is refused", async () => {
 		await site();
 		const toasts: Record<string, unknown> = {};
 		const statuses: Record<string, unknown> = {};

@@ -609,6 +609,33 @@ function allowed(inv: Invoice): Verb[] {
 	return out;
 }
 
+/** The Actions menu of an invoice's row under All invoices, which lists products only and only with goods on (spec change 22). */
+const rowVerbs = (inv: Invoice): Verb[] => (GOODS_ENABLED && inv.kind === "product" ? allowed(inv) : []);
+
+/** A review item's buttons, the recommended one first: what "Needs a decision" offers for each reason. */
+function reviewVerbs(inv: Invoice, siteHeight: number): Verb[] {
+	if (inv.status !== "review" || inv.adminFinal) return [];
+	switch (inv.reviewReason ?? "late") {
+		case "late": {
+			const t = totals(inv, siteHeight);
+			return t.received >= t.threshold ? ["settle"] : ["expire"];
+		}
+		case "wallet_changed":
+			return ["settle", "expire"];
+		case "reversed":
+			return ["expire", "settle"];
+		default:
+			return ["expire"]; // underpaid, not_your_wallet, reorg
+	}
+}
+
+/**
+ * Every action the page offers for this invoice as it is now. The page's row menu and review buttons are built from
+ * the two lists above, and the handler takes nothing else, so the two can't drift apart (RT-14: a forged Mark settled
+ * on an open tip, which no page shows an action for, used to be taken).
+ */
+const offeredVerbs = (inv: Invoice, siteHeight: number): Verb[] => [...new Set([...reviewVerbs(inv, siteHeight), ...rowVerbs(inv)])];
+
 /** A transfer with why it doesn't count, or "counted". */
 function transferNote(t: Invoice["transfers"][number], checked: string): string {
 	const why = notCountedReasons(t);
@@ -666,7 +693,7 @@ function invoiceItem(inv: Invoice, now: number, siteHeight: number, opts: { acte
 	const inner: Block[] = [{ type: "fields", fields }];
 	const ignored = ignoredText(inv, siteHeight);
 	if (ignored) inner.push({ type: "context", text: ignored });
-	const verbs = allowed(inv);
+	const verbs = rowVerbs(inv);
 	const suffix = opts.cursor ? `|${opts.cursor}` : "";
 	const elements: Block[] = [
 		...(verbs.length > 0 ? [{ type: "menu", action_id: "invoice_action", label: "Actions", items: verbs.map((v) => ({ label: VERB_LABELS[v], value: `${v}:${inv.id}${suffix}` })) }] : []),
@@ -834,40 +861,35 @@ function reviewItem(inv: Invoice, now: number, siteHeight: number): Block[] {
 		title += " · paid in full";
 		what = `Paid in full (${xmr(t.received)} XMR), but mined after the invoice's deadline. The money is in your wallet.`;
 		advice = "Recommended: mark it settled and fulfil the order.";
-		actions.push(button("Mark settled", `settle:${inv.id}`, "primary"));
 	} else if (reason === "late") {
 		// Late and short of the price: like underpaid (Wyatt, Q2, 2026-10-09).
 		title += ` · ${pct}% received`;
 		what = `${xmr(t.received)} of ${xmr(expected)} XMR arrived (${pct}%), part of it after the invoice's deadline.`;
 		advice = `Recommended: expire it, don't fulfil the order, and refund the buyer from your wallet app.${rowHint("it")}`;
-		actions.push(button("Expire", `expire:${inv.id}`, "primary"));
 	} else if (reason === "underpaid") {
 		title += ` · ${pct}% received`;
 		what = `${xmr(t.received)} of ${xmr(expected)} XMR arrived (${pct}%) by the deadline, ${deepest} confirmations${lastChecked(inv, now)}.`;
 		advice = `Recommended: expire it, don't fulfil the order, and refund the buyer from your wallet app.${rowHint("the smaller amount")}`;
-		actions.push(button("Expire", `expire:${inv.id}`, "primary"));
 	} else if (reason === "not_your_wallet") {
 		// Spec change 46, D3: the honest wallet host found this row isn't from its wallet.
 		what = "This address wasn't from your wallet: your wallet host found it among addresses someone else added. Payments to it went to them, not to you.";
 		advice = "Recommended: expire it; if a buyer paid, they paid the thief.";
-		actions.push(button("Expire", `expire:${inv.id}`, "primary"));
 	} else if (reason === "wallet_changed") {
 		// Spec change 46, D2: something arrived, but the wallet it went to is no longer connected.
 		what = "Something arrived before you connected a different wallet, and Coffer can't follow that wallet any more.";
 		advice = "Recommended: check your previous wallet's app, then mark it settled or expire it.";
-		actions.push(button("Mark settled", `settle:${inv.id}`, "secondary"), button("Expire", `expire:${inv.id}`, "secondary"));
 	} else if (reason === "reorg") {
 		what = `A chain reorganisation knocked the payment out of its block, and it wasn't mined again within ${RECONFIRM_BLOCKS} blocks.`;
 		advice = "Recommended: expire it and don't fulfil the order.";
-		actions.push(button("Expire", `expire:${inv.id}`, "primary"));
 	} else {
 		what = "This invoice was settled, but the wallet host no longer reports its payment (double-spent, or removed in a reorg).";
 		advice = "Recommended: expire it and don't fulfil the order. If your wallet app still shows this payment, mark it settled instead: a reinstalled wallet host can report a payment gone by mistake.";
-		actions.push(
-			button("Expire", `expire:${inv.id}`, "primary"),
-			button("Mark settled", `settle:${inv.id}`, "secondary", { title: "Mark this invoice settled?", text: "Only if your wallet app shows the payment. The decision is final.", confirm: "Mark settled", deny: "Cancel" }),
-		);
 	}
+	// The buttons come from reviewVerbs, the list the handler checks an action against. The first is the recommended
+	// one, except where the previous wallet has to be checked first; un-reversing a payment asks to be confirmed.
+	const verbs = reviewVerbs(inv, siteHeight);
+	const settleGone = { title: "Mark this invoice settled?", text: "Only if your wallet app shows the payment. The decision is final.", confirm: "Mark settled", deny: "Cancel" };
+	actions.push(...verbs.map((v, i) => button(VERB_LABELS[v], `${v}:${inv.id}`, i === 0 && reason !== "wallet_changed" ? "primary" : "secondary", v === "settle" && reason === "reversed" ? settleGone : undefined)));
 	actions.push(...productLink(inv));
 	const fields = [
 		{ label: "Received", value: receivedText(inv, siteHeight) },
@@ -938,8 +960,9 @@ async function invoiceAction(ctx: PluginContext, value: unknown, now: number): P
 	if (!current || !current.value) return { toast: { type: "error", message: "That invoice wasn't found." }, ...back };
 	const inv = current.value;
 	const at = { acted: inv.id, ...back };
-	if (!allowed(inv).includes(verb)) {
-		if (verb === "raise" && isOpen(inv) && !inv.adminFinal) return { toast: { type: "error", message: `This invoice already needs ${inv.required} confirmations; it can't go higher.` }, ...at };
+	const siteHeight = (await ctx.kv.get<BridgeState>(KV.bridge))?.height ?? 0;
+	if (!offeredVerbs(inv, siteHeight).includes(verb)) {
+		if (verb === "raise" && rowVerbs(inv).length > 0 && isOpen(inv) && inv.required >= MAX_REQUIRED) return { toast: { type: "error", message: `This invoice already needs ${inv.required} confirmations; it can't go higher.` }, ...at };
 		return { toast: { type: "error", message: `This invoice changed since the page loaded (it's now ${statusText(inv).toLowerCase()}). Nothing was changed.` }, ...at };
 	}
 	const next: Invoice = structuredClone(inv);

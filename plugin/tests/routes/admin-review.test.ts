@@ -268,4 +268,39 @@ describe("limits", () => {
 		expect(banners.slice(0, 5).map((x) => x.variant)).toEqual(["error", "error", "error", "error", "error"]);
 		expect(banners[5].variant).toBe("alert");
 	});
+
+	// RT-14 (spec change 53): the handler checks an action against the same list that builds the item's buttons.
+	it("[F04] [RT-14] for every review reason, the handler takes exactly the actions the item shows, on a tip", async () => {
+		const cases: Array<[string, Partial<Invoice>, string[]]> = [
+			["late, paid in full", { reviewReason: "late", transfers: [transfer()] }, ["settle"]],
+			["late, short", { reviewReason: "late", transfers: [transfer({ amountAtomic: "1" })] }, ["expire"]],
+			["underpaid", { reviewReason: "underpaid", transfers: [transfer({ amountAtomic: "1" })] }, ["expire"]],
+			["not your wallet", { reviewReason: "not_your_wallet" }, ["expire"]],
+			["wallet changed", { reviewReason: "wallet_changed", transfers: [transfer()] }, ["settle", "expire"]],
+			["reorg", { reviewReason: "reorg", transfers: [transfer({ confirmations: 0, height: 0 })] }, ["expire"]],
+			["reversed", { reviewReason: "reversed" }, ["expire", "settle"]],
+		];
+		const VERBS = ["settle", "expire", "raise"];
+		for (const [name, over, shown] of cases) {
+			// One copy per verb, since a decision is final.
+			const h = await setup(VERBS.map((_, i) => invoice(i + 1, { kind: "tip", ...over })));
+			const t = toggle(await load(), "inv_0001") as B;
+			expect(actions(t).filter((e) => e.action_id === "invoice_action").map((e) => String(e.value).split(":")[0]), name).toEqual(shown);
+			for (const [i, verb] of VERBS.entries()) {
+				const id = `inv_000${i + 1}`;
+				const r = await h.admin.act("/payments", "invoice_action", { value: `${verb}:${id}` });
+				const after = (await h.inspect.storage.get<Invoice>("invoices", id)) as B;
+				if (shown.includes(verb)) {
+					expect(r.toast?.type, `${name}: ${verb}`).toBe("success");
+					expect(after.status, `${name}: ${verb}`).toBe(verb === "settle" ? "settled" : "expired");
+				} else {
+					expect(r.toast?.type, `${name}: ${verb}`).toBe("error");
+					expect(after, `${name}: ${verb}`).toMatchObject({ status: "review", required: 2 });
+					expect(after.adminFinal, `${name}: ${verb}`).toBeUndefined();
+				}
+			}
+			await h.dispose();
+			host = undefined;
+		}
+	});
 });

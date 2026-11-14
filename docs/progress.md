@@ -5582,3 +5582,42 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **State of the box:** working tree clean after this commit; dev site, built copy and the `release` server stopped; `data.db` untouched this session (as restored from `redteam/rt15b-before.db`); `coffer-test` blank. A session-end bundle follows.
 
 **Next step:** the EmDash 1.4.0 check, plan first.
+
+## 2026-11-14 · Phase 07b fix sessions · The EmDash 1.4.0 check: upgraded, every checklist row holds; the live tip waits on Wyatt
+
+**CI for the last push:** run 43628619379 passed on `02d48f8` (plugin, theme, bridge).
+
+**Wyatt approved the plan with four changes:** `dompurify` as its own commit first, on 1.3.1; the floor raised to 1.4.0; the dev site's install under `--before` with the old lockfile saved; stop on a red suite instead of fixing forward; three timing runs each side, compared by median. He chose 1.4.0 now, 1.5.0 after 2026-11-18 about 18:20 UTC, and a live stagenet tip at the end.
+
+**Commits (local, not pushed):**
+- `698272d`: `dompurify` 3.4.16 to 3.4.17 in `plugin/` and `theme/`, on 1.3.1. pnpm's 7-day rule held back 3.4.18 (published today) without an exclusion. It clears our dev tree only.
+- `0f59384`: `plugin/` on `emdash` 1.4.0, `plugin-cli` 0.13.5, `plugin-test` 0.2.11; the floor to 1.4.0 (`release.requires`, the peer, `description.md`, the manifest test red first).
+- `99bffb4`: `theme/` on `emdash` 1.4.0; the peer to `>=1.4.0 <2`.
+- The docs commit with this entry: the checklist's 1.4.0 section and a 1.5.0 to-do, the floor in `docs/decisions.md`, RT-12's re-check and F5's DOMPurify line in the findings.
+- The dev site (outside the repo): `emdash` 1.4.0 and `sandbox-workerd` 0.9.6, exact pins, 81 lockfile entries changed, all published before the 7-day cutoff, 3,439 signatures verified. Old files: `~/xmr-pay-dev-data/baseline/package-lock.json.before-emdash140` and `package.json.before-emdash140`.
+
+**No suite went red and no Coffer source changed.**
+
+**Test results (the same counts on 1.3.1 with `dompurify` 3.4.17 and on 1.4.0):**
+- Plugin: 529 passed, 7 expected fail, 1 skipped (default); 102 passed, 1 skipped (switch on); typecheck, validate, bundle check (74.6 KB).
+- Theme: 80 passed, 1 skipped with zbar required; typecheck.
+- Dev site, `astro dev`: `dev-e2e.mjs` 32 of 32; `round2-live.mjs c6` three rounds, one winner each; the admin page loads (red banner on localhost, an https `Origin` used); the canary's 15 probes as in round 1.
+- Built copy: flood timing, three runs of three syncs. Before (1.3.1) run medians 1129, 1105, 1094 ms (all nine: 1109). After (1.4.0) 1134, 1106, 1096 ms (all nine: 1106). Limit 5000. The pay page and the tip endpoint send `private, no-store`.
+- RT-12: unchanged (spin stopped at 30,051 ms; `status` waited 30,039 ms).
+- Bridge: not run; nothing of its changed.
+- Each checklist row's result is in `docs/emdash-upgrade-checklist.md`, "EmDash 1.4.0".
+
+**Found on the way:**
+- The checklist's bundle-check item was wrong: `bundle --validate-only` built before validating in 0.13.4 too. What changed is that `pnpm test` no longer writes `plugin/dist/` (`plugin-test` 0.2.11).
+- Block Kit form blocks are no longer native `<form>` elements (#4183). The route gets the same interactions; Save on the Settings form in a browser is Wyatt's to click.
+- `dev-e2e.mjs` needs a clean plugin state, so the real rows were cleared for it and restored from this session's backup afterwards.
+
+**Not covered:** the Cloudflare runner's limits (read only; the spike token has expired); Save on the Settings form in a browser; the tip button through the tunnel on the built copy; the other advisories in EmDash's tree weren't re-counted (the dev site's `npm audit`: 14, none critical).
+
+**The live tip, waiting on Wyatt:** `e140`, 0.002 XMR, index 360, 2 confirmations, created 20:09 UTC, expires 20:39 UTC. The Feather list is `~/xmr-pay-dev-data/e140-feather.txt`. If it expires unpaid, make a new one when he's at the wallet.
+
+**State of the box:** dev site running in `astro dev` (agent-started: stop with `npx astro dev stop`), tmux `watch` running `dev-invoices.mjs watch`; the built copy stopped; the canary off. `data.db` is this session's backup `redteam/emdash140-before.db` (62 invoices, 364 pool rows, bridge key present) plus the installed bridge's syncs and the tip `e140`. `dist/` on the dev site is the 1.4.0 build with the flood seed's database gone (restored).
+
+**Carried forward:** RT-23's status lines on a wallet host with a remote node; Ctrl-C after the installer has started changing the machine (phase 09).
+
+**Next step:** Wyatt pays `e140` from the Feather buyer wallet; then record the settlement here, stop the site and the watcher, and make the session-end bundle. After that: the RT-08 re-check question in "Still to decide", then EmDash 1.5.0's check after 2026-11-18 18:20 UTC.

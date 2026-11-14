@@ -219,6 +219,7 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Also confirmed at G1 (no finding):** network isolation holds — a raw `fetch()` is blocked (403), and `ctx.http` to another host, through user-info, or to an `api.kraken.com.localhost` suffix is refused by the host check; `process`, `node:fs`, `ctx.content.create`, another plugin's storage/KV/settings are all refused. The exposed `ctx.media`/`ctx.taxonomies` **write** methods are gated at the call: `createTerm` under `content:read` returned `Missing capability: taxonomies:write`, so no write landed (one-write limit respected, nothing to report upstream for the write case).
 - **Status:** open.
 - **Ruling (Wyatt, 2026-11-08): accepted limit.** It's within the sandbox's stated "no CPU cap on Node" limit, and waiting on storage or the network doesn't block (L7: 40 of 40 checkouts during a 27 s sync). A line goes in phase 09's install docs and the report. Re-check at the EmDash 1.4.0 check.
+- **Re-checked on EmDash 1.4.0 (2026-11-14): unchanged.** The same canary spin was stopped at 30,051 ms and the `status` request alongside it waited 30,039 ms (`~/xmr-pay-dev-data/redteam/canary-2026-11-14T200302853Z.txt`). It stays an accepted limit.
 
 ## Observation, group G (for Wyatt, possible upstream report)
 
@@ -837,6 +838,7 @@ Not Coffer code: tier 1 keeps it out of everything Coffer ships. But it's the tr
   - **It's on EmDash's runtime path.** `pnpm why dompurify` shows `dompurify@3.4.16` ← `@emdash-cms/admin@1.3.1` (a regular dependency) ← `emdash@1.3.1`, in both `plugin/` and `theme/`. So it's installed wherever EmDash is: it's EmDash's admin UI's sanitizer.
   - **1.4.0 doesn't clear it by itself.** `@emdash-cms/admin@1.4.0` keeps the same range, `dompurify ^3.3.2`. Whether a site gets 3.4.17 depends on when its lockfile last resolved, ours included.
 - **Ruling (Wyatt, 2026-10-31):** EmDash 1.4.0 goes through the upgrade checklist after 2026-11-05, in the fix phase before phase 09's final tests.
+- **Done (2026-11-14):** `dompurify` is 3.4.17 in `plugin/` and `theme/` (its own lockfile commit, `698272d`, on 1.3.1), and the floor is EmDash 1.4.0. That clears our dev tree only: a site's own lockfile decides what it runs, on 1.4.0 as on 1.3.1. The other advisories in EmDash's tree weren't re-counted here; the dev site's `npm audit` shows 14 (3 moderate, 11 high, no critical) on 1.4.0.
 - For the report: Coffer's security claims stop at its own code, and the host CMS's dependency hygiene is EmDash's. A possible upstream note.
 
 ## RT-29 — A re-pair keeps the previous wallet host's unused pool addresses, so new tips go to the old wallet (or another network) first

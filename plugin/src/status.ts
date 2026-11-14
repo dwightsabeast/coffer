@@ -46,7 +46,8 @@ export async function handleStatus(ctx: PluginContext, query: Record<string, unk
 	if (!stored) return NOT_FOUND;
 	const bridge = await ctx.kv.get<BridgeState>(KV.bridge);
 	const inv = evaluate(stored, { now, chainHeight: bridge?.height ?? 0 }).invoice;
-	const t = isOpen(inv) ? basis(inv, now) : totals(inv);
+	const siteHeight = bridge?.height ?? 0;
+	const t = isOpen(inv) ? basis(inv, now, siteHeight) : totals(inv, siteHeight);
 	return {
 		status: inv.status,
 		confirmations: Math.max(0, t.depth),

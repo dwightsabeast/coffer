@@ -41,6 +41,26 @@ type fakeWallet struct {
 	onRescan  func()
 	lie       bool // HasSubaddress always says yes (a wallet the probe can't be trusted on)
 	probes    int
+	// Spec change 46: reads of addresses by index, and the highest index HasSubaddress was asked about.
+	addressReads int
+	probedMax    uint32
+	// RT-30: how often ReceivedIndexes was called.
+	receivedReads int
+	// Spec change 48: saves, the wallet's top at the last one, and a failure to return.
+	stores     int
+	storedNext uint32
+	storeErr   error
+}
+
+func (w *fakeWallet) Store(context.Context) error {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.stores++
+	if w.storeErr != nil {
+		return w.storeErr
+	}
+	w.storedNext = w.next
+	return nil
 }
 
 func (w *fakeWallet) GetHeight(context.Context) (uint64, error) { return w.height, nil }
@@ -69,13 +89,47 @@ func (w *fakeWallet) CreateAddress(_ context.Context, label string) (walletrpc.N
 	w.labels[label]++
 	w.next++
 	w.created++
-	return walletrpc.NewAddress{Index: w.next, Address: "5" + strings.Repeat(strconv.Itoa(int(w.next%10)), 94)}, nil
+	return walletrpc.NewAddress{Index: w.next, Address: fakeAddr(w.next)}, nil
+}
+
+// fakeAddr is the fake wallet's address at index i (and so the honest address the fake site holds there).
+func fakeAddr(i uint32) string { return "5" + strings.Repeat(strconv.Itoa(int(i%10)), 94) }
+
+// SubaddressAddresses answers like wallet-rpc: every index must exist (index <= next).
+func (w *fakeWallet) SubaddressAddresses(_ context.Context, idx []uint32) (map[uint32]string, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.addressReads++
+	out := map[uint32]string{}
+	for _, i := range idx {
+		if i > w.next {
+			return nil, fmt.Errorf("index %d out of bounds", i)
+		}
+		out[i] = fakeAddr(i)
+	}
+	return out, nil
+}
+
+// ReceivedIndexes: every index with a transfer, sorted.
+func (w *fakeWallet) ReceivedIndexes(context.Context) ([]uint32, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	w.receivedReads++
+	var out []uint32
+	for i, ts := range w.transfers {
+		if len(ts) > 0 {
+			out = append(out, i)
+		}
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a] < out[b] })
+	return out, nil
 }
 
 func (w *fakeWallet) HasSubaddress(_ context.Context, index uint32) (bool, error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 	w.probes++
+	w.probedMax = max(w.probedMax, index)
 	return w.lie || index <= w.next, nil
 }
 func (w *fakeWallet) CreateAddresses(_ context.Context, label string, n int) ([]walletrpc.NewAddress, error) {
@@ -116,23 +170,79 @@ type fakeSite struct {
 	claimed int
 	noTop   bool
 	dupes   []uint32 // addresses sent for an index the pool already had
+
+	// Spec change 46. The fake answers like the plugin: claimedTop is the highest claimed row (claimed rows are 1..claimed
+	// unless claimedTop is set), and every response carries a check list of the free rows (indexes above claimedTop),
+	// unless noCheck. forged rows are in the pool with the thief's address; probes is the waiting state (nil: not
+	// waiting), cleared by an answer, which is recorded.
+	claimedTop  uint32
+	noCheck     bool
+	forged      map[uint32]string
+	probes      []syncclient.Probe
+	answers     []syncclient.WalletAnswer
+	keepWaiting bool // record answers but keep waiting
+	// signers is the public key each recorded body was signed with (46's step 5b).
+	signers []string
 }
 
-func (s *fakeSite) Send(_ context.Context, _ ed25519.PrivateKey, b syncclient.Body) (syncclient.Response, error) {
+func (s *fakeSite) claimedTopNow() uint32 {
+	if s.claimedTop > 0 {
+		return s.claimedTop
+	}
+	// Claimed rows are 1..claimed, but only those the pool holds: a test that claims ahead of its pool claims nothing.
+	var top uint32
+	for i := range s.pool {
+		top = max(top, i)
+	}
+	return min(uint32(s.claimed), top)
+}
+
+// checkList is the fake's check list: forged rows first, then free rows lowest first, at most 150.
+func (s *fakeSite) checkList() []syncclient.CheckEntry {
+	ct := s.claimedTopNow()
+	var out []syncclient.CheckEntry
+	var idx []uint32
+	for i := range s.forged {
+		idx = append(idx, i)
+	}
+	sort.Slice(idx, func(a, b int) bool { return idx[a] < idx[b] })
+	for _, i := range idx {
+		out = append(out, syncclient.CheckEntry{Index: i, Digest: syncclient.AddressDigest(s.forged[i])})
+	}
+	var free []uint32
+	for i := range s.pool {
+		if i > ct && s.forged[i] == "" {
+			free = append(free, i)
+		}
+	}
+	sort.Slice(free, func(a, b int) bool { return free[a] < free[b] })
+	for _, i := range free {
+		if len(out) == 150 {
+			break
+		}
+		out = append(out, syncclient.CheckEntry{Index: i, Digest: syncclient.AddressDigest(fakeAddr(i))})
+	}
+	return out
+}
+
+func (s *fakeSite) Send(_ context.Context, k ed25519.PrivateKey, b syncclient.Body) (syncclient.Response, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.limit > 0 && len(b.Snapshots) > s.limit {
 		return syncclient.Response{}, syncclient.ErrTooLarge
 	}
 	s.bodies = append(s.bodies, b)
+	s.signers = append(s.signers, keyText(k))
 	if s.fail != nil {
 		return syncclient.Response{}, s.fail
 	}
-	for _, a := range b.Addresses {
-		if s.pool[a.Index] {
-			s.dupes = append(s.dupes, a.Index)
+	if s.probes == nil || (b.Wallet != nil && !s.keepWaiting) {
+		for _, a := range b.Addresses {
+			if s.pool[a.Index] {
+				s.dupes = append(s.dupes, a.Index)
+			}
+			s.pool[a.Index] = true
 		}
-		s.pool[a.Index] = true
 	}
 	var top uint32
 	for i := range s.pool {
@@ -141,7 +251,24 @@ func (s *fakeSite) Send(_ context.Context, _ ed25519.PrivateKey, b syncclient.Bo
 	if s.noTop {
 		top = 0
 	}
-	return syncclient.Response{PoolFree: len(s.pool) - s.claimed, PoolTarget: s.target, PoolTop: top, Watch: append([]uint32(nil), s.watch...)}, nil
+	if b.Wallet != nil && s.probes != nil {
+		s.answers = append(s.answers, *b.Wallet)
+		if !s.keepWaiting {
+			s.probes = nil
+		}
+	}
+	if s.probes != nil {
+		// Waiting for the answer: like the plugin, no addresses taken, poolTop and claimedTop 0, an empty watch list.
+		return syncclient.Response{PoolFree: 0, PoolTarget: s.target, Watch: []uint32{}, Probes: append([]syncclient.Probe{}, s.probes...)}, nil
+	}
+	r := syncclient.Response{PoolFree: len(s.pool) - s.claimed, PoolTarget: s.target, PoolTop: top, ClaimedTop: s.claimedTopNow(), Watch: append([]uint32(nil), s.watch...)}
+	if s.noTop {
+		r.ClaimedTop = 0
+	}
+	if !s.noCheck {
+		r.Check = s.checkList()
+	}
+	return r, nil
 }
 
 func (s *fakeSite) last() syncclient.Body {
@@ -153,7 +280,7 @@ func (s *fakeSite) last() syncclient.Body {
 func setup(t *testing.T) (*Loop, *fakeWallet, *fakeSite, string) {
 	t.Helper()
 	w := &fakeWallet{height: 2222000, transfers: map[uint32][]walletrpc.Transfer{}}
-	s := &fakeSite{pool: map[uint32]bool{}, target: 50}
+	s := &fakeSite{pool: map[uint32]bool{}, target: 50, forged: map[uint32]string{}}
 	dir := t.TempDir()
 	k, _ := syncsign.NewKey()
 	clock := time.Unix(1790000000, 0)
@@ -270,6 +397,7 @@ func TestPendingSurvivesFailureAndRestart(t *testing.T) {
 func TestAtMost100AddressesPerSync(t *testing.T) {
 	t.Run("[R11] at most 100 addresses per sync", func(t *testing.T) {
 		l, w, s, _ := setup(t)
+		// RT-27, folded into spec change 46: a site's poolTarget counts for at most the spec's fixed pool size, 50.
 		s.target = 250
 		ctx := context.Background()
 		for i := 0; i < 6; i++ {
@@ -280,7 +408,7 @@ func TestAtMost100AddressesPerSync(t *testing.T) {
 				t.Fatalf("%d addresses in one sync", len(b.Addresses))
 			}
 		}
-		if len(s.pool) != 250 || w.created != 250 {
+		if len(s.pool) != 50 || w.created != 50 {
 			t.Fatalf("pool %d created %d", len(s.pool), w.created)
 		}
 	})
@@ -492,7 +620,26 @@ func TestKeyReadEachSync(t *testing.T) {
 }
 
 // fakeCheck stands in for the cross-check: it zeroes every mined transfer's confirmations and reports a mismatch.
-type fakeCheck struct{ calls int }
+// fakeCheck is a remote node's cross-check. second, when set, is the second node's height (ok false: none answers);
+// unset, the second node is far ahead, so the height is never clamped (the tests from before RT-26's fix).
+type fakeCheck struct {
+	calls       int
+	second      func() (uint64, bool)
+	secondCalls int
+	payment     *crosscheck.Report // the payment check's outcome; nil: a block mismatch, as before
+}
+
+func (f *fakeCheck) SecondHeight(context.Context) (uint64, string, bool) {
+	f.secondCalls++
+	if f.second == nil {
+		return 1 << 40, "second.example:38089", true
+	}
+	h, ok := f.second()
+	if !ok {
+		return 0, "", false
+	}
+	return h, "second.example:38089", true
+}
 
 func (f *fakeCheck) Check(_ context.Context, ts []walletrpc.Transfer) ([]walletrpc.Transfer, crosscheck.Report) {
 	f.calls++
@@ -501,6 +648,9 @@ func (f *fakeCheck) Check(_ context.Context, ts []walletrpc.Transfer) ([]walletr
 		if out[i].Height > 0 {
 			out[i].Confirmations = 0
 		}
+	}
+	if f.payment != nil {
+		return ts, *f.payment
 	}
 	return out, crosscheck.Report{State: crosscheck.Mismatch, Detail: "block 100 differs", Node: "second.example:38089"}
 }
@@ -713,8 +863,9 @@ func TestOlderSiteWithoutPoolTop(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if w.probes != 0 || w.rescans != 0 || len(s.pool) != 50 {
-		t.Fatalf("probes %d, rescans %d, pool %d", w.probes, w.rescans, len(s.pool))
+	// Spec change 46: the one probe is "does the wallet have index 1" (for its probe digest), never one from the pool.
+	if w.probedMax > 1 || w.rescans != 0 || len(s.pool) != 50 {
+		t.Fatalf("probed up to %d, rescans %d, pool %d", w.probedMax, w.rescans, len(s.pool))
 	}
 }
 

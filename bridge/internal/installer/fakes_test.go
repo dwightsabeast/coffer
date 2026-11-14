@@ -127,7 +127,8 @@ type fakeSteps struct {
 	pairCode   string
 	suggest    uint64 // the restore height the site suggests on pairing (0: none)
 	walletErr  error
-	noCA       error // what CABundle returns (nil: a bundle exists)
+	noCA       error  // what CABundle returns (nil: a bundle exists)
+	bounded    uint64 // what BoundedHeight returns (0: no bounded height)
 }
 
 func (s *fakeSteps) steps(sys *fakeSystem) Steps {
@@ -159,6 +160,7 @@ func (s *fakeSteps) steps(sys *fakeSystem) Steps {
 			os.MkdirAll(filepath.Join(cfg.DataDir, "wallet"), 0o700)
 			return os.WriteFile(filepath.Join(cfg.DataDir, "wallet", "shop.keys"), []byte("x"), 0o600)
 		},
+		BoundedHeight: func(context.Context, config.Config) uint64 { return s.bounded },
 		Pair: func(_ context.Context, cfg config.Config, c string) (uint64, error) {
 			s.order = append(s.order, "pair")
 			s.pairCode = c

@@ -18,6 +18,7 @@ import (
 	"github.com/dwightsabeast/coffer/bridge/internal/secret"
 	"github.com/dwightsabeast/coffer/bridge/internal/shopkeys"
 	"github.com/dwightsabeast/coffer/bridge/internal/supervise"
+	"github.com/dwightsabeast/coffer/bridge/internal/syncclient"
 	"github.com/dwightsabeast/coffer/bridge/internal/wallet"
 	"github.com/dwightsabeast/coffer/bridge/internal/walletrpc"
 )
@@ -218,6 +219,29 @@ func TestLiveShopWallet(t *testing.T) {
 		t.Fatal("after the rescan the spike's payment to subaddress 1 is gone")
 	}
 	t.Logf("after the rescan: %d incoming transfer(s) to index 1", len(transfers))
+
+	// 2c. Spec change 46's wallet-rpc calls on the view-only wallet: addresses by index (the pool check and the index-1
+	// probe), refused past the wallet's top, and every index with a transfer (receivedTop). Digests are logged, never
+	// addresses.
+	byIndex, err := c.SubaddressAddresses(ctx, []uint32{1, next})
+	if err != nil || len(byIndex) != 2 || byIndex[1] == "" || byIndex[next] == "" || byIndex[1] == byIndex[next] {
+		t.Fatalf("get_address by index 1 and %d: %v (%d answers)", next, err, len(byIndex))
+	}
+	again, err := c.SubaddressAddresses(ctx, []uint32{1})
+	if err != nil || again[1] != byIndex[1] {
+		t.Fatalf("index 1 read twice differs: %v", err)
+	}
+	if _, err := c.SubaddressAddresses(ctx, []uint32{next + 1}); err == nil {
+		t.Fatalf("get_address for index %d, past the wallet's top, was answered", next+1)
+	}
+	received, err := c.ReceivedIndexes(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restore <= 2221449 && (len(received) == 0 || received[0] > 1) {
+		t.Fatalf("received indexes %v lack the spike's payment to subaddress 1", received)
+	}
+	t.Logf("get_address by index: index 1's digest %s; index %d+1 refused; received indexes: %v", syncclient.AddressDigest(byIndex[1]), next, received)
 
 	// 3. kill -9: the supervisor restarts wallet-rpc and Init reopens the wallet.
 	first := r.sup.Status().PID

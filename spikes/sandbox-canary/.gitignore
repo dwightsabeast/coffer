@@ -1,0 +1,4 @@
+# node_modules is a symlink to ../../plugin/node_modules (made by scripts/redteam/canary-site.mjs); a symlink isn't a
+# directory to git, so the root's "node_modules/" doesn't cover it.
+node_modules
+dist/

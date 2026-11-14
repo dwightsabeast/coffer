@@ -3518,3 +3518,1949 @@ For 07b, from the matrix:
 Next session: 07b setup, after the before-07b checklist.
 
     Phase 07b, adversarial testing pass 1, setup. Read docs/phases/07b-adversarial-testing.md, docs/progress.md and docs/security-matrix.md, then plan the setup work in "For the builder".
+
+## 2026-10-26 · Phase 07b pass 1 · Session 1: setup (builder)
+
+Branch `redteam-1` (local, not pushed). The setup list in `docs/phases/07b-adversarial-testing.md`, "For the builder". No Coffer code changed (`plugin/src`, the bridge's non-test files, the theme): only docs, scripts, test helpers and the canary spike. Wyatt's ruling at the start: the mixed-network pool (T20) is fixed in pass 1 through the normal finding flow (`docs/decisions.md`).
+
+Done:
+
+| Commit | What |
+| --- | --- |
+| `f185c85` | **Docs.** The catalog's matrix IDs brought up to date: C01 is now T22, C02/C03/C04/C06 are T26–T29, and C05 is probed and reported as a Known limit. New catalog section L for the surfaces added in phase 07, each mapped to an existing row: the tip endpoint (T17, F07); IP-header spoofing (T18); the Cloudflare refusal (T19); the way back (T22); the mixed-network pool (T20); coexistence (T23); the watch scan's cap (R11, R13). Matrix: R06–R09 carry their 3h and 3i evidence; T20 notes the ruling |
+| `845f833` | **`scripts/redteam/lib.mjs`**, moved out of `dev-e2e.mjs`, which now imports it. Loopback guard (no user info, redirects not followed), RFC 8032 test keys, signed syncs, fake addresses, the KV-shortcut code, cleanup, `flood()` (at most 50 in flight, stops under 1.5 GB available), evidence paths, `VACUUM INTO` backups (`backup.mjs`) |
+| `309492a` | **`plugin/tests/redteam/`**: `random.ts`, a seeded sfc32 with hostile generators (`REDTEAM_SEED` reproduces a failure), and `harness.ts`, `redteamHost()` with signed and tampered syncs, raw checkout, status, a price stub, and `checkoutAs(meta, …)`. The test host's `transport.invokeRoute` takes `meta.ip` and `meta.geo`, so the IP and Cloudflare attacks can run at the Host layer |
+| `5d9a9db` | **`bridge/internal/hostile`**: scripted hostile servers (stream, drip, hang, cut, redirect, untrusted TLS, JSON-RPC, a rewriting proxy), test-only. Wiring in `hostile_test.go` beside syncclient, crosscheck (the offline dishonest-node proxy), noderpc, walletrpc and selfupdate (the release host over https). monerodl's test server is already https |
+| `cd3cfc3`, `bfa177d` | **Sandbox canary** `spikes/sandbox-canary/` (slug `coffer-canary`, Coffer's exact manifest, 14 probes and a spin route). It builds with `plugin/`'s toolchain through a symlink, so nothing is installed. `canary-site.mjs on\|off\|status` loads it on the dev site and restores `astro.config.mjs` byte for byte. `canary.mjs` runs the probes; the network probes aim at a loopback listener the driver runs, so nothing reaches another machine. `bfa177d` came out of the first live run: the probes had aimed at example.com, and "allowed" was too coarse |
+| `fabb937` | **`scripts/redteam/scan-at-rest.mjs`**, run under `with-shop-env.sh`. It scans a `VACUUM INTO` copy (cell by cell, then raw), the live `-wal` and the dev log for the view key in six encodings, `--code-file` codes, `--secret-file` secrets, `--ip` addresses in their spellings, and IP-shaped text in Coffer's rows. A FAIL gives the location, never the value |
+| (this commit) | CLAUDE.md: five red-team command rows; the script-test command now includes `scripts/redteam/`. This entry |
+
+Baseline: `~/xmr-pay-dev-data/redteam/baseline-1.db` (`VACUUM INTO`, mode 600), taken before anything touched the dev database: 38 invoices, 338 pool rows, 8 KV rows, 1 setting.
+
+Tests (all run 2026-10-26):
+- **Scripts:** `node --test scripts/*.test.mjs scripts/redteam/*.test.mjs` 41 pass (18 before, plus lib 14, canary-site 3, scan-at-rest 6). Mutations caught: the user-info check, the memory stop, a value printed in a FAIL line, a missing encoding.
+- **Plugin:** typecheck clean; validate passes; bundle 58.3 KB across 3 files (unchanged); `pnpm test` 260 passed + 1 skipped (254 + the 6 harness tests), then 92 + 1 with the switch on.
+- **Bridge:** gofmt and vet clean; `go test ./...` all packages ok (`internal/hostile` 3 runs with `-count=3`, no flakes); static build statically linked; `go list -deps ./cmd/xmr-bridge` has no `hostile`.
+- **Live, dev site (`astro dev`):**
+  - Reset with `setup-test-reset.mjs`, then the canary on, then the site started.
+  - `dev-e2e.mjs` 32 of 32 after the move to `lib.mjs` (`~/xmr-pay-dev-data/redteam/07b-setup-dev-e2e.txt`).
+  - The canary's 14 probes each answered, and a 3 s spin ran.
+  - The scanner gave PASS on the reset database (a smoke run only; the real scan after a payment and a pairing is the attacker's row I).
+  - Then the site stopped, the canary off (hash-checked), and the dev data restored: the same counts as the baseline. Ports 4321, 4322 and 8099 are free; no `astro dev` running; no tmux sessions.
+- **Not run:** the theme (untouched), the race-detector tests (CI only), CI (nothing pushed).
+
+**Canary smoke results, recorded as seen and not graded** (the attacker judges them in G1 and G2; `~/xmr-pay-dev-data/redteam/canary-2026-10-26T151549273Z.txt`):
+- Raw `fetch`: EmDash's "Direct fetch() blocked in sandbox" with HTTP 403. The listener got nothing.
+- `ctx.http` to 127.0.0.1, through user info, and to `api.kraken.com.localhost`: refused by the host check.
+- `ctx.http` over **plain http to an allowed host** answered (Kraken's `/0/public/Time`, HTTP 200).
+- With only `content:read`, `ctx.media` and `ctx.taxonomies` exist and carry **write methods** (media upload, delete and updateMetadata; taxonomy createTerm, addEntryTerms and removeEntryTerms). The probe lists them but doesn't call them, so whether a call succeeds is still to test.
+- No `content.create`, undeclared storage throws, Coffer's rows, KV and setting are invisible to the canary, no `process`, and no `node:fs`.
+- **Spin, 3 s:** the only status request, sent as the spin started, took 3039 ms. That suggests other routes wait behind a spinning one; the 60 s run (G2) measures it.
+
+Open:
+- **Not pushed:** `redteam-1` stays local until the fixes and the retest are done (Wyatt, 2026-10-26). Don't push it before then; Wyatt merges and pushes after the retest. He took the Proxmox snapshot `pre-redteam-1b` of the dev box at the end of this session, with setup done, in place of a push.
+- **Wyatt, before round 1:**
+  - Feather's buyer wallet needs at least eight separate unlocked amounts.
+  - ~~The `pre-redteam-1` Proxmox snapshot~~: done as `pre-redteam-1b` (2026-10-26, after setup). Roll back to it if a flood or fuzzing run leaves the box in a bad state.
+- **Left for the attacker or fix sessions, not built here:**
+  - fuzz targets (none yet in syncclient, walletrpc or noderpc)
+  - T27's certificate tests (the TLS helpers are ready)
+  - T20's failing test
+  - floods
+  - the wallet-host `sudo` scan wrapper (T29; the scanner's `--secret-file` and `--log` are ready for it)
+  - the live TLS proxy for the spec change 28 man-in-the-middle row (a builder session adds it if the plan needs it)
+
+Next session: the attacker's plan round, in a fresh session.
+
+    Phase 07b attacker, pass 1, plan. Start with the Attacker brief in docs/phases/07b-adversarial-testing.md; its reading order replaces the usual one.
+
+## 2026-10-26 (later) · Phase 07b pass 1 · Session 2: plan (attacker)
+
+Branch `redteam-1` (local, not pushed). Fresh attacker session. No Coffer code read for the attack design yet (that waits for round 2 white box); the plan is built from `docs/spec.md`, `docs/security-matrix.md` and the catalog. After Wyatt's approval I read spec changes 33 and 34 and confirmed the theme exposes no public tip surface (`PayPage.astro`, `TipButton.astro` only; per-entry totals live in `admin.ts`, admin-only).
+
+Done:
+- **`docs/redteam-plan.md`** — pass 1 section. Every pass-1 matrix row (T01–T31, P01–P04, R01–R13, F01–F07, C05 as probe-and-report) mapped to concrete attacks in catalog groups A–L, each with layer, steps and a break condition. Coverage checklist maps every row to its attacks. Rounds: round 1 black box (A, B, C, D-via-route, G, H, L, plugin-side F); round 2 white box re-aims E/F/G/J from the source.
+- **`docs/security-matrix.md`** — two new rows added (Wyatt approved): **T30** (per-entry tip totals count only settled tips; Planned, covered by attack A11) and **T31** (forged-tip total inflation bounded; Planned, covered by D6). A proposed public-display row was dropped: spec change 34 deferred and no public tip surface exists, so A12 checks that absence under T08/P03.
+
+Wyatt's decisions (2026-10-26), folded into the plan:
+- E5 (live TLS MITM): Go `httptest` approximation this pass; T27 covered by one self-signed-server test per client; the live MITM row deferred to phase 09, recorded as deferred not a pass.
+- `govulncheck` (T28): run ad hoc, outside the repo's `go.mod`, pinned ≥7 days old; no CI change this session.
+- Fixed-amount tips: TipButton sends set amounts, so R04 underpay (settles at floor) and overpay run live in pass 1 (spec change 33) — attacks K6, K7.
+- Heavy runs: keep caps (≤50 in flight, stop <1.5 GB, one at a time); fuzzing 10 min/target; large backlog once to the 20,000-row cap; stop and tell Wyatt before rolling back to `pre-redteam-1b` if the box degrades.
+- G1: at most one confirming sandbox write on the dev site; if it lands, write it up for Wyatt to report to EmDash privately and don't probe further.
+
+Tests: none run this session (planning only; no code changed).
+
+Open:
+- **Not pushed:** `redteam-1` stays local until the fixes and retest are done (Wyatt, 2026-10-26).
+- Wyatt, before round 1: Feather's buyer wallet needs at least eight separate unlocked amounts (for group K). `pre-redteam-1b` snapshot is the roll-back point.
+
+Next session: round 1, black box, in a fresh session.
+
+    Phase 07b attacker, pass 1, round 1. Start with the Attacker brief in docs/phases/07b-adversarial-testing.md; its reading order replaces the usual one.
+
+## 2026-10-26 (later) · Phase 07b pass 1 · Session 3: round 1, black box (attacker), interim note
+
+Branch `redteam-1` (local). Written mid-session at Wyatt's instruction for safety stops; the full session entry follows at the end of the session.
+
+- Committed so far: `af6f5c4` (checkout, status and IP-cap attacks; RT-01 to RT-05) and `23fcdce` (bridge/sync without the key; RT-06, RT-07). Findings in `docs/redteam-findings.md`.
+- **Safety stops:** two responses were stopped by a safety classifier. The first came right after `23fcdce`, at the end of group C, before any later group's work began; nothing was lost. The second came while writing the **B2 suite** (admin row actions, `plugin/tests/redteam/admin.test.ts`). Per Wyatt (2026-10-26): commit what's done, note the group here, and move on to the next group without retrying. The partial B2 file was deleted, not committed. **B2 is not run this round**; its plan rows (F04, T07, T13 through the admin page) stay open for round 2 or the retest, and Wyatt decides how.
+
+### Round 1 checkpoint (Host and Theme layers done)
+
+Committed, all green (no Coffer code changed):
+
+| Commit | Group(s) | Suite | Findings |
+| --- | --- | --- | --- |
+| `af6f5c4` | A, L2, L3 | `plugin/tests/redteam/checkout.test.ts`, `ipcap.test.ts` | RT-01 to RT-05 |
+| `23fcdce` | C | `plugin/tests/redteam/sync.test.ts` | RT-06, RT-07 |
+| `120c59c` | D (D1–D6 only, Wyatt's limit) | `plugin/tests/redteam/stolen-key.test.ts` | RT-08, RT-09 |
+| `d0a0d7a` | L1, A9/L4, L6, A5 | `theme/tests/redteam.test.ts` | RT-10 |
+| `7bd450f` | L5 | `plugin/tests/redteam/network.test.ts` | RT-11 |
+
+Findings (`docs/redteam-findings.md`): RT-11 High (mixed-network pool, the pre-agreed one); RT-05, RT-07, RT-08 Medium; RT-01–04, RT-06, RT-09, RT-10 Low. All open.
+
+Full suites after the new files: plugin **308 passed, 13 expected fail, 1 skipped**; goods config **92 passed**; theme **73 passed, 1 expected fail, 1 skipped**; typecheck and bundle (58.3 KB) clean. The 13 + 1 expected-fail are the RT it.fails, one per landed attack (RT-06 covers three: unknown fields, duplicate keys, out-of-range numbers).
+
+**Not yet run in round 1** (all need the running dev site, and some need Wyatt), left for the live stretch or a follow-up:
+- **B1** — call `admin` anonymously, as a logged-in non-admin, and without `X-EmDash-Request`. Needs Wyatt to create one lowest-role non-admin user through the dev sign-in (he agreed); remove it or let `setup-test-reset.mjs` remove it at the end.
+- **B2** — admin row-action abuse. Skipped after a safety stop (see the interim note above); not retried. Open for round 2 or the retest.
+- **A3 render** — Wyatt views hostile tip notes on the admin page through the tunnel (his check; the checklist is handed over when the notes are seeded).
+- **Live:** C4 (proxy-added Origin/Authorization on a signed sync), A6/F06 (spoofed Host/X-Forwarded-Host), C5 (a ~60 s drip body vs. the 30 s wall), the live half of L2 (EmDash's real IP-header handling), A8/C6 on the Node runner.
+- **Canary:** G1, G2 (`scripts/redteam/canary-site.mjs on`, start the site, `canary.mjs`, then off).
+- **Heavy:** H2 (checkout/status flood, to name a rate-limit number) and H1/L7 (large backlog, watch-scan cap). `free -m` first, one at a time, `pre-redteam-1b` is the roll-back point.
+- **K** payments stay for round 2 (plan).
+
+No safety stop since the B2 one. This checkpoint is a durable point before the live stretch; the full session entry follows at the session's end.
+
+## 2026-10-26 (later) · Phase 07b pass 1 · Session 3 continued: round 1 live stretch (attacker)
+
+Branch `redteam-1` (local). After the Host/Theme checkpoint (`bb7bf3f`), the live dev-site attacks that need EmDash's own runtime. The dev DB was backed up first (`~/xmr-pay-dev-data/redteam/round1-live-2026-10-26T185213579Z.db`, VACUUM INTO) and restored to baseline (38 invoices, 338 pool rows) at the end. The box is clean: ports 4321/4322/8099 free, no tmux, no `astro dev`.
+
+Done (committed):
+
+| Commit | Group(s) | What |
+| --- | --- | --- |
+| `4943cd3` | G1, G2 | Sandbox canary. G1: network isolation and capability gating hold; a one-write follow-up (a `taxonomy-write` probe added to the canary) was refused `Missing capability: taxonomies:write`, so the exposed write methods don't work under `content:read`. G2: the 30 s wall stops a 60 s spin, but a concurrent `status` was blocked the full 30 s → **RT-12** (plugin requests serialize on the Node runner). Also recorded for Wyatt: plain http to an allowed host is accepted (EmDash enforcement, upstream). Canary turned off, `astro.config.mjs` restored and hash-checked |
+| `5255821` | A6/F06, L2 live, C5 | New `scripts/redteam/round1-live.mjs`. A6/F06: a spoofed `Host`/`X-Forwarded-Host` is never reflected. L2 live: 8 tips from one spoofed IP all go through, no `state:buckets` written → a Node site's cap is site-wide only (as the spec states). C5: a slow drip body is read past the 30 s wall → **RT-13** (Low), but the event loop isn't blocked so the site stays responsive (slowloris, proxy territory). C4 stays covered by `dev-e2e`'s header checks |
+| (this entry) | H2 | Observation only (no finding): the site sustained a capped status flood (≤50 concurrent, 300 req) at ~250–320 req/s with no outage or memory pressure. Consistent with RT-12 |
+
+Findings now RT-01…RT-13 (`docs/redteam-findings.md`). High: RT-11. Medium: RT-05, RT-07, RT-08, RT-12. Low: the rest. All open.
+
+**Gotcha for later sessions:** `cleanupCofferRows` (lib.mjs) deletes **all** `pool` and `invoices` rows, not just a run's, so the live scripts wiped the dev DB's baseline fixtures; restored from the start-of-session backup with `setup-test-reset.mjs --restore`. Back up and restore around any live run that calls it.
+
+**Round 1 still not run** (need Wyatt and/or a dedicated run):
+- **B1** — anonymous / non-admin / no-`X-EmDash-Request` calls to `admin`. The anonymous and no-session cases are already exercised by `dev-e2e` (401/403); the **logged-in non-admin** case needs Wyatt to create one lowest-role user through the dev sign-in.
+- **B2** — admin row-action abuse. Skipped earlier after a safety stop; not retried. Open for round 2.
+- **A3 render** — Wyatt views hostile tip notes on the admin page through the tunnel.
+- **H1/L7** — large-backlog sync timing and the 200-page watch-scan cap (heaviest; seed thousands of invoices, time each sync under 30 s). Best with Wyatt watching memory; `pre-redteam-1b` is the roll-back point.
+- **K** — real stagenet payments (round 2, per the plan).
+
+No safety stop in the live stretch. Next: round 2 (white box, fresh session) per the plan, or the remaining live items (B1 non-admin, A3, H1) with Wyatt. The full session entry / sign-off is this plus the checkpoint above.
+
+## 2026-10-26 (later) · Phase 07b pass 1 · Session 4: round 1 leftovers (attacker), interim note
+
+Branch `redteam-1` (local). The items not run in round 1 were B1, A3, B2 and H1/L7. Plan approved by Wyatt: the script inserts the B1 test users, H1 seeds just past the 200-page cap, and A3 runs this session.
+
+- **B2 done:** `39d177d`, `plugin/tests/redteam/admin.test.ts`. Filed **RT-14** (Low, F04): a forged Mark settled or Expire on an open tip, which the release-1 page doesn't offer, is accepted. Everything else held (details under RT-14). Plugin 322 passed, 14 expected fail, 1 skipped; goods config 92 passed, 1 skipped; typecheck clean; bundle 58.3 KB.
+- **Session helpers:** `db6d9fe`, `scripts/redteam/lib.mjs` (`cookieOf`, `magicTokenFrom`, `devAdminSession`, `magicLinkSession`, `adminCall`), lib tests 16 passed.
+- **Safety stop:** a response was stopped by a safety classifier after the helpers' tests passed and before the B1/A3 live script was written. Following Wyatt's rule from the B2 stop, what was green is committed and B1/A3 is not retried this session. **B1 (non-admin sign-in) and A3 (seeded hostile notes and Wyatt's admin-page check) stay open** for round 2 or the retest, and Wyatt decides how. Nothing touched the dev site or `data.db`: no users were inserted, no backup was needed, and the site wasn't started.
+
+## 2026-10-26 (later) · Phase 07b pass 1 · Session 4 continued: H1/L7 large backlog (attacker)
+
+Branch `redteam-1` (local). After the B2/helpers commits and the B1/A3 safety stop, the heaviest round-1 item: a large backlog on the live dev site. New script `scripts/redteam/backlog-live.mjs` (`seed`/`run`). `data.db` backed up (`~/xmr-pay-dev-data/redteam/round1-h1-20261026T195027Z.db`), seeded 20,100 settled stagenet tips + 1 open probe (~20,139 invoice rows), ran, then restored to baseline (38 invoices, 338 pool, bridge key present). Box clean: ports free, no `astro dev`, ~4.9 GB available.
+
+Found a snag while building it (recorded so later sessions don't relearn it): the pairing sync must be **under 4 KiB** (the spec's parse-before-signature limit), so a pair body carrying 60 addresses is verified against the *old* key and gets `BAD_SIGNATURE`; pair with an empty body first, then push addresses in a second signed sync. Also the plugin caps each sync at **100 addresses and 100 snapshots, and 32 transfers per snapshot** (101/101/33 → `INVALID_BODY`); over any cap the whole sync is refused (measured exactly after the run, correcting the “~128” first seen live).
+
+Results (evidence `~/xmr-pay-dev-data/redteam/h1-2026-10-26T195804512Z.txt`):
+- **RT-15 (Medium, R11/R13), filed:** every sync's watch scan took **~28 s** at 20,100 invoices (pair 27.7 s, first 27.9 s, under-flood 28.6 s) — all under the 30 s wall but within ~2 s of it. Spec change 35 estimated ~0.2 s at 15,000. Measured in `astro dev`; the built copy should be measured before trusting a production number (follow-up). Likely dominated by building/bounds-checking the ~20,000-entry `watch` response.
+- **Cap and warning hold (R13):** the watch truncated to 20,001 of ~20,103 candidates, and the admin Health banner fired ("The watch list hit its safety cap… more recent invoices existed than Coffer reads in one sync (20,000)…").
+- **L7 passed:** during a 28.6 s sync, 35/40 capped checkouts got an address (the 5 refusals are the site-wide 40-open cap), slowest 2.1 s — async paging doesn't block the event loop like RT-12's CPU spin did.
+- **Not truly exercised:** the probe (highest index) landed *inside* the capped watch, so a genuine past-cap late-payment wasn't produced (the 102 dropped candidates were others). Noted in RT-15 as a follow-up.
+
+Matrix updated: R11 coverage now notes the live 30 s-wall measurement and RT-15; R13 notes the cap banner verified live. CLAUDE.md gained a command row for `backlog-live.mjs`.
+
+Findings now RT-01…RT-15. High: RT-11. Medium: RT-05, RT-07, RT-08, RT-12, RT-15. Low: the rest. All open.
+
+**Round 1 still not run:** B1 (logged-in non-admin to `admin`) and A3 (Wyatt's admin-page render check of hostile tip notes) — both stopped by a safety classifier this session and not retried; open for round 2 or the retest, Wyatt decides. B2 was done earlier this session. K (real stagenet payments) stays for round 2 per the plan.
+
+Next: round 2 (white box, fresh session) per the plan, or B1/A3 with Wyatt.
+
+## 2026-10-26 (later) · Phase 07b pass 1 · Session 4: follow-ups logged (attacker)
+
+Two follow-ups from the H1 run, at Wyatt's instruction:
+- **RT-15 built-copy re-measure (pending, next session).** RT-15's ~28 s/sync was measured in `astro dev` (dev mode) on this loaded box. Re-measure on the **built copy** (`npm run build` then the `built` tmux session on port 4322, workerd) before the production number is trusted: seed the same ~20,100 backlog, run `scripts/redteam/backlog-live.mjs run --site http://127.0.0.1:4322`, and record the per-sync time there against the dev-mode number. One heavy run, `free -m` first, restore `data.db` after.
+- **Snapshot/address per-sync caps → matrix C07.** Pinned exactly with the plugin test host: 100 addresses, 100 snapshots, 32 transfers per snapshot; 101/101/33 give `INVALID_BODY`. Added as candidate **C07** in `docs/security-matrix.md` (the bridge–plugin batching contract) for a fix-phase decision — not a finding (the caps are intentional and the bridge already batches), but the two sides' numbers aren't tied to a shared constant. Script comment and the note above corrected from the imprecise live "~128".
+
+## 2026-10-28 · Phase 07b pass 1 · Session 5: round 2, white box (attacker), interim note
+
+Branch `redteam-1` (local). Fresh attacker session; plan approved by Wyatt (order: record A3/B1, then the live block with K and I2, then `coffer-test` F1/F4, then the plugin and bridge white-box attacks, the built-copy re-measure and the dependency checks).
+
+- **A3 and B1 recorded** from Wyatt's manual run (2026-10-29 UTC, dev site, EmDash 1.3.1) as round 1 Manual-layer evidence in `docs/redteam-findings.md`: both PASS. Three Low findings filed from his note: **RT-16** (Coffer's sidebar link and dashboard widget show to a Subscriber, with no data), **RT-17** (the refusal shows raw JSON in EmDash's banner), **RT-18** (a Zalgo note's marks spill outside its line). RT-16 and RT-17 look like EmDash's admin shell (no per-role field for plugin pages or widgets); round 2 checks the installed package. Matrix T08 and F04 coverage notes updated.
+- **The baseline has moved.** Wyatt's A3 checks added 7 tip invoices (2026-10-29, 01:00 to 01:24 UTC) and used pool addresses; they stay as evidence. The "38 invoices, 338 pool rows" baseline from the setup session is out of date: this session's first backup sets the new one, recorded below when it's taken.
+
+**Round 2, Step 1 (live block) done, 2026-10-29 UTC.** Baseline backup `~/xmr-pay-dev-data/redteam/round2-k.db`: 45 invoices (tips 12 settled, 16 expired; products 10 settled, 6 expired, 1 review), 345 pool rows (295 claimed, 50 free, top index 345), 8 KV rows, 1 settings row (the bridge key). All of K and A13 passed on stagenet with Wyatt's Feather payments (K4 is the stated untouched-tip watch limit), I1 passed, J1 passed, A8 didn't reproduce RT-04 on the Node runner, C6 reproduced RT-07 live; details in `docs/redteam-findings.md`, "Pass 1, round 2". Post-payment backup `round2-post-k.db` (55 invoices, 355 pool rows: 305 claimed, 50 free); the dev site was restored to it after the live runs and checked row for row, and the dev box's bridge synced again with its own key. Site stopped. Snag: Feather has no "Pay to many"; several destinations go in its Pay to field as `address, amount` lines (wording fixed in the docs). I2 (journal scan) is with Wyatt for review.
+
+## 2026-10-28 · Phase 07b pass 1 · Session 5: round 2 (attacker), paused for the night: handoff
+
+Branch `redteam-1` (local, not pushed). Paused at Wyatt's request after the plan's Step 0 and Step 1. The approved plan is `/home/dev/.claude/plans/phase-07b-attacker-pass-shimmering-kahn.md` (outside the repo); its order (Wyatt): Step 0, Step 1 with I2, **Step 4 (`coffer-test`) next**, then Steps 2, 3, 5, 6, 7.
+
+Done (commits `7e4d745`, `394169b`, `139c761`, and this entry's):
+- **Step 0:** Wyatt's manual A3 and B1 (2026-10-29 UTC) recorded as round 1 Manual-layer evidence, both PASS; **RT-16** (sidebar link and dashboard widget shown to a Subscriber), **RT-17** (raw JSON refusal banner), **RT-18** (Zalgo marks spill outside a note's line) filed, all Low. RT-16/17 look like EmDash's admin shell (no per-role field for plugin pages or widgets); Step 2 confirms in the installed package.
+- **Step 1, live block:** K1–K7 and A13 on stagenet from Wyatt's Feather wallet, all PASS (K4 is the stated untouched-tip watch limit); I1 at-rest scan PASS; J1 (SIGKILL mid-sync) PASS; A8 on Node doesn't reproduce RT-04; C6 reproduces RT-07 live 3 of 3. Results in `docs/redteam-findings.md`, "Pass 1, round 2".
+- **Matrix** coverage updated for T02, T05, T13 (now Partial: RT-07), P01 (now Covered), P03 (now Covered), R01, R02, R03, R04 (now Covered for tips), R05, R06, R12.
+- **Docs:** "Feather's pay-to-many" corrected (Feather takes several `address, amount` lines in its Pay to field) in the phase file, the tips-first plan change and the attack plan. CLAUDE.md gained rows for `round2-live.mjs` and the two dev-only helpers.
+- **New script:** `scripts/redteam/round2-live.mjs` (`a8`, `c6`, `j1`). Dev-only helpers kept outside the repo in `~/xmr-pay-dev-data/redteam/tools/`: `feather-paylist.cjs` (Feather payment lists; stops on a missing address) and `counts.mjs` (read-only row counts).
+- **Two feedback memories** saved: baseline counts drift (take them from the session's backup), and `sudo` scripts are shown to Wyatt first with secrets passed on stdin.
+
+Tests run this session: live scripts only (A8 all checks PASS; C6 6 expected FAILs, the RT-07 race; J1 all checks PASS; I1 scan exit 0). No plugin, theme or bridge suite was run: no Coffer, test or harness code changed. `node --check` on the new script.
+
+State at the pause:
+- **Dev site** stopped, `data.db` restored to `~/xmr-pay-dev-data/redteam/round2-post-k.db` (55 invoices: tips 21 settled, 17 expired; products 10 settled, 6 expired, 1 review; 355 pool rows: 305 claimed, 50 free; 8 KV rows; the bridge key), checked row for row; the dev box's bridge synced again with its own key at 02:55 UTC. No tmux sessions; ports 4321, 4322 and 8099 free.
+- **The baseline** for this round is `round2-k.db` (45 invoices, 345 pool rows); the setup session's 38/338 is retired.
+- An unused pairing code (for I1) was issued at 02:51 UTC; it expired at 03:06 and is in the restored backup as an expired code. It unpaired nothing.
+
+Open, for the next session:
+1. **I2** (T29, T02): `~/xmr-pay-dev-data/07b-i2.sh` is written and tested against planted fake secrets; **Wyatt is reviewing it** before he runs it (`~/xmr-pay/scripts/with-shop-env.sh ~/xmr-pay-dev-data/07b-i2.sh`; output `07b-i2-output.txt`). The wallet-rpc login lives only in memory after start-up (`supervise.go` deletes its file), so the script looks for its shape (`xmr-bridge:` + 43 characters, `rpc-login`) and checks the file is gone; a bare password without its user name isn't caught (Go `TestNeverPrinted` covers that path).
+2. **Step 4 (`coffer-test`, F1 and F4), waiting on Wyatt:** (a) the Cloudflare tunnel route for `dev.wyattdilley.com` back up, pointed at the built copy on 4322 (the installer needs an https public site); (b) whether run A's node container (CT 107) is running, then the organizer's read-only "Node caught up" check. Then the plan's Step 4 order: reset (that backup is the restore point), build and serve the dev release on the LAN (Wyatt signs it), patch the plugin and start the built copy, Wyatt installs with the phase-05 tester shop wallet from Feather, F1, then F4 (installed files' hashes compared before and after a refused tampered install), then restore, rebuild the plugin, check the dev box's bridge, Wyatt takes the route down and rolls `coffer-test` back to `blank`. Each `sudo` script is shown to Wyatt first.
+3. **Steps 2, 3, 5, 6, 7** as planned. Leads already noted from reading `plugin/src/core/invoice.ts`, `sync/merge.ts`, `sync/handle.ts`, `sync/protocol.ts` and `sync/pairing.ts` (Step 2 turns them into tests):
+   - **C2's "seq far above the last accepted" was never run** (catalog T04). `seq` isn't tied to the signed `x-xmr-ts`; one signed snapshot with a far-future `seq` would make every later honest snapshot for that invoice be ignored (`mergeSnapshot`: `at.seq <= inv.seq`), and push an untouched tip off the watch. Needs the bridge key.
+   - **`height` has no bound** but `Number.isSafeInteger`, and the stored height never goes down (`Math.max`): a huge reported height would stick, and feed every later invoice's `createdHeight` and a pairing's suggested `restoreHeight`. With a key that's beyond Wyatt's D1–D6 limit, so ask before attacking it that way; Step 3 checks whether a dishonest remote node can push the bridge's reported height (E4), which needs no key.
+   - Snapshots apply to any invoice their index names, watched or not; K4 shows the bridge doesn't report unwatched indexes. Step 3 confirms from `bridgeloop`.
+   - RT-07's cause: `pairingCodeMatches` then `setPublicKey`/`setPairing` aren't atomic.
+4. Step 5 (RT-15 built-copy re-measure) and Step 6 (`pnpm audit`, `govulncheck`: name the exact version to Wyatt first) unchanged.
+
+Next session's first step: ask Wyatt for the I2 result (or run it with him), then Step 4's two questions (tunnel route; CT 107 running), and carry on from the plan.
+
+    Phase 07b attacker, pass 1, round 2 (continued). Read the "Session 5 … handoff" entry at the end of docs/progress.md and the plan at /home/dev/.claude/plans/phase-07b-attacker-pass-shimmering-kahn.md, then carry on from Step 4.
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: round 2 continued (attacker), interim note
+
+Branch `redteam-1` (local). Plan: `/home/dev/.claude/plans/phase-07b-attacker-pass-shiny-cerf.md` (Step 4 `coffer-test`, then Steps 2, 3, 5, 6, 7 of the Session 5 plan, with Wyatt's changes).
+
+- **I2 recorded: PASS** (Wyatt ran it 2026-10-30 15:03 UTC; 0 failures, positive control found, journal 40,941 lines). `docs/redteam-findings.md`; matrix T29 (Covered for pass 1) and T02. Setup-friction row: the script had no execute bit.
+- **For pass 2, fix `07b-i2.sh` before reusing it:** report an unreadable source as "not checked" instead of hiding `grep`'s error; search transcripts in subfolders (`05-setup/` and others); check each transcript once (`3g-reinstall-output.txt` was listed twice).
+- **Step 4 checks done in planning (read-only):** run A's node is caught up (PASS, 2,239,997), but F1 uses run B's remote node so the cross-check runs (a LAN node counts as the shop's own and switches it off). The dev site's `data.db` matches `round2-post-k.db` (55 invoices, 355 pool rows), which holds the dev box bridge's key (same fingerprint in every round 2 backup; last accepted sync 2026-10-29 02:55:22 UTC). `~/xmr-pay-dev-data/redteam/tools/counts.mjs` looked for the key in KV rows, where it never is; it's in `options` (`plugin:coffer:settings:bridgePublicKey`).
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: Step 4 (`coffer-test`, F1 and F4) done
+
+Branch `redteam-1` (local). Plan: `/home/dev/.claude/plans/phase-07b-attacker-pass-shiny-cerf.md`.
+
+- **Code under test:** `main` `e8e195a`. The dev release `0.0.202610301609-dev.2d7a29d` was built from `2d7a29d`, byte-identical to `main`'s build with a fixed version (only test files differ in `bridge/`). Hashes are in `docs/redteam-findings.md`, "Install layer: F1 and F4".
+- **F1 (T10): PASS.** Listeners, wallet-rpc's 401, flags, file modes and unit sandboxing as expected. Every outbound peer is explained; second nodes appeared only after the test tip was mined. Matrix T10 is Covered for pass 1.
+- **F4 (T16, T15): PASS.**
+  - A tampered binary was refused at the checksum, and the working install stayed byte-for-byte the same.
+  - F4c on a blank container: Ctrl-C at the view-key prompt left the machine unchanged, both with Enter only and with the person carrying on.
+- **New findings:**
+  - RT-19 (Low): the pairing code is checked last.
+  - RT-20 (**Medium, proposed: Wyatt rules**): behind a proxy that ends https, the tip endpoint refuses every tip as cross-site. Expected-fail theme test.
+  - RT-21 (Low): the dev flag's mainnet refusal comes after the view-key prompt.
+  - RT-22 (Low): Ctrl-C at an installer prompt is ignored, then a misleading node error.
+  - RT-23 (Low): `Node check: ok` with nothing checked, or stale.
+- **Observations:**
+  - What the cross-check's second nodes learn (new matrix row P05).
+  - Cloudflare's injected analytics beacon blocked by Coffer's CSP (T09/T23 working; the install docs could mention it).
+- **Lost or void runs, my script errors:** the first F1 watch (cleanup trap on Ctrl-C) and the first F4(a) (empty script). Both were re-run. Two installs failed on the pairing code (RT-19). Two setup-friction rows added.
+- **Restore:**
+  - The route is down and `coffer-test` rolled back to blank (Wyatt), before the built copy stopped.
+  - The site was restored from `baseline/data.db.before-setup-test-20261030T160842897Z`: 419 Coffer rows, 0 different; 55 invoices, 355 pool rows; the dev box's bridge key `2c00d25866f4`.
+  - The plugin was rebuilt with the placeholder.
+  - The dev box's bridge synced at 20:08:49 UTC.
+  - Site stopped. No tmux sessions; ports 4321, 4322, 8099 and the temporary forwarder's 4399 are free.
+  - The test state before the restore is kept in `~/xmr-pay-dev-data/redteam/round2-f1-after.db`.
+
+Tests run: theme `pnpm test` (73 passed, 2 expected fail, 1 skipped) and `pnpm run typecheck` (clean). No plugin or bridge code changed.
+
+Open, for the next steps:
+1. **Step 3 adds Go tests** for RT-21 (prompt order), RT-22 (Ctrl-C with the context cancelled), RT-23 (the status text), and P05 (exactly what a second node is sent). Step 3 also checks whether the site's admin page shows RT-23's stale "ok".
+2. **Wyatt rules on RT-20's severity.**
+3. **Steps 2, 3, 5, 6, 7 as planned**, including the far-future `seq` finding and the chain-height lead.
+
+Next step: Step 2 (plugin white box), site stopped.
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: Step 2 (plugin white box) done
+
+- **RT-20 ruled (Wyatt):** Medium, **blocks release 1**.
+  - **Fix for the fix phase:** also accept EmDash's configured public origin (`siteUrl`), the way EmDash's own CSRF check does, keeping every existing refusal. The expected-fail theme test is the https-Origin-over-plain-http case; its fixture gets `siteUrl`, plus a twin with none configured that is still refused.
+  - **Phase 09 item:** check the tip button live through a real proxy that ends https.
+  - **T17 now says a post with no `Origin` passing is intended.** It's non-browser clients, held by the same caps as the checkout route. Correction to the premise: on a Node site with no trusted-proxy setup there is no per-client bucket (round 1, live L2), so only the site-wide cap applies.
+- **New tests**, `plugin/tests/redteam/whitebox.test.ts`:
+  - **RT-24 (Low, T04):** a far-future `seq` freezes an invoice and drops an untouched expired tip from the watch. 2 expected fails.
+  - **E4, plugin side (T14/R09):** a high reported height sticks and moves later invoices' heights and a re-pair's suggested restore height into the future. 3 passing tests recording this, as evidence for Step 3.
+  - **J4 (R10):** a confirming tip whose payment vanishes goes back to `new`, raises no alert and expires normally. Matrix R10's wording was corrected to the spec: `reversed` is for settled invoices.
+  - **J3 (R05, T07):** an admin expire racing a settling sync kept the admin's decision in all 42 test-host rounds, either request first. It's a guard, not a proof: the Node runner interleaves requests (RT-07).
+  - **RT-25 (Low, P04):** an undecided review loses its buyer data 30 days after review began. Expected fail.
+- **Root causes added:**
+  - **RT-02:** `rates.ts:42–43` takes Kraken's only entry, whatever its key.
+  - **RT-07:** check and burn are two writes (`handle.ts:102–107`).
+  - **RT-16 and RT-17, confirmed upstream in EmDash 1.3.1:** no role field on admin pages and widgets; the admin UI prints the raw refusal in its "Plugin Error" banner.
+  - **RT-06 and RT-14** already had theirs.
+- **J2:** covered by round 1's C2 tests. The missing Health line for clock skew is C05 (deferred). I3's base case is the existing admin-tips purge test.
+
+Tests:
+- **Plugin `pnpm test`:**
+  - **First run:** 3 failures, all in `tests/redteam/checkout.test.ts`. The T19 L3 checkout tests hit the 30 s wall-time limit, with the known "no such table" cold-start errors in the log. The L3 test passes alone in under 1 s.
+  - **Second full run:** green. Default config: 327 passed, 17 expected fail, 1 skipped. Goods config: 92 passed, 1 skipped.
+  - Recorded as a flake, not fixed.
+- **Plugin checks:** `typecheck` clean, `validate` valid, bundle 58.3 KB, validation passed.
+
+Next step: Step 3 (bridge white box). It includes the RT-21, RT-22, RT-23 and P05 Go tests, the chain-height question (can a dishonest remote node push the reported height; read `wallet2`'s refresh in `~/work/monero-v0.18.5.1`), and the release build's update constants.
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: Step 3 (bridge white box) done
+
+- **RT-25 ruled (Wyatt):** the matrix's reading. For an invoice in review, the 30-day clock starts at the admin's decision.
+- **RT-26 (Medium proposed, T14/R09):** a dishonest remote node can push the reported chain height without the key.
+  - **How:** wallet-rpc's `get_height` is the length of the chain its node served (`wallet2.h:1230`), and `wallet2` appends blocks without a proof-of-work check (`wallet2.cpp:3023–3056`).
+  - **On the site:** the height sticks (`Math.max`), and a re-pair's suggested restore height, which the installer uses as given, lands in the future.
+  - **Tests:** Go test, skipped until fixed; Step 2's plugin tests show the consequence.
+- **RT-27 (Medium proposed, T15/new F08):** the bridge takes the site's `poolTop` (up to 2^32−1) and `poolTarget` unbounded. One reply starts a catch-up toward 4.29 billion subaddresses, and a billion-sized target makes every sync create 100 more. Go tests, skipped.
+- **Go tests for RT-21, RT-22 and RT-23**, skipped until fixed. Each skipped test (and RT-26's and RT-27's) was run once without its skip and failed for its finding's reason.
+- **Passing tests:**
+  - P05: exactly what a second node is sent.
+  - T27 (now Covered): untrusted certificates refused by the sync client, the updater and the Monero downloader.
+  - F08/E2: 100 MB, drip, hang and cut replies.
+  - T10: the release build's update schedule.
+- **Observation:** `moneroaddr` doesn't check the checksum (by design). A checksum-only typo fails only at wallet creation, after pairing.
+- **Fuzz:** new `FuzzParseReply` (9,799,866 runs) and `FuzzParse` (46,843,150 runs), 10 minutes each. No crasher.
+- **Matrix:** new row F08 (bridge reading the site's replies). T27 is Covered. Notes on T10, T14, T15, R09, R13 and P05.
+
+Tests: bridge gofmt clean, `go vet ./...` clean, `go test ./...` all packages ok; `go list -deps ./cmd/xmr-bridge` has no `hostile`.
+
+Not done from the old plan's Step 3 list, for the next session or pass 2:
+- **E4/E5 beyond what exists:** both nodes lying, both unreachable, a reordered block. Round 1's `TestLiarHarness` and the cross-check tests cover one liar.
+- **E6/E7:** covered by `TestGetTransfersRefusesBadValues`.
+- **F2/F3:** covered by the selfupdate and monerodl tests (T16, T26), apart from T26's still-open wallet-rpc downgrade case.
+- **J1, bridge side:** covered by `TestPendingSurvivesFailureAndRestart`.
+
+Next step: Step 5 (RT-15's built-copy re-measure), then Step 6 (`pnpm audit`, `govulncheck`: name the exact version to Wyatt first), then Step 7 (close the round).
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: Step 5 (built-copy re-measure) done
+
+- **RT-26 and RT-27 ruled Medium (Wyatt).**
+- **RT-15 on the built copy** (production build on loopback port 4322, 20,100 seeded settled tips plus a past-cap probe):
+  - **Timing:** every sync took 27.0–27.5 s, the same as dev mode's ~28 s, so the ~2.5 s margin under the 30 s wall is real.
+  - **L7:** 40 of 40 checkouts got an address during a 27.3 s sync.
+  - **New detail:** the cap drops the newest invoices first, because an unordered scan reads oldest first (`created_at`, `id`). The expired probe, written last, stayed unwatched through 40 drain syncs. Recorded in RT-15 with a fix direction.
+  - **Evidence:** `~/xmr-pay-dev-data/redteam/h1-2026-10-30T213904728Z.txt`.
+- **Script:** `scripts/redteam/backlog-live.mjs` gained `seed --past-cap` and `run --built`. Script tests: 43 pass.
+- **Restore:**
+  - `data.db` restored from `~/xmr-pay-dev-data/redteam/round2-step5.db`: 419 Coffer rows, 0 different; the dev box's bridge key `2c00d25866f4` back.
+  - The built copy was stopped; ports 4321 and 4322 are free.
+  - The dev site's `dist` was rebuilt from the placeholder plugin build.
+
+Next step: Step 6. `pnpm audit` in `plugin/`, `theme/` and `contract/`, plus the lockfile check against the tiers. For `govulncheck`, I name the exact version to Wyatt before running it.
+
+## 2026-10-30 · Phase 07b pass 1 · Session 6: paused for the night (handoff)
+
+Branch `redteam-1`, local, 36 commits ahead of `main`, not pushed. Plan: `/home/dev/.claude/plans/phase-07b-attacker-pass-shiny-cerf.md` (extends `…-shimmering-kahn.md`). **Steps 4, 2, 3 and 5 are done; Steps 6 and 7 remain.**
+
+**State at the pause (checked):**
+- **Dev box:**
+  - Git tree clean.
+  - No tmux sessions; no `astro dev` running.
+  - Ports 4321, 4322, 8099 and 4399 free.
+  - `xmr-bridge` and `monerod-stagenet` active. The dev box's bridge backs off quietly while the site is stopped.
+- **Dev site:**
+  - `data.db` matches `~/xmr-pay-dev-data/redteam/round2-step5.db`, itself equal to `round2-post-k.db`: 55 invoices, 355 pool rows, 8 KV rows, bridge key `2c00d25866f4`. Checked row for row (419 rows, 0 different).
+  - The plugin `dist` and the site's `dist` are built with the install-command placeholder.
+- **`coffer-test`:** rolled back to `blank`, and the `dev.wyattdilley.com` tunnel route is down (Wyatt). No pairing-code files are left on the dev box.
+- **Evidence kept outside the repo:**
+  - `~/xmr-pay-dev-data/07b-f1-output.txt`, `07b-f1w-output.txt`, `07b-f4-output.txt`, `07b-f4-output-run1.txt`, `07b-f4c-output.txt`;
+  - the void runs, `07b-f1-void-output.txt` and `07b-f1-failed-install-log.txt`;
+  - `redteam/round2-f1-after.db`, the coffer-test test state;
+  - `redteam/h1-2026-10-30T213904728Z.txt`, Step 5.
+  
+  `dev-release/` still holds the signed `0.0.202610301609-dev.2d7a29d` release, its `f4/` tampered copy and the `redteam/` scripts. It's no longer served.
+
+**Findings this session**:
+- **Medium:** RT-20 (**blocks release 1**), RT-26 and RT-27. Wyatt ruled all three.
+- **Low:** RT-19, RT-21, RT-22, RT-23, RT-24 and RT-25. RT-25 follows the matrix's reading.
+- **Observations:**
+  - what the second nodes learn (new row P05);
+  - Cloudflare's beacon blocked by Coffer's CSP;
+  - the address checksum isn't checked;
+  - RT-15's cap drops the newest invoices first.
+- **Totals:** 27 findings, all open. 1 High (RT-11), 8 Medium (RT-05, 07, 08, 12, 15, 20, 26, 27), 18 Low.
+- **New matrix row F08**, the bridge reading the site's replies. T27 is now Covered and T10 is Covered for pass 1.
+
+**Open, needs Wyatt:**
+1. **Step 6 go-ahead.** Proposed: `golang.org/x/vuln/cmd/govulncheck@v1.9.0` (Go team, BSD-3-Clause, proxy timestamp 2026-10-11, commit `e672cbe8fbc8c76e28fcb6db0efd9ce354e0dac5`), run as `go run …@v1.9.0 -C ~/xmr-pay/bridge ./...` from an empty scratch folder. It downloads Go's vulnerability database from `vuln.go.dev`. Plus `pnpm audit` in `plugin/`, `theme/` and `contract/`, which sends package names and versions to npm's audit service. Nothing is added to the repo or CI.
+2. **Upstream reports (Wyatt's):** RT-16 (EmDash admin pages and widgets have no role field) and RT-17 (the admin UI prints the raw refusal), both confirmed in EmDash 1.3.1.
+3. **Spec questions for the fix phase, Wyatt's call:**
+   - whether the spec's Privacy list should say what remote nodes learn (P05);
+   - RT-19's three fix options (pairing order);
+   - RT-26's and RT-27's fix ideas.
+
+**For pass 2 (also listed in earlier entries):**
+- **Fix `07b-i2.sh`:** report unreadable sources as "not checked", search subfolders, check each transcript once.
+- **Not done from Step 3's old list:** both nodes lying, both unreachable, a reordered block.
+- **T26:** the wallet-rpc downgrade case is still open.
+- **A plugin-suite flake:** `tests/redteam/checkout.test.ts` T19 L3 hit the 30 s wall once in a full run; it passes alone and in a re-run.
+
+**Phase 09 items noted this session:**
+- a live check of the tip button through a real https proxy (RT-20);
+- the install docs could mention Cloudflare's injected analytics on pay pages.
+
+**Next session's first step:** read this entry, then ask Wyatt for the Step 6 go-ahead (version above). After Step 6 comes Step 7, closing the round:
+- T24 and T25 spot-checked from the source;
+- a findings summary for "Pass 1, round 2";
+- the coverage column for every row round 2 touched;
+- the session entry, whose next step is the fix sessions: highest open finding first, RT-11, then the Mediums, with RT-20 ahead of the rest because it blocks release 1.
+
+## 2026-10-31 · Phase 07b pass 1 · Session 7: Steps 6 and 7 done, round 2 closed
+
+Branch `redteam-1`, local, not pushed. Plan: `/home/dev/.claude/plans/phase-07b-attacker-pass-stateless-rivest.md` (Wyatt approved it with his changes). Code under test is unchanged. One new skipped Go test (RT-28); the rest is docs.
+
+**Step 6, F5 dependency checks (T28).** Evidence in `~/xmr-pay-dev-data/redteam/step6-*`. Nothing was added to the repo's dependencies or CI, and no lockfile changed.
+- **The tool, checked before it ran:**
+  - Go settings all default (`go env -changed` empty).
+  - govulncheck v1.9.0's commit `e672cbe8fbc8…` was first taken from proxy.golang.org on 2026-10-30. It matched `go mod download -json` (sum.golang.org) and `git ls-remote` on go.googlesource.com, and Wyatt's own check on GitHub's mirror.
+  - Database updated 2026-10-27 21:16 UTC.
+  - No run failed. Under `go run`, the tool's exit code shows as `exit status N`.
+- **Bridge, source mode (go1.27.1):** 10 called standard-library vulnerabilities, all fixed in go1.27.2, except GO-2026-6809, fixed in go1.27.3. Two reach the bridge, which is an HTTP client only: 6809 (x509 distrust list) and 6611 (HTTP/2 client CPU). The other called ones are server, proxy or multipart paths.
+- **Binary mode on both dev-release binaries:** go1.27.1, not stripped, 9 by symbol each. The installed dev bridge is go1.27.1 too.
+- **bridge/oracle:** 0 called, also with `-test`. Nothing in go-crypto, circl, x/crypto or x/sys.
+- **RT-28 (Low, T28/T27), new.** Go test `TestRedteamToolchainFloor`, skipped. Run once without its skip, it failed for the finding's reason.
+- **Release 1's bridge build location isn't decided.** Tier 3 says CI, phase 09 says "a script", and the only existing path, `build-dev-release.sh`, runs on the dev box. Both the box and `ci.yml` (`go-version: 1.27.1`) give go1.27.1, while go1.27.3 is current. **For Wyatt.**
+- **`pnpm audit`** (each a parsed audit report):
+  - plugin: 63 (1 critical, 22 high);
+  - theme: 25 (1 critical, 7 high);
+  - `spikes/xmr-spike`: 63;
+  - `spikes/cf-runner/limits`: 23.
+
+  All are in dev tooling and EmDash 1.3.1's own tree (DOMPurify critical; undici, seroval, MCP SDK, sharp and others high). Nothing ships, by tier 1, so this is an observation, not a finding. EmDash 1.4.0 (2026-10-29) passes the 7-day rule on 2026-11-05. Whether it clears these wasn't checked; moving to it goes through the upgrade checklist.
+- **Not audited:** `spikes/sandbox-canary` (no dependencies, so no lockfile) and `contract/` (no package yet).
+- **Lockfile check, passed (plugin and theme):**
+  - exact pins, with specifiers matching `package.json`;
+  - every package has an sha512 integrity hash (829 of 829, and 694 of 694);
+  - registry sources only, and no overrides, patches or release-age exclusions;
+  - `strictDepBuilds`, `allowBuilds` (esbuild and workerd only) and `minimumReleaseAge: 10080` present.
+- **Matrix T28:** the one-off run is noted, and the row stays Planned for CI.
+
+**Step 7, closing the round:**
+- **T24:** upstream `qrcodegen.ts` at `3c6d0b3`, fetched fresh, hashes to `1dc03fb5…cda9c`, the vendor test's `UPSTREAM_SHA256` (Wyatt matched it independently). The vendored file is that file once the three `export` edits are undone.
+- **T25, from the source:** holds. The address comes only from `ctx.site.url`, then the private admin route's browser `Origin`, never `Host`; no usable address means no command and no code. Edges, no finding: `0.0.0.0` and IPv4-mapped IPv6 aren't on the loopback list, and a saved address with a path counts as unusable.
+- **`docs/redteam-findings.md`:**
+  - "Pass 1, round 2: summary": 10 findings this round, 3 Medium and 7 Low.
+  - Totals: 28, all open: 1 High, 8 Medium, 19 Low. The table and sections match (28 each).
+  - Not covered, split into tips scope (each gap with a home before release 1) and orders scope (pass 2).
+- **Matrix:** T15 (P01 is no longer waiting), T17 (round tag), T24, T25, T27 (RT-28), T28. Every other row round 2 touched already had its round 2 note.
+- **`CLAUDE.md`:** a command row for `scripts/redteam/round1-live.mjs`. It clears every Coffer row and the bridge key at the start and at the end.
+
+Tests (final check, one at a time; output in `~/xmr-pay-dev-data/redteam/step7-*.txt`):
+- **Plugin `pnpm test`:**
+  - Default config: 327 passed, 17 expected fail, 1 skipped (345).
+  - Switch-on `vitest.goods.config.ts`: 92 passed, 1 skipped (93). The T19 L3 flake didn't show.
+  - Typecheck clean, manifest valid, bundle 58.3 KB, validation passed.
+- **Theme `COFFER_REQUIRE_ZBAR=1 pnpm test`:** 73 passed, 2 expected fail, 1 skipped. The skipped one is the "zbarimg is installed" guard, which runs only when zbar is missing. All five QR round trips ran. Typecheck clean.
+- **Bridge:** gofmt clean, `go vet ./...` clean, `go test -count=1 ./...` 21 of 21 packages ok. `hostile` isn't in `go list -deps ./cmd/xmr-bridge`.
+- **Scripts:** `node --test scripts/*.test.mjs scripts/redteam/*.test.mjs`, 43 passed.
+
+State at the end: tree clean after the commit, no tmux sessions, no `astro dev`, ports 4321, 4322, 8099 and 4399 free. `xmr-bridge` and `monerod-stagenet` active. `data.db` untouched this session.
+
+**Open, needs Wyatt:**
+1. **RT-08:** is it High? And the rewording of T03's and the spec's "free goods, not lost funds" line, which feeds the public security report: a stolen bridge key can route new tips to the attacker.
+2. **Release 1's bridge build:** where (CI or the dev box), and with which Go. RT-28's fix is go1.27.3 or later there: the dev box's `/usr/local/go` (sudo) or `ci.yml`'s `go-version`.
+3. **T28 in CI:** `pnpm audit`'s scope and level, and the govulncheck dependency ask for CI.
+4. **EmDash 1.4.0** (eligible 2026-11-05): whether to take it through the upgrade checklist, given 1.3.1's npm advisories.
+5. **Upstream reports:** RT-16 and RT-17 (EmDash 1.3.1).
+6. **Spec questions:** P05 in the Privacy list, RT-19's three options, and RT-26's and RT-27's fixes.
+
+**Phase 09 items:**
+- **New:** rerun `govulncheck -mode binary` on the final release binaries and `pnpm audit` on the release packages just before publishing, since T28 stays out of CI until item 3 is decided.
+- **From earlier:** the tip button through a real https proxy (RT-20), and the install docs could mention Cloudflare's injected analytics.
+
+**Round 3 (after the fix sessions, before phase 09):** retest every fix; T26's wallet-rpc downgrade; fix `07b-i2.sh` and rerun I2 (T29); the Astro `base` case if supported. Both-nodes-lying, both unreachable and a reordered block go with RT-26's fix session; the T19 L3 flake goes with RT-12's.
+
+**Next step:** the fix sessions, highest open finding first: RT-11 (High), then the Mediums with RT-20 ahead of the rest (it blocks release 1), then RT-05, 07, 08, 12, 15, 26, 27.
+
+## 2026-10-31 · Phase 07b pass 1 · Session 7: Wyatt's rulings recorded
+
+Recorded in `docs/decisions.md` (five rows), `docs/redteam-findings.md`, `docs/security-matrix.md`, `docs/spec-changes.md` (change 44), `docs/phases/09-release.md` and `docs/emdash-upgrade-checklist.md`.
+
+1. **RT-08 is High** (was Medium): gated only by a stolen bridge key, with a Critical-class outcome.
+   - **Fix sessions:** look for detection (for example the honest bridge checking the site's pool against its own wallet) and fast re-pairing. If nothing holds, it becomes an accepted limit with honest wording.
+   - **Wording:** Wyatt's draft is in spec change 44 and now in T03's pass condition. Wyatt applies it to the live spec. `docs/spec.md` is unchanged.
+   - **Totals now:** 2 High (RT-08, RT-11), 7 Medium, 19 Low.
+2. **Release 1's bridge is built in CI.**
+   - Wyatt signs on the dev box, and the signing key never goes to CI. Before signing he rebuilds on the dev box with the same Go and flags and confirms the hashes match. Phase 09's "A script produces…" now says so, plus the pre-publish govulncheck and `pnpm audit` rerun.
+   - **RT-28 fix:** go1.27.3 (released 2026-10-20), pinned in one place CI reads, and the same version on the dev box.
+3. **T28 in CI:**
+   - `govulncheck@v1.9.0` on `bridge/` in source mode, failing on exit 3;
+   - `pnpm audit --prod --audit-level high` in `plugin/` and `theme/`, failing;
+   - no failing audit of the dev tree.
+
+   Built in a fix session. Found while recording it: both packages have only dev and peer dependencies, so `--prod` today audits 15 packages, pnpm's own `packageManager` pin and its platform builds (`step6-audit-prod-*.json`: 0 advisories). It's a guard against a runtime dependency appearing, not an audit of EmDash.
+4. **EmDash 1.4.0** goes through the checklist after 2026-11-05, in the fix phase before phase 09's final tests. Wyatt's three checks from the 1.4 notes are in the checklist.
+   - **DOMPurify** (GHSA-cg2g-xh64-v4q7, fixed in 3.4.17): `pnpm why dompurify` puts it on EmDash's runtime path, `@emdash-cms/admin@1.3.1` (a regular dependency) ← `emdash@1.3.1`.
+   - **1.4.0 doesn't clear it by itself:** `@emdash-cms/admin@1.4.0` keeps `dompurify ^3.3.2`. It depends on what the lockfile resolves.
+5. **The rows round 2 touched were not all current. Fixed now:**
+   - **P04** didn't record the RT-25 ruling (the clock starts at the admin's decision).
+   - **R05** still called the bridge-side kill "round 2's Go step". Step 3 covered it with `TestPendingSurvivesFailureAndRestart`.
+   - **R09** still said whether a remote node can push the height "is Step 3's". It can (RT-26).
+   - **T29** said "fix before pass 2". Its home is now round 3.
+   - **F08** lacked RT-26's and RT-27's ruled severities.
+   - **Punctuation:** T04, T10, T14, T15, R05, R09 and R13 had sentences run together where an edit dropped a full stop.
+
+   T13, T16 and P05 were current.
+6. **T25's edges are Low hardening on the fix list** ("Hardening, round 2" in the findings), checked with a scratch script:
+   - **Plugin:** accepts `0.0.0.0`, `[::]`, `[::ffff:127.0.0.1]` and `localhost.`.
+   - **Installer:** refuses `::ffff:127.0.0.1` (Go maps it), but accepts `0.0.0.0` and `[::]` (neither loopback nor the same-machine check catches them). `localhost.` and `127.1` aren't refused by its loopback check; `localhost.` is caught by the same-machine DNS lookup only if the resolver maps it, and `127.1`'s DNS case wasn't tried.
+   - **A trailing slash isn't a path:** `https://shop.example/` is used as `https://shop.example` (an existing [T25] test).
+
+**RT-28, the dev box part (Wyatt, sudo):**
+- **Download:** `~/xmr-pay-dev-data/go1.27.3/go1.27.3.linux-amd64.tar.gz`. SHA-256 `65efbc80fdc1fa2cd2631cad5b481777a68e8725f34e89f50fc6ac714e379b40` matches go.dev's release list and dl.google.com's `.sha256`. `VERSION` says go1.27.3, 2026-10-19T22:20:36Z.
+- **Script:** `~/xmr-pay-dev-data/go1273-install.sh`. It checks the checksum and the archive's layout, stages, then swaps with two renames. The old Go stays at `/usr/local/go1.27.1-old`. Output goes to `go1273-install-output.txt`.
+
+After that, the repo part:
+- `bridge/go.mod` (and `bridge/oracle/go.mod`) `go 1.27.3`, and `ci.yml`'s `setup-go` reads it with `go-version-file`, so the pin lives in one place;
+- RT-28's skip comes off;
+- govulncheck rerun (source and a fresh binary build), expecting nothing called;
+- the bridge suite.
+
+No tests run for this docs-only commit; none of the changed files are code.
+
+Next step: Wyatt runs the go1.27.3 install, then the RT-28 repo change above. Then the fix sessions, highest first: RT-08 and RT-11 (High), then RT-20 (blocks release 1), then the other Mediums.
+
+## 2026-10-31 · Phase 07b pass 1 · Session 7: RT-28 fixed
+
+- **Dev box:** Wyatt installed go1.27.3 with `~/xmr-pay-dev-data/go1273-install.sh`.
+  - Output: checksum OK, `go version go1.27.3`, `root:root 755`, the old Go kept at `/usr/local/go1.27.1-old`, PASS at 21:59:42 UTC.
+  - Rollback: `sudo rm -rf /usr/local/go && sudo mv /usr/local/go1.27.1-old /usr/local/go`. The old copy can go once CI has passed on go1.27.3.
+- **Repo:**
+  - `bridge/go.mod` and `bridge/oracle/go.mod` now say `go 1.27.3`.
+  - `ci.yml`'s `setup-go` reads `go-version-file: bridge/go.mod`, so the pin lives in one place.
+  - With `GOTOOLCHAIN=local`, go1.27.1 refuses the module: "go.mod requires go >= 1.27.3".
+  - RT-28's test is unskipped and passes.
+  - Decision 72 notes the new pin source. RT-28 is marked fixed in the findings and the matrix (T27, T28).
+- **govulncheck v1.9.0 afterwards** (database updated 2026-10-27 21:16 UTC): "No vulnerabilities found", exit 0, in all three runs:
+  - source mode on `bridge/`;
+  - binary mode on a fresh amd64 static build (`-trimpath`, `CGO_ENABLED=0`, go1.27.3);
+  - binary mode on a fresh arm64 build, the same way.
+
+  Evidence: `~/xmr-pay-dev-data/redteam/rt28-*.txt`.
+
+Tests (go1.27.3, `GOTOOLCHAIN=local`, `GOFLAGS=-mod=readonly`):
+- bridge gofmt clean, `go vet ./...` clean, `go test -count=1 ./...` 21 of 21 packages ok;
+- `bridge/oracle` gofmt, vet and tests ok, with `go.sum` unchanged.
+
+Not run:
+- **`go test -race`:** the dev box has no `gcc`, which cgo needs. CI's runner has it, so CI covers it.
+- **CI itself:** the `go-version-file` change is untested until a push.
+- **The `bridge/oracle` govulncheck rerun:** skipped, since it had 0 called before and its only change is the standard library, which is now clean.
+
+Still go1.27.1: the dev releases in `~/xmr-pay-dev-data/dev-release/` and the dev box's installed bridge, both stagenet only. The next dev release picks up go1.27.3.
+
+Totals: 28 findings, 27 open. RT-28 is fixed.
+
+Next step: the fix sessions, highest first: RT-08 and RT-11 (High), then RT-20 (blocks release 1), then the other Mediums. The first push after this checks CI's bridge job on go1.27.3.
+
+## 2026-10-31 · Phase 07b fix sessions · Plan for the first fix: RT-11 with RT-29 (spec change 45)
+
+Branch `redteam-1`, local. Planning only: no code changed. The build is the next session's.
+
+**Background:**
+- `main` got the Go 1.27.3 pin alone (`191802c`, pushed by Wyatt's request). CI run 41246807865 succeeded: bridge, plugin and theme jobs, with the race-detector tests and the oracle check. The bridge job's log needs a login, so the version is inferred: `GOTOOLCHAIN=local` plus `go 1.27.3` in `bridge/go.mod`, which refuses anything older and is what `setup-go` installs.
+- `redteam-1` is unchanged by that push, and a test merge of `main` into it has no conflicts.
+
+**Decided (Wyatt, 2026-10-31):**
+- **Network:** recorded in the plugin only. The first address after a pairing is signed by the newly paired bridge, so it's as trustworthy as the bridge declaring its network. No bridge rebuild for this part.
+- **Admin page:** shows the stored network next to the pairing status.
+- **No migration:** an install with no stored network is treated like a fresh pairing (nobody runs Coffer yet).
+- **RT-29 filed (Medium) and fixed whole with RT-11:** every new pairing drops all unused pool addresses and clears the stored network.
+- **Reporting:** refused addresses are reported in RT-08's Health line (spec change 46), not on their own.
+- **Spec change 45 accepted** with three changes: keep item 4 (checkout skips a row on another network); the order inside the pairing request (drops before the key, plus a test for a failure after the drops); and the different-wallet address gap (below) recorded in 45 and fixed in 46.
+
+**Found while costing it:** a re-pair to a different wallet starts the new wallet's pool above the old wallet's highest claimed number, expired checkouts included.
+- Past about 200 old checkouts, its tips are beyond a wallet app's lookahead. The Health warning is blind to it, because `state:paidTop` belongs to the old wallet.
+- This was true before 45 as well.
+- **Spec change 46** fixes it: the bridge says at pairing whether it's the same wallet; a different wallet gets fresh numbering and a reset baseline; the same wallet re-offers its own unused subaddresses (Wyatt took that option).
+- **Until then,** the switch-wallets steps say to raise the wallet app's lookahead. No such steps exist yet in the user-facing docs. The places are the spec's "View key leaked" row (live spec, Wyatt) and phase 09's install docs.
+
+**Build plan for the next session (plugin only; tests first, each step green and committed):**
+1. **Failing tests first.** Tag them [T20], [P02], and [T03]/[R08] where re-pairing is involved; add RT-29's tag where it applies:
+   - RT-29: a re-pair to another same-network wallet hands out only the new wallet's addresses.
+   - A stagenet-to-mainnet re-pair: the old unused addresses are gone, checkout hands out mainnet, and claimed rows and invoices are untouched.
+   - No stored network: the next address sets it.
+   - A mixed first batch: only the first readable address's network is kept, and the rest are dropped.
+   - The two RT-11 `it.fails` flip to `it`.
+   - Checkout skips a free row whose network differs from the stored one.
+   - A re-pair keeps claimed rows, and `poolTop` falls to the highest claimed one.
+   - A pairing that fails after the drops: the old key still syncs, the new key is refused, and the code still pairs on a retry. This needs a fault-injecting store in the test host.
+   - The admin page shows the network ("Paired · stagenet", or "not known yet"). **Exact wording to Wyatt before it's written.**
+2. **Code:**
+   - **Pairing step** (`plugin/src/sync/handle.ts`, step 2), after `pairingCodeMatches` and `verifySignature`: drop the free pool rows, clear the network KV, then `setPublicKey`, then burn the code.
+   - **Store** (`plugin/src/store.ts`): a `KV.network` key, `poolDropFree()` (a query on the `status` index, `where: { status: "free" }`) and network get/set.
+   - **Sync apply** (step 4): an address on another network is dropped; with none stored, the first readable one sets it.
+   - **Checkout** (`checkout.ts` `claimAndStore`): skip and claim-without-invoice a row on another network, as for an unreadable one.
+   - **Admin page** (`admin.ts`): the network next to the pairing line.
+3. **Checks:** plugin `pnpm test` (both configs), typecheck, `emdash-plugin validate`, `bundle --validate-only`. Bridge untouched.
+4. **Docs:** matrix T20 (Covered once green), P02, T03 and R08. Findings RT-11 and RT-29 → fixed. Progress.
+
+**Then RT-08 (spec change 46, to write and get approved before building).** It must cover:
+- the bridge checking the site's pool against its own wallet;
+- the same-wallet flag at pairing, with fresh numbering for a different wallet, re-offered unused subaddresses for the same wallet, and the gap baseline;
+- **no lock-out by far-future sequence numbers** from a stolen key (RT-24's `seq` reach), so the honest bridge's check always runs;
+- a refused sync from the honest bridge itself raises the red Health line;
+- refused wrong-network addresses reported in that same line.
+
+**Then RT-20** (blocks release 1).
+
+**Next step:** a fresh session builds spec change 45 (RT-11 with RT-29) from the plan above, starting with the failing tests.
+
+## 2026-10-31 · Phase 07b fix sessions · Spec change 45 built (RT-11, RT-29)
+
+Branch `redteam-1`, local commits only (`ffe6e2a` to `8080e6b`).
+
+**Decided by Wyatt this session:**
+- **The window a running sync leaves is closed, not filed as RT-30.** A sync already past its signature check can write after a re-pairing's drop, and a thief can time bursts through a re-pair. Every pool row carries the key ID of the sync that added it, and checkout skips other pairings' rows. The stored network also carries the key ID. The re-check of the key before writing ((b)) stays too.
+- **Mark-then-delete** for the drop (his preference over the suggested tag-only design), and every reader of a pool row's status was checked.
+- **Wording:** "Paired · stagenet" and "Paired · network not known yet", without the bracket.
+- **`--code` on the command line** is accepted for the dev box's stagenet re-pair. A stdin option for `xmr-bridge pair` goes into spec change 46 (T29/C06).
+
+**Found while building:**
+- **`updateIf` doesn't change a row's revision** (EmDash 1.3.1, `context-…mjs:644–667`). So the planned `getVersioned` plus `compareAndDelete` would have deleted a row a checkout claimed in between. The drop instead marks `free → dropped` with an `updateIf` guarded on `status: "free"` (checkout's own guard), then deletes.
+- **`compareAndDelete` does reach a sandboxed plugin** (sandbox-workerd 0.9.5 bridges `storage/compareAndDelete` on both sides), but isn't used.
+- **The "dropped" status, reader by reader:**
+  - not counted as free: checkout's query, `poolFreeCount`, Health's meter;
+  - not in the gap warning: it reads claimed rows only;
+  - not in `poolTop`: now free and claimed rows only, a deliberate change;
+  - `poolHas` counts it as present, which is fine because no bridge re-sends a number;
+  - uninstall deletes every status;
+  - the data-at-rest scanner doesn't read status, and the counts tool groups by it.
+
+  One is left behind in a route test.
+- **Fixtures:** a site with a pool now needs a paired key whose ID its rows carry. The checkout-route and platform fixtures now pair test1, and 11 test files tag their seeded rows. The redteam harness stores the network for a seeded pool.
+
+**Built** (plugin only; the bridge is untouched):
+1. `ffe6e2a`: `keyId()` (the base64 key's first 16 characters), and fixtures tag their rows.
+2. `d6e8942`: the network per pairing on sync (items 2 and 3), key IDs on new rows, a sync whose key was replaced while it ran refused, and the RT-11 `it.fails` turned into passing tests.
+3. `b8a5982`: the pairing drop (item 1) in Wyatt's order, mark-then-delete, `poolTop` ignoring dropped rows.
+4. `3045295`: checkout skips another network's or another pairing's rows (item 4 and the tag).
+5. `f169690`: Health's "Wallet host" line (item 5).
+6. `8080e6b`: docs. Matrix T20 Covered; P02, T03 and R08 updated; Threats counted from the table: 20 Covered, 7 Partial, 3 Planned, 1 Gap. RT-11 and RT-29 fixed (29 findings, 26 open). Spec change 45 marked built, with these decisions; 46 gains the `pair` stdin option.
+
+**Tests**, the last full run, at `f169690`:
+- **Plugin, default config:** 354 passed, 15 expected fail, 1 skipped (35 files).
+- **Plugin, goods config:** 95 passed, 1 skipped.
+- **Checks:** typecheck, `emdash-plugin validate` and `bundle --validate-only` clean, bundle 59.5 KB (58.3 KB before).
+- **New test files:** `tests/routes/repair.test.ts` (route-level re-pairs, the leftover window, a leftover dropped row) and `tests/routes/pool-drop.test.ts` (the claim racing the drop).
+- **Changed test files:** handle, claim, uninstall, admin-health, admin-route, platform, network.
+
+Notes on the runs:
+- A full run takes about 10 minutes now (468 s default, 139 s goods), so it goes in the background.
+- In step 4's first run, a `grep` pipe hid three failing platform tests from the exit code. They were caught in the output and fixed by the fixture. The later runs used `pipefail`.
+- In step 5, two admin-health tests ("[P03] spam limits", 33 s; "an outdated wallet host", 52 s) failed alongside the step's expected failures. They passed alone and in both later full runs. Worth watching.
+
+**Not covered:**
+- the bridge (no change; spec change 46 is next);
+- `go test -race` (no `gcc` here);
+- CI (nothing pushed);
+- the live re-pair below, pending.
+
+**Dev box:**
+- Two orphaned workerd processes from the dev site (parent PID 1, about 570 MB, up nearly 3 days, probably round 2's j1 SIGKILL run) were stopped.
+- `data.db` backed up to `~/xmr-pay-dev-data/redteam/45-before-repair.db`: 55 invoices; pool 355 rows (305 claimed, 50 free, indexes 306–355, none tagged); bridge key fingerprint `2c00d25866f4`.
+- The plugin is built and the dev site runs in `astro dev` (background).
+- The installed bridge synced at 23:56:54 UTC with its old key; no network is stored yet.
+- Under the new checkout rule, untagged rows can't be handed out until a re-pair (the "no migration" decision).
+
+**Release note for phase 09:** EmDash's plugin guidance asks for a `package.json` version bump when runtime behaviour changes. This build changes it.
+
+**Live re-pair: done, all pass** (2026-11-01 00:52 UTC):
+- **The re-pair:** Claude issued a code at 00:52:01 UTC. Wyatt ran `sudo sh ~/xmr-pay-dev-data/45-repair.sh`: pair exited 0, the service stayed active, PASS, and the code file was deleted.
+  - The script's before and after "Bridge key" lines came out empty. The installed bridge (the 8 October dev release) probably predates `status`'s `Bridge key:` line. The key change was checked from the database instead.
+- **The after-check**, a scratch script, output in `~/xmr-pay-dev-data/45-after-repair-output.txt`, 19 s after pairing. Every check passed:
+  - **Key and pairing:** a new key is stored (the fingerprint changed from `2c00d25866f4`), and `lastPairing` says it replaced the old one.
+  - **Network:** `state:network` is stagenet with the new key's ID.
+  - **Pool:** 50 free rows, indexes 356–405, all carrying the new key's ID; no "dropped" row; the 305 claimed rows untouched.
+  - **Health:** "Paired · stagenet", the meter at 50 of 50, the gap at 0.
+  - **A public tip** got index 356, a new-key row (invoice `inv_e266ef9e2e436bd0`, an unpaid stagenet tip left to expire).
+- **The cost was as predicted:** numbers 306–355 were skipped, since the host keeps its wallet (spec change 45's costs; 46 removes it).
+- **After:** 56 invoices; pool 355 rows (306 claimed, 49 free, highest 405). The bridge last synced at 00:52:26 UTC. The dev site was stopped afterwards (ports free); the bridge backs off quietly. The backup `45-before-repair.db` holds the pre-re-pair state, but restoring it would put back the old key, which the bridge no longer has.
+
+**Next step:** RT-08's spec change 46 (write it, get it approved, then build), then RT-20.
+
+## 2026-11-01 · Phase 07b fix sessions · Leftover shells, bundles, spec change 46 written
+
+- **Leftover shells, both stopped:**
+  - One of this session's background wait loops: `until ! pgrep -f "vitest.goods.config"` matched its own command line, so it never ended. It's what Wyatt's status bar showed.
+  - A 28-day-old orphaned shell from phase 01's spike (PPID 1): a `while sleep 1; do free -m …` logger whose `kill` never ran. Its log, `/tmp/claude-1000/-home-dev/a8cbdf86-…/scratchpad/mem.log` (12 MB, an old session's scratchpad), is left in place.
+- **Bundles (Wyatt):** every session now ends with a verified full-history bundle of its branch in `~/xmr-pay-dev-data/bundles/`, named `coffer-<branch>-<UTC date>-<short sha>.bundle`. Its name and SHA-256 go in the closing message, and into the next progress entry, since a bundle can't hold its own hash.
+  - The first, at `3906fc1`: `coffer-redteam-1-2026-11-01-3906fc1.bundle`, SHA-256 `821df4a19ad7b70c1ccbdffd9db9c8f278114d6223bcda52e35e471e9b29ff74`, 1,709,001 bytes, verified (complete history).
+- **Spec change 46 written, proposed** (`ec74a16`):
+  - the honest bridge's pool check (RT-08 detection);
+  - refused syncs shown on Health;
+  - a same-wallet probe at pairing;
+  - per-wallet numbering (`wallet × 2³² + index`, no index change), with the same wallet re-offering its unused subaddresses;
+  - old-wallet open invoices;
+  - RT-24's `seq` bound;
+  - `xmr-bridge pair --code -`.
+
+  Wyatt's test case is in it: the dev site's 306 claimed rows, where a different wallet would start at 357 today. The live check is planned too: a go1.27.3 dev release Wyatt signs, `xmr-bridge update` replacing the 8 October build, then a forged row, a same-wallet re-pair and a different-wallet re-pair with a real stagenet tip.
+- **Two facts corrected while writing it:**
+  - Tips aren't refused while the wallet host is silent; only product checkout is (`checkout.ts:266`). After a pairing, the empty pool is what stops them.
+  - The bridge's catch-up is `bridgeloop.go:443–447`.
+
+No tests run: docs only.
+
+**Next step:** Wyatt decides 46's D1–D7. Then a fresh session builds it, plugin first (tests first), then the bridge, then the dev release and the live check.
+
+### Wyatt's draft answers for 46 (not yet approved)
+
+D1. wallet × 2^32 + index, split in one helper that every reader uses (poolTop, the gap warning, invoiceForIndex, the sync's index check), with an assert that the value stays a safe integer.
+D2. As recommended for release 1. Note for release 2 (pass 2): a buyer who pays an old wallet's address after a switch gets an expired order, so orders need a "paid to a previous wallet" path.
+D3. As recommended, plus: list only the current wallet's addresses (otherwise a re-pair to a different wallet flags the old wallet's open invoices as foreign); every handed-out address gets checked at least once, including invoices that closed between checks (a thief can report its own invoice paid within seconds); Health shows when the pool check last passed ("never" for a bridge without it). Banner: "Coffer found addresses on this site that aren't from your wallet. Someone may have your wallet host's key. Payments to those addresses don't reach you, so Coffer has stopped handing them out. Re-pair your wallet host now, then check Review."
+D4. Keep it. Wording: "A wallet host using your previous pairing is still contacting this site. If you replaced it, shut the old one down. If you didn't, someone else may have its key; your re-pair has already locked it out."
+D5. No bump.
+D6. Add to T03 and R08.
+D7. A new Feather stagenet wallet I make and hold the seed for, restore height set by hand to the current height.
+Open check: can a wallet's rows all disappear (tip purge, plugin uninstall and reinstall)? If so, a returning wallet looks new and restarts at index 1 over paid addresses; start a new wallet above the highest index it has received on.
+
+## 2026-11-01 · Phase 07b fix sessions · Spec change 46 accepted
+
+Branch `redteam-1`. Docs only.
+
+- **Spec change 46 accepted.** Wyatt's draft answers (D1–D7 and the open check) were reviewed against the code, four points were put to him, and he amended the rest. The decisions are in 46's "Wyatt's decisions (2026-11-01)", and the proposal text is rewritten to match.
+- **From the review (the code facts behind the questions):**
+  - Today's sync response carries indexes only (`handle.ts:208–209`). So the `check` list and the probes send digests (the first 16 bytes of SHA-256 of the address), not addresses.
+  - An "ok" report can't mark a row as checked, since a thief can send "ok" too. Coverage is a 24-hour window on a new `addedAt`, with a rotation that moves every 30 s.
+  - Rows disappear only on uninstall with "delete data", which also clears KV (`store.ts:153–163`); the 30-day purge clears buyer data only. Hence a re-offer only on a match.
+  - The UI's labels are "Connect a new wallet host" and "Needs a decision".
+- **Wyatt's own additions:**
+  - the index bound in `parseSyncBody`;
+  - the 45 s wait before hand-out (prevention, while the wallet host runs);
+  - the free cap at `POOL_TARGET`;
+  - status `bad`;
+  - every invoice on a bad row to review, closed ones included;
+  - display text for the new reasons;
+  - "on a machine you trust" in the banner;
+  - no addresses, watch list or snapshots before the probe answer, with no fallback;
+  - the three-case D4 wording;
+  - `receivedTop` for the baseline;
+  - live steps 6 (a fresh unpaid tip) and 7 (357 first).
+- **Later work, pass 2:**
+  - **Orders paid to a previous wallet:** they need a "paid to a previous wallet" path (D2).
+  - **Address reuse on a "no match" for a wallet with history** (both sides rebuilt, or a reused wallet): a restored wallet hands out old addresses again, already-paid ones included, and a payment to one settles the new invoice. A known limit for release 1; for orders, free goods. (Corrected 2026-11-01, below: a restored wallet stops at the first 200-address gap.)
+- **At build time:** CLAUDE.md's list of stored items gains the previous bridge key (D4), with Wyatt's OK.
+- **Approved by Wyatt as written (same day):** Claude's two additions to 46. One is item 1's "What's left": the 45 s wait protects only while the wallet host runs, and a stopped host's window is listed afterwards. The other is the matching example wording for spec change 44.
+
+No tests run: docs only.
+
+**Next step:** a fresh session builds spec change 46 from its accepted text: plugin first (failing tests first, tagged T03/R08 and the rest of 46's matrix list), then the bridge, then the dev release and the live check.
+
+## 2026-11-01 · Phase 07b fix sessions · Spec change 46, plugin side built
+
+Branch `redteam-1`, local commits only (`6451809` to `d834c63`, then this docs commit). The plan was approved by Wyatt as written, including its wording and the three choices noted in it. The bridge is untouched.
+
+**Built, step by step** (each step: failing tests first, then code, then both configs green, then a commit):
+1. **`6451809`, steps 1–2, the protocol and the numbering helper:**
+   - an address or snapshot index outside 1..2³²−1 → `INVALID_BODY` (address index 0 was skipped before);
+   - `SEQ_OUT_OF_RANGE` for |seq − ts·1000| > 300 s, on both paths (RT-24);
+   - `checks.pool` and the `wallet` answer are parsed;
+   - `core/walletindex.ts`.
+2. **`e7e394e`, step 3, the probe and per-wallet numbering:**
+   - `state:wallets`;
+   - the wait after a re-pair on a site with history: probes, `poolTop` 0, an empty watch list, no addresses, no snapshots;
+   - the answer, with `receivedTop` as the baseline;
+   - own indexes on the wire and on the admin page;
+   - the gap per wallet;
+   - uninstall deletes each wallet's baseline.
+3. **`acff4e0`, step 4, D2:** another wallet's open invoices go to review or expire with `wallet_changed`, and they aren't watched again. The new review cards and labels use Wyatt's wording.
+4. **`011f585`, step 5, the pool check:**
+   - the `check` list;
+   - the free cap;
+   - `addedAt`;
+   - the report: `bad` rows, `not_your_wallet` review, the sticky mismatch;
+   - the 45 s hand-out wait;
+   - the test address's "being checked" message.
+5. **`2ac40ec`, step 6:** refused current-key syncs and the previous key's requests are recorded, at most once a minute.
+6. **`d834c63`, step 7, the admin page:** the mismatch banner, the refusing line, the previous-host line, and the "Address check" field.
+7. **Docs:**
+   - matrix rows T03, T04, P02, T20 and R08;
+   - RT-24 fixed (29 findings, 25 open), and RT-08's status says the plugin side is built;
+   - 46's status updated.
+
+**Tests**, the last full run, at `d834c63`:
+- **Plugin, default config:** 416 passed, 12 expected fail, 1 skipped (41 files, 485 s).
+- **Plugin, goods config:** 101 passed, 1 skipped (144 s).
+- **Checks:** typecheck, `emdash-plugin validate` and `bundle --validate-only` clean. Bundle 70.0 KB (it was 59.5 KB before 46's build).
+- **New test files:**
+  - `tests/core/walletindex.test.ts`;
+  - `tests/sync/wallets.test.ts`, `poolcheck.test.ts` and `refused.test.ts`;
+  - `tests/routes/handout.test.ts` and `admin-46.test.ts`.
+- **Run outputs:** `~/xmr-pay-dev-data/46-step*-test.txt`.
+
+**Not red first,** reported as it happened:
+- the own-index test in `admin-invoices` (the display change went in with the gap code);
+- the first two `handout.test.ts` tests (written after step 5's checkout code);
+- the two review-card tests in `admin-review` (written before the code but not run before it).
+
+All the others failed before their code.
+
+**Existing tests changed, and why:**
+- **Spec change 45's re-pair tests** (handle, repair) now answer the probe.
+- **Route tests that sync and then check out** age their rows with the harness's new `agePool()`, since a test can't wait 45 s.
+- **Red-team C2:** the skewed sender sends a `seq` from its own clock.
+- **Red-team C3:** "no state change" allows the refusal record and checks it's there.
+- **The row-shape test** includes `addedAt`.
+- **The uninstall fake** has `get`.
+- **The it.fails tests:**
+  - RT-24's two `it.fails` now pass, plus a test of the 5-minute edge;
+  - RT-08's D2 `it.fails` is replaced by two passing tests: prevention while the honest host runs, and the limit while it's stopped.
+
+**Found while building:**
+- **A wrong claim, corrected:** I said the sandbox's `ctx.kv` has no `list()`. The error came from the uninstall test's hand-made fake, not the sandbox. Uninstall now deletes `state:paidTop:<w>` by number from `state:wallets` either way, and doesn't need `list()`.
+- **Wording that differs from the plan's examples, for Wyatt to check:**
+  - The Health field reads "OK, less than a minute ago" (the page's existing `ago()`), not "OK, 12 s ago".
+  - The mismatch banner splits Wyatt's text: its first sentence is the title, the rest the description.
+  - Times are `HH:MM UTC` with no date, as elsewhere on the page.
+
+**Open:**
+- **CLAUDE.md:** its list of what the plugin stores gains "and the previous bridge's public key" (D4). That needs Wyatt's OK; it isn't edited.
+- **Dev scripts to update before the live check** (not in the plugin suite):
+  - `scripts/dev-e2e.mjs` pairs a fake bridge on a site with history, so it must answer the probe, and it checks out a tip seconds after topping up, which the 45 s wait refuses;
+  - the red-team live scripts (`round1-live`, `round2-live`, `backlog-live`) need the same.
+- **Not covered:** the bridge (spec change 46's Go side), `contract/` (the new fields), CI (nothing pushed), the live check.
+- **Phase 09:** a `package.json` version bump, since runtime behaviour changed.
+
+**Next step:** a fresh session builds 46's bridge side (Go, tests first):
+- the pool check by digest and its report, with the immediate re-sync on a mismatch;
+- the probe answer with `receivedTop`;
+- re-offering unused subaddresses after a match, and the no-match start;
+- `pair --code -` and `install --pair -`;
+- the `seq` and timestamp agreement.
+
+Then `contract/` documents the fields, the dev scripts are updated, and the live check follows.
+
+## 2026-11-01 · Phase 07b fix sessions · Spec change 46, bridge side built (with Wyatt's review)
+
+Branch `redteam-1`, local commits only (`4619904` to the docs commit after `259981e`).
+
+**Decided by Wyatt this session:**
+- **CLAUDE.md** gains the previous bridge key in its list of stored items (D4), committed as `4619904`.
+- **RT-27 is folded into 46.**
+- **His review of the bridge plan** (recorded in spec change 46):
+  1. **Numbering cues only from handed-out rows:** the new `claimedTop`, never `poolTop`. The catch-up goes no further than `claimedTop + 50`, and a mismatch is reported at once, even mid catch-up.
+  2. **Probes are always index 1,** by the bridge's `probeDigest`, sent until a sync carrying it succeeds. A bridge answering a probe creates at most index 1, and a probe at any other index is a malformed response.
+  3. **A shared digest test value.**
+
+**Built** (tests first; each step green):
+1. **`fad272f`, plugin (Part A):**
+   - `claimedTop` in every response;
+   - index-1 probes from `probeDigest`, or wallet 0's row 1 read before the drop;
+   - a site with claimed rows but no probe waits with `probes: []`;
+   - the contract's digest vector and its generator.
+
+   Two re-pair route tests now answer the probe "no match" (wallet 0 has no row 1 in one, a probe in the other).
+2. **`259981e`, bridge (Part B):**
+   - **syncclient:** the new fields, validation (a probe only at index 1), `AddressDigest`, the `SEQ_OUT_OF_RANGE` hint.
+   - **walletrpc:** `SubaddressAddresses` and `ReceivedIndexes`.
+   - **bridgeloop:**
+     - numbering from `claimedTop` (RT-27 fixed, its tests unskipped);
+     - the pool check by digest, with a report-only sync for a mismatch;
+     - the probe answer;
+     - `probeDigest` until delivered;
+     - the re-offer after a match;
+     - addresses a waiting response didn't take stay pending.
+   - **status:** "Address check".
+   - **Commands:** `pair --code -` and `install --pair -`; `install.sh` pipes the code in.
+   - **The live test:** `TestLiveShopWallet` gains the new calls.
+   - **Tests whose expectations changed with the design:**
+     - `TestAtMost100AddressesPerSync` expects the pool to stop at 50 (RT-27's cap);
+     - the wget `install.sh` test expects `--pair -`;
+     - two loop tests allow the one index-1 probe;
+     - the fake site's `claimedTop` is capped at its own pool.
+3. **This docs commit:**
+   - `contract/` documents the new fields;
+   - the dev scripts (`lib.mjs` helpers `answerProbes`, `handoutWait` and `addressDigest`, the cleanup of 46's KV keys, `dev-e2e.mjs` and the three red-team live scripts) answer the probe and wait out the 45 s;
+   - matrix rows T03, T04, T15, T29, F08 and R08;
+   - findings: RT-27 fixed (29 findings, 24 open), RT-08's bridge side built;
+   - 46's record of the review.
+
+**Tests:**
+- **Plugin, at `fad272f`:** default 422 passed, 12 expected fail, 1 skipped; goods 101 passed, 1 skipped. Typecheck, validate and bundle (70.3 KB) clean.
+- **Bridge, at `259981e`:** gofmt and vet clean; `go test ./...` passes in every package; the static build is fine.
+- **Red first:** the new Go tests failed against the old code (a stash run: the syncclient, walletrpc and bridgeloop tests didn't compile; the `install.sh` tests failed on behaviour). The Part A plugin tests failed before their code (7 red).
+- **Live:** `TestLiveShopWallet` against stagenet wallet-rpc PASS (52 s; output in `~/xmr-pay-dev-data/46-live-shopwallet.txt`).
+  - `get_address` by index works on the view-only wallet, and an index past the top is refused.
+  - `ReceivedIndexes` found 35 indexes, from 1 to 305.
+  - The freshly restored wallet's next index was 10, though it holds payments up to 305, found only after creating to 1110 and rescanning. That's the restored-wallet case behind Wyatt's known limit.
+  - The temporary wallet was deleted.
+- **Scripts:** `node --test scripts/*.test.mjs scripts/redteam/*.test.mjs` 47 passed. The live scripts were only syntax-checked (they need the dev site).
+
+**Not covered:**
+- `-race` (no gcc here);
+- CI (nothing pushed);
+- running `dev-e2e.mjs` and the red-team live scripts against the dev site;
+- the live check (the dev release, `xmr-bridge update`, the forged row, the same-wallet and different-wallet re-pairs).
+
+**Next step:** the live check, in a session with Wyatt (46's "Live check", steps 1–8):
+1. **Back up `data.db`, build the plugin, start the dev site.**
+2. **The dev release:** `scripts/build-dev-release.sh`. Wyatt signs it and runs `sudo xmr-bridge update`.
+3. **The live steps:** the forged row, the same-wallet re-pair with `--code -`, the different-wallet re-pair, then back to the shop wallet.
+
+## 2026-11-01 · Phase 07b fix sessions · Spec change 46's known limit corrected
+
+- **Corrected (Wyatt), from `TestLiveShopWallet`:**
+  - **What a restore finds:** a wallet restored from keys stops at the first gap of 200 unused subaddresses. The live test's restored shop wallet had its next index at 10 while holding payments up to 305.
+  - **So on a "no match" for a wallet with history** (both sides rebuilt, or a reused wallet), `create_address` can hand out addresses that already received payments, not only unpaid ones, and `receivedTop` can be far too low.
+  - **A match is fine:** the catch-up creates up to `claimedTop` and rescans.
+- **Updated:**
+  - spec change 46 (item 4's known limit, and the open-check line);
+  - the earlier pass-2 note above;
+  - a note under RT-29 in the findings (recorded there, not filed as a new finding);
+  - phase 09's install docs: "use a wallet made for this shop, not one with history".
+- **Answered (Wyatt's question):** the address digest uses WebCrypto `crypto.subtle.digest("SHA-256")`.
+  - `dist/plugin.mjs` holds three `subtle.digest` calls and no SHA-256 round constants, so no SHA-256 code is bundled.
+  - The bundle's growth (59.5 to 70.3 KB) is 46's own source. From `8080e6b` to `fad272f`, `handle.ts` went from 10.4 to 28.0 KB, `admin.ts` grew 5.7 KB, `store.ts` 4.2 KB and `protocol.ts` 3.0 KB.
+
+## 2026-11-01 · Phase 07b fix sessions · Live check started: the dev scripts (stopped at the usage limit)
+
+- **Before:** `data.db` backed up to `~/xmr-pay-dev-data/redteam/46-before-scripts.db`: 56 invoices; pool 356 rows (306 claimed, 50 free, highest 406); bridge key `b08969872a2d`. The plugin was built at `1ef3686`, and the dev site ran in `astro dev`.
+- **`dev-e2e.mjs`:** 32 PASS, 0 FAIL, "ALL AS EXPECTED", including the 46 s hand-out wait (`~/xmr-pay-dev-data/46-dev-e2e.txt`).
+  - It needs a clean site, so `--cleanup-only` ran first. The pairing therefore didn't wait for a probe answer; `backlog-live` would cover that path.
+- **`round1-live.mjs`:** 7 PASS, 1 FAIL (`~/xmr-pay-dev-data/46-round1-live.txt`). **Not yet looked into.**
+  - C5: "the drip request ends at or before the 30 s wall" got HTTP 200 after 41,023 ms, with `BAD_SIGNATURE`.
+  - Possibly the dev box's installed bridge interfering, or a timing change; check whether C5 passed in round 1's own run before treating it as a regression.
+- **Not run yet:** `round2-live.mjs` (a8, c6, j1) and `backlog-live.mjs`.
+- **After:** the site was stopped (ports free, no astro running), and `46-before-scripts.db` restored (the state it replaced is in `~/xmr-pay-dev-data/baseline/data.db.before-restore-20261101T200828222Z`). The installed bridge syncs again with its own key once the site runs.
+
+**Next step:**
+1. Look into C5 (compare with round 1's evidence, `~/xmr-pay-dev-data/redteam/round1-*`).
+2. Run `round2-live.mjs` (a8, c6, j1; check for orphaned workerd after j1) and `backlog-live.mjs` (seed with the site stopped), each with a backup first and a restore after.
+3. Then 46's live check steps 1–8.
+
+## 2026-11-02 · Phase 07b fix sessions · Spec change 46: the dev-script runs finished
+
+**State at the start** (after the 2026-11-01 usage-limit stop): tree clean at `2d959ee`, no leftover vitest, astro, workerd or node processes. Swap was full (511/512 MB); all of it is `monerod`'s (about 503 MB, the system service), with about 4.9 GB available. Wyatt approved the plan with changes (C5's label narrowed; two forged rows in live step 4; steps 5–7's expectations; see the steps below).
+
+**Done:**
+- **`42379e6`:** `round1-live.mjs` prints C5's wall check as `KNOWN RT-13`, not FAIL, only for RT-13's exact result (HTTP 200 `BAD_SIGNATURE`, past 33 s). Any other failing result stays FAIL; the check's PASS cases are unchanged. `isKnownRt13Drip` in `lib.mjs` and the label name RT-13, so both go when RT-13 is fixed.
+- **Last session's C5 FAIL is RT-13, not a regression:** round 1 (2026-10-26) got the same 41 s and `BAD_SIGNATURE`.
+- **Live runs** on the dev site in `astro dev`, plugin built after `fad272f`; backup `~/xmr-pay-dev-data/redteam/46-before-round2.db` (56 invoices; pool 356 rows, 306 claimed and 50 free, highest 406; bridge key `b08969872a2d`), restored after each:
+  - `round2-live a8`: 6 PASS (`46-round2-a8.txt`).
+  - `round2-live c6`: 6 FAIL, RT-07 (open) reproduced 3 of 3, as on 2026-10-29. The winning key varied this time (1, 2, 1), where 10-29 always kept the second: a race either way (`46-round2-c6.txt`).
+  - `round2-live j1`: 8 PASS (`46-round2-j1.txt`). The killed astro's `workerd` was left behind (parent pid 1); I stopped it.
+  - `backlog-live seed` (20,100 settled tips and one open probe), then `run`: all PASS, including "answered the wallet probe", the path `dev-e2e` didn't cover (`46-backlog-seed.txt`, `46-backlog-run.txt`, `redteam/h1-2026-11-02T150028940Z.txt`). Times are as in RT-15 (open): pair 28.4 s, first backlog sync 28.0 s, the sync under L7's checkouts 28.9 s (10-26: 27.7, 27.9 and 28.6 s; 10-30: 27.4, 27.1 and 27.3 s). L7: 32 of 40 checkouts got an address (10-26: 35, 10-30: 40); the check passes.
+- **Script tests:** `node --test scripts/*.test.mjs scripts/redteam/*.test.mjs` 49 passed, 0 failed.
+- **After:** the site was stopped (ports free, no astro or workerd left) and `46-before-round2.db` restored; counts as above.
+
+**Next step:** spec change 46's live check with Wyatt, steps 1–8, as amended on 2026-11-02 (plan `~/.claude/plans/phase-07b-fix-sessions-jaunty-sifakis.md`).
+
+## 2026-11-02 · Phase 07b fix sessions · Spec change 46 live check: before step 2
+
+- **Built:** dev release `0.0.202611021505-dev.37742ab` (go1.27.3) in `~/xmr-pay-dev-data/dev-release/`; unsigned until Wyatt signs it.
+  - `build-dev-release.sh` wipes the folder first, so 30 October's `f4/` and `redteam/` went with it. They were filled copies for the `coffer-test` red-team run; the masters `~/xmr-pay-dev-data/07b-f1.sh` and `07b-f4.sh` are kept, so nothing is lost.
+- **Live evidence for the open self-update admin-copy question (decide before phase 09):** a self-update never refreshes the admin copy.
+  - The dev box's service runs `/var/lib/xmr-bridge/bin/xmr-bridge`.
+  - Root's `/usr/local/bin/xmr-bridge` is still the 8 October install's `0.0.202610082327-dev.0d66a34` (go1.27.1), through every self-update since.
+  - So that copy doesn't know `pair --code -` or `install --pair -`, and its `status` doesn't print 46's "Address check" or the bridge key. The state format is still 1, so it runs without the format refusal and just shows less.
+  - Its only refresh is re-running the installer, which needs a new pairing code (the bridge's own `CheckFormat` message says so).
+- **Spec change 46's live check named a command that doesn't exist:** step 2's `sudo xmr-bridge update`. No build has an `update` subcommand. Dev builds check `127.0.0.1:8099` 20 s after starting and every minute after that, and a newer signed release swaps itself in (3g's V2 path).
+- **Wyatt's choice (2026-11-02), steps 2–5:**
+  - **Step 2:** Wyatt only signs; the service updates itself. Before step 3, the journal must show the service running the new version.
+  - **Steps 3–4:** checked from the site's database and the journal. The bridge logs "created pool addresses", "catching the wallet up…" and "the site holds addresses that aren't from this wallet" with the indexes.
+  - **Step 5a:** re-run `install.sh` from the new release with a code. It's the same wallet, it refreshes the admin copy, and the code goes in as `--pair -`.
+    - If the installer restores the view-only wallet from keys, check that the bridge answers "match" and catches up to `claimedTop` without creating anything past it (a preview of step 7).
+  - **Step 5b:** `sudo xmr-bridge pair --config /etc/xmr-bridge/config --code -` with the refreshed copy, then status's Address check line.
+  - **Both 5a and 5b:** the pool banner clears at the pairing, and no "previous wallet host" line appears. If one does, that's a finding.
+
+## 2026-11-02 · Phase 07b fix sessions · Spec change 46 live check: steps 1–4
+
+Backup before the live check: `~/xmr-pay-dev-data/redteam/46-before-live.db` (as `46-before-round2`). The plugin was built at `6789715` (70.3 KB, validate passed), and the dev site ran in `astro dev`. The 9 October service accepted a sync from the 46 plugin at 15:16:19 UTC before the update. Evidence: `~/xmr-pay-dev-data/46-live-step*.txt`.
+
+1. **The release:** Wyatt signed `0.0.202611021505-dev.37742ab`. `check-dev-signature.sh` verified it with the public key only. It was served on 127.0.0.1:8099 from 15:20:49 UTC.
+2. **The self-update** (`46-live-step2-output.txt`, Wyatt's sudo run): PASS.
+   - 15:21:02 UTC: "updating the bridge from `0.0.202610090032-dev.97f0e66` to `0.0.202611021505-dev.37742ab`", exit 75, and a systemd restart 10 s later.
+   - "starting version=…37742ab", then "update confirmed" 15 s after the start. No rollback and no warnings since.
+   - The admin copy is still `0.0.202610082327-dev.0d66a34`, and its `status` has no Address check line (the evidence above).
+   - The service the update replaced was a 9 October build, not the 8 October install.
+3. **The honest pool check:** PASS (site side).
+   - The updated bridge's first sync, 15:22:01, recorded `poolCheck.lastOkAt`.
+   - Health shows "Address check: OK", with no pool banner and no bad or dropped rows.
+   - The bridge's own Address check line waits for the new admin copy (5a).
+4. **RT-08, live, two forged free rows** (`46-step4.mjs`, outside the repo, beside `46-live.mjs`, which reads Health and the pool): site side PASS.
+   - **The rows:** both tagged `keyId` `eb18uYYYYekANLBG` (the current key), with made-up addresses, at 15:28:05.440 UTC.
+     - **a.** Index 306, held by the wallet but missing on the site, since 45's re-pair dropped 306–355 (checked: the only gap).
+     - **b.** Index 100,356, which is `claimedTop` 356 + 100,000.
+   - **Both were `bad` after 512 ms,** my polling step. The bridge's regular sync landed about 400 ms after the write; its response carried the new `check` list, and the report-only sync followed 43 ms later (`mismatch.at`). The worst case is one sync interval (12 s plus up to 3 s of jitter), inside the 45 s wait.
+   - **A tip checkout at +46 s got index 357,** neither forged row. The bad rows were never claimed, and `poolTop` stayed 406.
+   - **Health:** the banner "Coffer found addresses on this site that aren't from your wallet" (D3's wording) and "Address check: Failed at 15:28 UTC". `lastOkAt` keeps advancing while the mismatch stays.
+   - **The pool:** 307 claimed, 50 free (358–407: the bridge's top-up for 357), and 2 bad.
+   - **Still to read:** the bridge's journal for 4b (no catch-up, only the top-up) and the reported indexes.
+- **Step 4, the bridge's side** (`46-live-step4-output.txt`; the first run left no file, and the second, run as `dev`, did): PASS.
+  - 15:28:05.882 "the site holds addresses that aren't from this wallet" `indexes="[306 100356]"`, 0.44 s after the write.
+  - 15:28:59 "created pool addresses" `count=1` (the top-up for 357).
+  - No catch-up and no rescan, so row b made the bridge create nothing.
+5. **5a, the installer re-run with the same wallet:** PASS (`46-live-step5a-output.txt`, `46-live-step5a-site.txt`, `46-live-watch.txt`).
+   - **Two refused attempts first:** the address typed was another valid wallet's (`58WW…eSZP`), while the installed host and `SHOP_ADDRESS` are `59nA…etgQ` (`46-live-addrcheck*.sh`, yes/no only). The installer refused before changing anything, and both unused codes were deleted.
+     - **A possible proposal for Wyatt:** the refusal "already hosts a wallet for another address" could name the installed address in short form. Not having it cost two codes.
+   - **The third attempt:**
+     - The install started at 16:09:08 and kept the existing view-only wallet (no restore from keys, so the restore case waits for step 7). The admin copy is now `…37742ab`.
+     - Journal: the new service started at 16:09:21, answered `match=true receivedTop=305`, then "re-offering this wallet's unused addresses" `from=358 count=50`.
+     - `status`: "Address check: ok" and the new bridge key.
+   - **The site** (2 s watcher):
+     - **At the pairing** (between 16:09:16.9 and 16:09:20.9): new key `jW55uagv…`, wallet `null` while waiting, `poolCheck` reset (**the banner cleared**), `previousKey` the old key, and the 50 free rows dropped.
+     - **16:09:26:** wallet 0 matched, and free rows 358–407 re-offered (`addedAt` 16:09:25), nothing skipped above `claimedTop` 357.
+     - **`previousSeen` none, so no "previous wallet host" line.** The old service stopped at 16:09:20.83, within about 4 s of the pairing.
+     - Rows 306 and 100,356 stay `bad`.
+   - **5b, `sudo xmr-bridge pair --code -` (code on stdin only), service left running:** PASS (`46-live-step5b-pair-output.txt`, `46-live-step5b-output.txt`, `46-live-step5b-site.txt`, `46-live-watch-2.txt`).
+     - **The bridge:** pair took 16:14:22.23–.43 and exited 0, with the service's PID unchanged. Its next sync (16:14:26.3) used the new key `Bq93c58Q…`: `match=true receivedTop=305`, then a re-offer `from=358 count=50`. `status`: "Address check: ok".
+     - **The site:** waiting from the pairing, wallet 0 matched at 16:14:26.6, and free rows 358–407 (`addedAt` 16:14:26), nothing skipped. Health "Address check: OK", `previousSeen` none, so **no "previous wallet host" line**.
+     - **Not proven:** the pool banner had already cleared at 5a, so 5b only shows that none appeared. The old-key race (a sync signed in the ~0.2 s before the key swap, arriving after it) wasn't hit: the last old-key sync was 16:14:13.3, about 9 s before the pair. That's roughly a 1–2% chance per pair, so its absence here isn't evidence against it.
+6. **Step 6, the switch to a second wallet: stopped before the payment** (Wyatt, 2026-11-02). Evidence: `46-live-step6-*.txt`.
+   - **The procedure:** the installer refuses another address, so step 6 became `sudo xmr-bridge uninstall --delete-data` (16:20:44) and then a fresh install (16:28:09–16:29:31). That leaves no "re-run": step 7 will be the same pair.
+   - **Before it:** shop-wallet tip `inv_0eebd504fb0ec85f` (index 358, 0.001 XMR, unpaid) opened at 16:20:12, expiring 16:50:12, for D2's `wallet_changed` check.
+   - **The switch as designed:**
+     - "no match", so wallet 1, with its own probe;
+     - its pool is 2³²+1 to 2³²+50, its own index 1 (not 359);
+     - Health's gap "0";
+     - "Address check: OK";
+     - no banner, `previousSeen` none.
+   - **Found:**
+     - **The second wallet wasn't new.** `58WW…eSZP` is very likely phase 05's setup-test shop wallet: three earlier test tips on its index 1.
+     - The probe was answered 35 ms after the wallet opened, at wallet height 579,994 against the node's 2,242,155, so `receivedTop=0`. Index 1 went into the pool.
+     - A test tip handed 2³²+1 at 16:30:41 **settled at 16:30:42 on those three old transfers** (heights 2,230,085 to 2,240,100; its `createdHeight` 2,242,155), with nothing paid.
+     - Filed as **RT-30** (bridge: answer the probe only after the wallet has scanned; proposed Medium) and **RT-31** (plugin: old transfers count toward a new invoice; a height floor needs RT-26's fix first; proposed High). Wyatt rules on both. No code changes this session.
+   - **579,994 isn't a restore height:** the dev box's 8 October install logged the same "wallet open" height. The restore height actually used is in `/etc/xmr-bridge/config` (Wyatt to read; no `--restore-height` was passed).
+   - **The payment proof waits** for the fix and a wallet that's truly new.
+   - **The restore height was 2,230,020** (`46-live-step6-restore.txt`). No installer line names the site's suggestion (about 2,241,429), so it came from `--restore-height`; being below the suggestion, it drew no warning. With the suggestion, the old payments would have been outside the scan and step 6 would have looked clean. Added to RT-30's record.
+   - **D2 live: PASS.** The shop tip `inv_0eebd504fb0ec85f` (index 358, nothing received) expired with `expiredReason: "wallet_changed"` at 16:50:22.8, 10 s after its 16:50:12.3 deadline (the next sync). The status route shows `expired` (`46-live-step6-shoptip-expiry.txt`).
+7. **Step 7, back to the shop wallet:** PASS (`46-live-step7-output.txt`, `46-live-step7-site.txt`, `46-live-step7-before.txt`).
+   - **The procedure:** uninstall (16:55:11), then install of `59nA…etgQ` with no `--restore-height`. The installer took the site's suggestion ("open invoices from about block 2241400") and restored the wallet from keys.
+   - **The bridge:**
+     - 16:57:39.56: `match=true receivedTop=0`, 35 ms after the wallet opened at 579,994, so again before any scan (RT-30's timing).
+     - "catching the wallet up" `target=358`, a rescan of 358 addresses, caught up at 16:57:49: **the catch-up stopped at `claimedTop` 358.**
+     - "re-offering" `from=359 count=0` (nothing above 358 in the restored wallet), then "created pool addresses" `count=50`.
+   - **The site:**
+     - 16:57:32: the pairing (key `+ckxCG2o…`, waiting, wallet 1's 50 free rows dropped).
+     - 16:57:40: matched wallet 0.
+     - 16:57:50: free rows **359–408**, the first new address `claimedTop` + 1, with nothing skipped.
+     - Health "Address check: OK", no banner, `previousSeen` none.
+     - **Wallet 0's baseline is back** ("Unpaid addresses since the last payment: 53", 5a's 52 plus the expired shop tip), so the pre-scan `receivedTop=0` didn't reset it.
+8. **The record:**
+   - **Matrix:** live notes on T03, T04, T29 and R08, and the RT-30/RT-31 gap on P02.
+   - **Spec change 46:** status, plus a "Live check, as run" list. `docs/spec.md` is unchanged.
+   - **Findings:** RT-08 (its live result; still open for Wyatt), RT-29's 46 note, and RT-30 and RT-31 (above).
+
+**Results, the live check:**
+
+| Step | Result |
+| --- | --- |
+| 1 | PASS |
+| 2 | PASS (self-update) |
+| 3 | PASS |
+| 4 | PASS (both sides) |
+| 5a, 5b | PASS (5b's old-key race wasn't hit, so it isn't proven absent) |
+| 6 | the switch PASS; D2 PASS; RT-30 and RT-31 found; payment proof not run |
+| 7 | PASS |
+
+**Not covered:**
+- step 6's payment to a truly new wallet;
+- CI (nothing pushed);
+- `-race`;
+- mainnet.
+
+**Open, for Wyatt:**
+- **Severities:** RT-30 (proposed Medium) and RT-31 (proposed High).
+- **RT-31's floor depends on RT-26.**
+- **The installer refusal:** it could name the installed address (cost two codes in 5a).
+- **The admin-copy question:** live evidence above.
+- **Whether to restore `46-before-live.db`:** the installed bridge is now paired with key `+ckxCG2o…`, which that backup doesn't know.
+
+**Next step:** Wyatt rules on RT-30 and RT-31. Then a fix session, tests first:
+- the bridge answers the probe only after the wallet has scanned to its node's height;
+- the plugin's height floor, after or with RT-26's fix.
+
+Then step 6's payment proof with a truly new wallet.
+
+## 2026-11-02 · Phase 07b fix sessions · Wyatt's decisions after 46's live check
+
+1. **Site data:** keep it as is, no restore. It holds the RT-31 tip and the bad rows, and the installed bridge is paired with key `+ckxCG2o…`.
+2. **Severities:** RT-31 High. RT-30 Medium, and it **blocks release 1**: until RT-31's height floor exists, RT-30's fix is the only thing stopping an honest admin's switch to a used wallet from crediting old payments.
+3. **RT-31's floor and RT-26: option A, both in release 1** (Wyatt, asked separately after the decisions message arrived without a choice). The two options were:
+   - **A:** both in release 1.
+   - **B:** both before release 2 (orders). Release 1 records RT-31 as a known limit, for tips only: a false "Tip received" and an old payment counted twice, no goods, no lost funds.
+4. **The wallet:** `58WW…eSZP` is the phase 05 setup-test wallet. 2,230,020 is the restore height Feather gave it in run A attempt 2, and Wyatt passed it.
+5. **The next fix session also tests 5b's unproven case:** a sync signed by the previous key arriving right after a same-machine re-pair. If it raises the "previous wallet host" line, that line gets a short grace period after a pairing.
+6. **Step 6's rerun uses the same phase 05 wallet** with `--restore-height 2230020`, not a new wallet. Expected after RT-30's fix:
+   - the probe is answered only after the wallet has scanned to its node's height;
+   - `receivedTop` covers its paid index;
+   - the first pool address is above every index that has received;
+   - a fresh tip shows nothing received;
+   - Wyatt pays it from the Feather buyer wallet, and it settles and shows in that wallet's own Feather history.
+
+   That tests RT-30's fix and the payment proof together.
+
+**Next step:** a fix session, tests first:
+- RT-30: the bridge answers the probe only after the wallet has scanned to its node's height;
+- 5b's previous-key race test (and the grace period if it fails);
+- RT-31's height floor with RT-26's fix (option A: both in release 1).
+
+Then step 6's rerun as in decision 6.
+
+## 2026-11-02 · Phase 07b fix sessions · RT-30's fix, 5b's race test and grace, spec change 47 drafted
+
+**Plan:** `~/.claude/plans/phase-07b-fix-sessions-agile-whistle.md`, approved by Wyatt with his decisions:
+- an offline node counts as not ready;
+- a 60 s grace;
+- the bridge's key reload, with his change: a body built under the old pairing is dropped, never re-signed;
+- `go test -race`, now that the box has gcc 14.2.0 and libc6-dev.
+
+**Done:**
+- **`73781ec`, RT-30 (bridge):**
+  - **When it answers:** the probe is answered only once the node has answered, is synchronized and online, and the wallet's height has reached the node's (no slack).
+  - **The node:** read fresh while the site waits, not from the wallet check's 60 s cache. With no node to ask, there's no answer.
+  - **Until then:** the site keeps waiting, syncs keep their normal pace, and the bridge logs why at most once a minute.
+  - **Found while building:** index 1, created to answer the probe, sat in pending and would still have been sent. Answering now drops pending addresses that have received, and after a no-match every pending one at or below `receivedTop`.
+- **`307c104`, 5b (plugin):**
+  - **The race test** (old-key sync signed 0.2 s before the pairing, arriving 0.1 s and 28 s after it) **was red:** `previousSeen` was recorded at +0.1 s, so the "previous wallet host is still running" line would show.
+  - **The fix:** a 60 s grace (`PREVIOUS_GRACE_MS`). `state:previousKey` becomes `{ publicKey, pairedAt }` in one write. A legacy string reads as `pairedAt` 0, so it gets no grace.
+  - **D4's existing tests** moved past the grace.
+- **`b33fc21`, 5b (bridge, Wyatt's rule):**
+  - The per-pairing state (watch list, answer, pool report, re-offer) is tagged with its key and dropped when the key differs at a sync's start.
+  - The key is re-read just before the main send and the mismatch fast path. If it changed, the body is dropped (nothing counts as delivered) and a fresh sync follows at once.
+  - Pending addresses stay. The "starting" message holds nothing from a pairing, so it goes out under the current key.
+- **`4df39ca`, docs:**
+  - **Spec change 46:** a "Fix sessions" note, and D4 amended, with a spec line to fold in.
+  - **Spec change 47** (proposed, nothing built), with decisions D1–D7 and recommendations, and a still-to-decide row in `decisions.md`:
+    - RT-26's height bound: the bridge against the cross-check's second node, plus a loose plugin backstop;
+    - the restore-height clamp;
+    - healing an inflated height at a pairing;
+    - RT-31's floor and its margin (10, 30 recommended, or 720 blocks);
+    - showing ignored transfers.
+  - **Findings:** RT-30 "fixed in code; live at step 6's rerun", with its known limit (a node that says "not synchronized" forever stalls the answer). 5b's result is under RT-08.
+  - **Matrix:** P02, R09, T03 and R08.
+
+**Results (this session's output):**
+- **Red first:**
+  - **RT-30:** 5 of the 6 new Go cases failed on the old code. The wallet-ahead-of-node case passes either way, as it should.
+  - **5b:** the plugin race test failed (`previousSeen` `{ at: 1790000000100 }`).
+  - **The key change:** all 3 new Go cases failed on the old code (old-key body sent after the pairing; the stale report and answer sent under the new key).
+- **Bridge, at `b33fc21`:** gofmt and vet clean; `go test ./...` and **`go test -race ./...`** pass in every package (the first `-race` run on this box; go1.27.3). The static build is fine.
+- **Plugin, at `307c104`:** typecheck clean, validate passed, bundle 70.4 KB.
+  - `pnpm test`, default: 424 passed, 12 expected fail, 1 skipped (last session 422: plus the 5b race and legacy-string tests).
+  - `pnpm test`, goods: 101 passed, 1 skipped.
+
+**Not covered:**
+- live: RT-30 on the dev box's installed bridge (step 6's rerun), and the 5b race on a real same-machine `pair`;
+- CI (nothing pushed);
+- mainnet.
+
+**Bundles:** the newest in `~/xmr-pay-dev-data/bundles/` is `coffer-redteam-1-2026-11-01-e7ff9ae.bundle` (2026-11-01). The 2026-11-02 sessions before this one made none. This session's bundle follows this commit; its name and SHA-256 are in the closing message.
+
+**Next step:**
+1. **Wyatt's decisions on spec change 47** (D1–D7).
+2. **Step 6's rerun** (decision 6): a dev release with `73781ec`–`b33fc21`, signed by Wyatt; the phase 05 wallet with `--restore-height 2230020`. Expected:
+   - the probe is answered only after the scan;
+   - `receivedTop` covers index 1;
+   - the first pool address is above every paid index;
+   - a fresh tip shows nothing received;
+   - Wyatt's Feather payment settles.
+3. **RT-20** (blocks release 1): accept an `Origin` equal to EmDash's `siteUrl` in the tip endpoint, with its twin test.
+4. **The RT-26 + RT-31 build** once 47 is decided (option A: both in release 1).
+
+**Wyatt, after the session (2026-11-02):** confirmed the extension of his key rule. The per-pairing state is tagged with its key and dropped on any key change, between syncs as well as mid-sync, as built in `b33fc21`. No code change; recorded in spec change 46's "Fix sessions" note. The closing bundle follows this commit.
+
+**Wyatt's decisions on spec change 47 (2026-11-02, recorded the same day; nothing built):**
+- **D1:** the bridge against the second node only; no plugin rise limit.
+- **D2:** the second node's height, a 10-block tolerance, "mismatch" only after a few minutes.
+- **D3:** the clamp on both sides.
+- **D4:** a pairing resets the height only to a bounded node height, and the floor uses `min(createdHeight, site height) − 30`.
+- **D5:** 30 blocks.
+- **D6:** the admin line with the amount; the floor doesn't apply to the paid-top.
+- **D7:** as drafted, plus three tests.
+
+Full text in 47's "Wyatt's decisions". `decisions.md` gains a Design row, and its still-to-decide row is gone.
+- **Found while recording D4:** both pairing paths (`install.go:84–88`, `pairstatus.go:74–79`) send the node's `get_info` height, which isn't checked for being synchronized or against a second node, and is 0 when the node doesn't answer. The build bounds it first, and the site leaves its height alone for a 0 or unbounded one (47's part 4).
+- **Pass 2's list (release-2 note, D2):** while the height is held because no second node answers, product checkout refuses, as when the node is syncing.
+- **Open for the build plan:** D2's "few minutes" as an exact span.
+
+**Next step:** unchanged, with 47 decided:
+1. step 6's rerun (dev release, Wyatt signs);
+2. RT-20;
+3. the RT-26 + RT-31 build, tests first, from 47 as accepted.
+
+The closing bundle follows this commit.
+
+**Wyatt, later on 2026-11-02:**
+- **D2's span is 5 minutes,** for Health's "mismatch" only. The clamp to the second node's height applies from the first sync where the wallet is more than 10 blocks ahead. Recorded in 47 and in `decisions.md`.
+- **The order, which replaces the next step above:**
+  1. **The RT-26 + RT-31 build,** tests first, from 47 as accepted.
+  2. **RT-20.**
+  3. **One dev release and one live session** (one signing round), covering:
+     - **step 6's rerun:** RT-30, plus the floor. The phase 05 wallet's three old payments show as ignored on the admin page, and a fresh tip shows nothing received until Wyatt pays;
+     - **the installer's restore-height clamp;**
+     - **RT-20 live.**
+
+**Next step:** plan the RT-26 + RT-31 build session (plan mode; the matrix rows T14, R09, P02 and their new tests first). The closing bundle follows this commit.
+
+
+## 2026-11-02 · Phase 07b fix sessions · RT-26 and RT-31 built (spec change 47), then RT-20
+
+**Plan:** `~/.claude/plans/phase-07b-rt26-rt31-build.md`, with Wyatt's answers:
+1. **(a):** the ignored-payment line is derived when shown, and the old RT-31 tip is its live view.
+2. **Fail closed with no second node,** with two additions: the refusal covers tips too, and spec change 13 item 4 is amended to hold confirmations. The mainnet list is a release-1 blocker.
+3. **The pairing height** is bounded both ways.
+
+RT-20 followed, at Wyatt's request.
+
+**Done:**
+- **`4615ceb`, the bridge (RT-26):**
+  - **The height bound:** with a remote node, the bridge reports the wallet's height while it's at most 10 blocks above a second node's, else the second node's, from the first sync. Health shows "mismatch" after 5 minutes.
+  - **No second node:** height 0 and "unavailable", with mined transfers held at 0 confirmations. The same holds when a block can't be fetched (spec change 13 amended).
+  - **Pairing:** both pairing paths send `crosscheck.BoundedHeight`.
+- **`889d652`, the installer:**
+  - A suggested restore height above the bounded height becomes that height − 720, with one line.
+  - With nothing suggested, a new wallet starts at the bounded height. The raw node height was also an RT-26 path.
+- **`300fa80`, the plugin (RT-31 and the site side of RT-26):**
+  - **The floor:** `min(createdHeight, site height) − 30`, through `totals(inv, siteHeight)`.
+  - **D6's admin line**, with the amount: under Newest tips and on the invoice and review views.
+  - **The reset at a pairing,** and the healed restore suggestion.
+  - **Checkout at height 0:** refused, tips included when the host has reported without a height.
+  - Admin fallback wording for "unavailable".
+- **`de558a1`, the theme (RT-20):** the tip endpoint also accepts an `Origin` equal to EmDash's configured public origin, through EmDash's own `getPublicOrigin` from `emdash/api/route-utils` (an existing peer, no new package). Every other refusal stays.
+- **`853dded`, `2c6f39e`, the docs:**
+  - spec change 47's "Built" note, and spec change 13 item 4 amended;
+  - findings RT-26, RT-31 and RT-20 marked "fixed in code; live at the combined session";
+  - matrix rows T14, R09, P02 and T17.
+
+**Results (this session's output):**
+- **Red first:**
+
+  | What | On the old code |
+  | --- | --- |
+  | crosscheck | 7 failed (3 existing Unavailable tests now expecting 0 confirmations, and 4 new) |
+  | bridge loop | RT-26's reshaped test and 4 of 5 new cases failed |
+  | `pair` command | sent 94,954 from a node still catching up |
+  | installer clamp | 3 of 4 failed |
+  | plugin floor tests | 6 of 10 failed; the other 4 are guards that pass on either version |
+  | theme RT-20 | the main case answered 403 |
+
+  `BoundedHeight`'s table test was written together with the function, which had no earlier version to fail against.
+- **Bridge, at `889d652`:** gofmt and vet clean; `go test ./...` and `go test -race ./...` pass; the static build is fine.
+- **Plugin, at `300fa80`:**
+  - typecheck clean, validate passed, bundle 71.4 KB;
+  - `pnpm test`, default: 434 passed, 12 expected fail, 1 skipped;
+  - `pnpm test`, goods: 101 passed, 1 skipped.
+  - The first full run had 5 failures in existing tests, and they changed:
+    - **Three platform tests and R12's "never synced" case:** the tip refusal now applies only when the bridge has reported with height 0. A never-synced site still answers `NO_ADDRESS_AVAILABLE`.
+    - **`handle.test.ts`'s restore-height pairing** now carries a height above its invoices.
+- **Theme, at `de558a1`:** `COFFER_REQUIRE_ZBAR=1 pnpm test` 76 passed, 1 expected fail (RT-10), 1 skipped (was 73 passed, 2 expected fail); typecheck clean.
+
+**Not covered:**
+- live: everything below;
+- CI (nothing pushed);
+- mainnet: the second-node list is still empty, so a remote mainnet node now holds every payment, a release-1 blocker.
+
+**Found while building:**
+- **The installer's no-suggestion path** used the node's raw height.
+- **Visitor tips** skip checkout's height rule (spec change 33). Height 0 is now their one exception.
+- **The dev site's `astro.config.mjs` sets no `siteUrl`.** RT-20's fix relies on `EMDASH_SITE_URL`, which the public built copy already sets.
+
+**Next step: one dev release and one live session with Wyatt (one signing round):**
+1. **Build and sign:** `scripts/build-dev-release.sh` at `2c6f39e` or later. It wipes `~/xmr-pay-dev-data/dev-release/`. Wyatt signs it, and the installed bridge updates itself.
+2. **Step 6's rerun** (decision 6): the phase 05 wallet with `--restore-height 2230020`. Expected:
+   - the probe is answered only after the scan, and `receivedTop` covers index 1;
+   - the first pool address is above every paid index;
+   - the old tip `inv_f7ea94de1471f114` shows "Older payments to this address were ignored: 0.003 XMR in 3 transfers, …";
+   - a fresh tip shows nothing received until Wyatt pays from Feather, then it settles.
+3. **The installer's clamp,** shown on a run where it applies.
+4. **RT-20 live:** the tip button on `https://dev.wyattdilley.com` through the tunnel, with the built copy started with `EMDASH_SITE_URL=https://dev.wyattdilley.com`.
+5. **Back to the shop wallet**, as in step 7.
+
+The closing bundle follows this commit.
+
+**Wyatt, before the live session (2026-11-02):**
+- **Pushed:** `redteam-1` to GitHub at `9cb9bd3`, a new branch.
+  - **CI didn't run:** `ci.yml` runs only on pushes to `main` and on pull requests, and there's no PR for `redteam-1`.
+  - Opening one (GitHub offered `https://github.com/dwightsabeast/coffer/pull/new/redteam-1`) runs CI. Then `python3 -I scripts/ci-status.py <full SHA>` in the background.
+- **The 13 expected-fail tests** (12 plugin, 1 theme). The release gate (`docs/phases/07b-adversarial-testing.md`): no Critical or High open, and each Medium fixed or accepted in `decisions.md`; Lows have no gate.
+
+  | Test | RT | Severity | Release target |
+  | --- | --- | --- | --- |
+  | `ipcap` L2 (IPv6 /64) | RT-05 | Medium | release 1: fix or accept |
+  | `sync` C6 (two pair requests, one code) | RT-07 | Medium | release 1: fix or accept |
+  | `stolen-key` D2b (duplicate pool address) | RT-09 | Low | not set |
+  | `whitebox` I3 (review keeps buyer data) | RT-25 | Low | not set |
+  | `sync` C3 × 3 (duplicate keys, out-of-range values, unknown fields) | RT-06 | Low | not set |
+  | `admin` B2 (forged Mark settled/Expire on a tip) | RT-14 | Low | not set |
+  | `checkout` A0 (product wording in release 1) | RT-01 | Low | not set |
+  | `checkout` A2 (Kraken pair) | RT-02 | Low | not set |
+  | `checkout` A3 (lone surrogate) | RT-03 | Low | not set |
+  | `checkout` A8 (30 concurrent tips) | RT-04 | Low | not set |
+  | theme A9 (prefixes case-insensitive) | RT-10 | Low | not set |
+
+  Two other open Mediums have no expected-fail test: RT-12 (one slow request blocks the Node runner) and RT-15 (backlog sync near the 30 s wall). The same gate applies.
+- **`getPublicOrigin` isn't documented.** `emdash/api/route-utils` is in the package's `exports` and typed, but the docs never mention it or that entry point. Added to `docs/emdash-upgrade-checklist.md` (`0842f25`).
+- **Mismatch, from the code:** no, the bridge doesn't try another second node before holding. Each sync picks one second node, in random order, and checks every transfer against it.
+  - A mismatch holds that transfer at 0 for this sync, and a failed block fetch makes the whole check "unavailable".
+  - A mismatched transfer isn't cached as verified, so the next sync checks it again, possibly against another node. One lagging or lying second node therefore holds a payment for a sync or two, and a dishonest one flips the result each time it's picked.
+  - The height bound asks one second node at most once a minute.
+- **Mainnet candidates, probed read-only at Wyatt's request:**
+  - An exception to "never mainnet": daemon RPC only (`get_info`, `get_block` by height), no wallet, nothing sent but a height. Evidence: `~/xmr-pay-dev-data/mainnet-second-nodes-probe-2026-11-02.txt`.
+  - **All seven** were mainnet, synchronized and restricted, at height 3,797,801 with no spread, with the same block hash at 3,797,781. `get_block` works in restricted mode on every one.
+  - **Valid TLS:** monerodevs, cakewallet, ravfx. **Self-signed, so http only:** sethforprivacy, rucknium, stormycloud, monero.love.
+  - **Seven operators, one host each.** Proposal in `decisions.md`'s row.
+  - **Open, found while checking "skip the configured node's operator":** the bridge skips only the configured node's exact host. The stagenet list already holds `node.` and `node2.monerodevs.org`, one operator.
+
+**The live session, revised:**
+- **Step 3's node:** the dev box's own stagenet node, `127.0.0.1:38081`. There the clamp can't show: the pairing carries that node's bounded height, the site resets to it (D4), and the suggestion it returns is already below the node's height.
+- **The clamp shows only when the pairing carries no bounded height.** So it moves into a new public-node step.
+
+Runbook:
+1. **The dev release, and Wyatt signs.** The installed bridge updates itself.
+2. **Step 6's rerun** (own node, the phase 05 wallet, `--restore-height 2230020`):
+   - the probe is answered after the scan, and `receivedTop` covers index 1;
+   - the first pool address is above every paid index;
+   - the old tip `inv_f7ea94de1471f114` shows the ignored line;
+   - a fresh tip shows nothing received, then Wyatt pays and it settles.
+3. **New: the bridge on a public stagenet node** (configured `https://stagenet.xmr.kernal.eu:38089`; its second nodes are then the other five built-in ones):
+   - **a. Inflate the site's height (Claude):** with the site stopped, back up `data.db`, then set `state:bridge.height` 1,000,000 above the real one through the KV shortcut. Start the site and open one tip, so its `createdHeight` is inflated.
+   - **b. Block the second nodes (Wyatt, sudo):** a script adds `/etc/hosts` lines sending the five other built-in hosts to 127.0.0.1 and saves a copy first. The configured node stays reachable.
+   - **c. Install on the public node (Wyatt):** uninstall with `--delete-data`, then install with `--node https://stagenet.xmr.kernal.eu:38089` and no `--restore-height`. Expected:
+     - the pairing carries no height, and the site keeps the inflated one;
+     - **step 3's clamp line:** "The site suggested scanning from block S, above the node's height H; the new wallet scans from block H − 720 instead.";
+     - Health shows "Remote-node cross-check unavailable", with the bridge's detail that it reports no chain height and holds mined payments at 0 confirmations.
+   - **d. Unblock, then re-pair the same wallet** (`pair --code -`): the pairing carries the bounded height, the site's height heals, and the inflated tip's floor heals with it.
+   - **e. Payments held:** block again, and Wyatt pays a fresh tip. It stays at 0 confirmations while Health shows the held message. Unblock, and it settles.
+   - **Restore:** `/etc/hosts` from its copy, and `data.db` if Wyatt wants the pre-step state.
+4. **RT-20 live:** the tip button on `https://dev.wyattdilley.com` through the tunnel, with the built copy started with `EMDASH_SITE_URL=https://dev.wyattdilley.com`.
+5. **Back to the shop wallet on the own node,** as in step 7.
+
+**Note for 3c:** while the second nodes are blocked, an inflated site height can't heal, because the bridge reports none and the pairing carries none. A tip created then has an inflated floor, so an honest payment to it would be ignored until 3d's pairing. That's fail-closed by design. It's why 3e makes its payment only after the height has healed.
+
+**CI (2026-11-02):** Wyatt opened the PR for `redteam-1`. Run 41518972271 on `77d52ea` passed: the theme, plugin and bridge jobs, the bridge's race-detector tests included (`python3 -I scripts/ci-status.py`).
+
+**Wyatt's second-node rules (2026-11-02), built in `1162b8f`, recorded in `36ec6bb`:**
+- **Mainnet is https only,** with the certificate checked and redirects refused. The three that made the list: `node.monerodevs.org:18089`, `xmr-node.cakewallet.com:18081`, `ravfx.its-a-node.org:18081`. The other four, sethforprivacy, rucknium, stormycloud and monero.love, use self-signed certificates.
+- **Second nodes are skipped by operator,** taken as the host's last two labels.
+- **On a mismatch,** one more node from a different operator is asked before the payment is held.
+- **Stagenet: not applied.** An https probe of the six built-in hosts (`~/xmr-pay-dev-data/stagenet-second-nodes-https-probe-2026-11-02.txt`) found a verifying certificate only on `stagenet.xmr.kernal.eu`, the public-node step's configured node. An https-only list would leave that step with no second node.
+  - The operator skip and the second opinion do apply on stagenet. With kernal configured, the second nodes are five hosts from four operators (monerodevs counts once), and step 3b blocks all five.
+- **Release checklist** (phase 09): the mainnet list is ticked, and "Grow the HTTPS second-node list" is added.
+- **Tests:** `operators_test.go`, 9 cases: 7 failed on the old code, and 2 are guards that pass either way. Bridge gofmt, vet, `go test ./...`, `go test -race ./...` and the static build pass.
+
+**Before the live session (2026-11-02, Wyatt's request):**
+- **Dev release `0.0.202611022057-dev.1df3c4d`** (go1.27.3, no `.dirty`) in `~/xmr-pay-dev-data/dev-release/`, unsigned and not served yet.
+  - **Shipped code:** the same as `6dd4ef6`. `1df3c4d` adds only `bridge/internal/crosscheck/live_mainnet_test.go` (a test file, not compiled into the binary) and a `CLAUDE.md` row.
+  - **SHA-256:** amd64 `50c86d9c9ca3705414e907f860890e69950018a2693647455ed7fe6742c052ab`; arm64 `ed6d55ee8d335bcf7f72022a7be798d0621b97e118dd583f5e668a76d8015925`; `install.sh` `53bde9267cac7b08823c91012d929fd838f51b08470677a47b308bad0a0ee969`; `release.json` `6519625a3a5f7b92b624d915e40ea7d3e2a279d78f209ede14440b1c41b83f60`.
+  - **Signing waits for CI on `6dd4ef6` to pass** (Wyatt).
+- **New live step, read-only: the mainnet second-node list over https** (`1df3c4d`, `TestLiveMainnetSecondNodes`, opt-in by variable; command in `CLAUDE.md`).
+  - **How it works:** each built-in mainnet node in turn is the configured node and gives one recent block with a transaction. The bridge's own `Checker` checks that block against each other node as the only second node, so every node's https path vouches at least once: certificates verified, redirects refused, a different operator vouching.
+  - **Run 2026-11-02:** 6 of 6 pairs ok at block 3,797,792, confirmations 20 → 20 (`~/xmr-pay-dev-data/mainnet-second-nodes-live-2026-11-02.txt`).
+  - **A first version** picked the second node at random and never used `ravfx` as a voucher, hence the pairwise form.
+  - **In the live runbook:** step 0, re-run at the session, before the signing.
+
+## 2026-11-02 · Phase 07b fix sessions · Combined live session: steps 1 and 0
+
+- **CI on `6dd4ef6`:** run 41523399005 (`pull_request`) passed: plugin, bridge (race detector included) and theme.
+- **Step 1, the release:**
+  - Wyatt signed `0.0.202611022057-dev.1df3c4d`. `check-dev-signature.sh` verified it with the public key only, and `release.json` is unchanged since the build (`6519625a…3f60`).
+  - Served on 127.0.0.1:8099 (tmux `release`) from 21:07:10 UTC.
+  - **The self-update:**
+    - **21:07:41:** the release server logged the installed bridge fetching `release.json`, its signature and the amd64 binary.
+    - **21:07:41:** "updating the bridge from `0.0.202611021505-dev.37742ab` to `0.0.202611022057-dev.1df3c4d`", exit 75.
+    - **21:07:52:** systemd restarted it, "starting version=…1df3c4d" on `127.0.0.1:38081`, and wallet-rpc was ready 7 s later (Wyatt's journal: `~/xmr-pay-dev-data/live-step1-update.txt`).
+  - **Not yet "update confirmed":** the dev site is stopped, so syncs get "connection refused". `selfupdate.Decide` waits in that state. It rolls back only on a wallet that never opened or a site that refuses, so the update confirms at the first sync once the site is up.
+  - **Observation:** one "wallet-rpc refused the login" 7 s after start, right after "wallet-rpc ready". The next attempts got past the wallet to the site, so it was transient. Not looked into further.
+- **Step 0, the mainnet second-node check** (read-only, `TestLiveMainnetSecondNodes`): 6 of 6 pairs ok at block 3,797,800, confirmations 20 → 20 (`~/xmr-pay-dev-data/live-step0-mainnet-seconds.txt`).
+
+**Next:** step 2 (step 6's rerun). Back up `data.db`, build the plugin at `01f6f08`, and start the dev site in `astro dev`; the bridge's update confirms at its first sync. Then the phase 05 wallet with `--restore-height 2230020`, with Wyatt at the terminal and the pairing code issued then.
+
+## 2026-11-02 · Phase 07b fix sessions · Combined live session: step 2 (stopped), then wrap-up for the night
+
+**Step 2, step 6's rerun** (the phase 05 wallet with `--restore-height 2230020`, own node, dev release `0.0.202611022057-dev.1df3c4d`):
+- **Before:** backup `~/xmr-pay-dev-data/redteam/live-before-step2.db`. The bridge's first sync on the site at 21:15:44 UTC confirmed the self-update ("update confirmed", 21:15:52). Wyatt uninstalled with `--delete-data` (22:54 UTC), and I issued the code then, with him at the terminal. The install ran at 22:55:14 UTC.
+- **What it proved (RT-30, live):**
+  - **The wait:** the wallet opened at 579,994 at 22:56:35. 28 ms later the bridge logged "waiting for the wallet to scan before answering the site's wallet probe" (reason "the wallet is still scanning", node 2,242,369). On the site, the new key `UZK9rV9a…` showed `wallet: null` and no addresses while it scanned.
+  - **The answer:** at 22:57:29, after 54 s of scanning, a match with **wallet 1** (its stored probe), with `receivedTop` 2 (`state:paidTop:1` 2). So the phase 05 wallet had also been paid at index 2.
+  - **Paid indexes kept out of the pool:** the pool started at index 3, above both paid indexes, 1 and 2.
+- **What it found:**
+  - **RT-32 (proposed Medium, release-1 blocker):** a re-pair started an endless address loop. `checkPool`'s bound, `claimedTop + 50` = 51, is below where the top-up's 50 addresses end (52), so each new address came back bad. 137 rows (52 to 188) were bad by 22:58:26, with a false sticky "not from your wallet" warning. I stopped the dev site at 22:58:27, which ended it.
+  - **RT-33 (proposed Low):** the height floor moved the settled old tip `inv_f7ea94de1471f114` to review as "reversed", with an alert, against Wyatt's answer 1(a). The build plan's premise was wrong (corrected in `docs/decisions.md`): a settled invoice stays watched until its payment is 10 blocks deep, for up to 24 hours, and with the floor its counted depth was 0.
+- **Not done:** the old tip's "ignored" line (it went to review instead) and the fresh tip. Both wait for step 2's rerun.
+- **Evidence:**
+  - the loop's database, `~/xmr-pay-dev-data/redteam/live-step2-loop.db`, SHA-256 `a0e7a7b991159462f1e23266cf60497257134eaedc0b3bb1b76b374ad5a57616` (`integrity_check` ok);
+  - `~/xmr-pay-dev-data/live-step2-watch.txt` (the watcher) and `~/xmr-pay-dev-data/live-step2-output.txt` (service, installer log, journal to 22:56:42, status);
+  - the uninstall's output, `~/xmr-pay-dev-data/live-step2-uninstall-output.txt`.
+  - the bridge's journal for 22:54 to 23:10 UTC, saved by Wyatt after the wrap-up: `~/xmr-pay-dev-data/redteam/live-step2-bridge-journal.txt`, 304 lines, SHA-256 `18c82b47008250f9684e54324e302add8a8c691c7bdd9a3ffd41bf9b44c29b39`. Its timeline is in RT-32.
+
+**Wrap-up (Wyatt: stop for the night; no step 3, no fixes, no dev site):**
+- **Stopped:** the watcher (tmux `watch`), the release server (tmux `release`, 127.0.0.1:8099), the leftover tmux `site` shell and the wait loop. `astro dev status` reports none running. 4321, 4322 and 8099 are free.
+- **The database restored:** with the site stopped, `setup-test-reset.mjs --restore ~/xmr-pay-dev-data/redteam/live-before-step2.db`.
+  - **Before:** `data.db` `83708c2983d544fd512ae9c17c987b91e601544b1f63acd68eb45f1409b5c383`, `data.db-wal` `9e622e1c900fe1143cabf8dc926ee5b582aff1ea378eff5388712207841eb72b`, `data.db-shm` `bc007fd4ae321bd62bf0287b125330ad6e6560b5463cbe6706847d7cf8cf15df`; the backup `a46a7baa0dde0a8f55c8faaf0738603ecdd2d4dc2bcf9c8d982116582e8b0f69`.
+  - **After:** `data.db` `a46a7baa0dde0a8f55c8faaf0738603ecdd2d4dc2bcf9c8d982116582e8b0f69`, the same as the backup, which is unchanged. No `-wal` or `-shm` files.
+  - The state it replaced (the loop's, with its WAL) is saved again at `~/xmr-pay-dev-data/baseline/data.db.before-restore-20261102T230616612Z`.
+- **Checks for the push:** since `6dd4ef6` (CI run 41523399005 passed), the only changes are a test file (`live_mainnet_test.go`), `CLAUDE.md` and docs. Bridge gofmt, vet and `go test ./...` pass at HEAD, as does `go test -race ./internal/crosscheck/`; the live mainnet test skips without its variable. Plugin and theme are unchanged since `6dd4ef6`.
+
+**The state I leave:**
+- **The site is stopped.** The live database is the restore of `live-before-step2.db`.
+  - It holds the shop wallet's key `+ckxCG2o…`, with wallet 0 current, the previous key `/w+5RXvB…`, and both wallets' probes.
+  - The old tip is settled, and there's no pool-check mismatch.
+  - The pool: wallet 0 has 308 claimed, 50 free (359–408) and 2 bad; wallet 1 has 1 claimed (index 1).
+- **The installed bridge is still running.** It holds key `UZK9rV9a…` and the **phase 05 wallet** (wallet 1), whose view-only copy now has subaddresses up to 189 from the loop. With the site down it backs off. The release server is stopped, so its update checks fail quietly.
+  - If the site starts before step 3's uninstall, the bridge's key is unknown to the restored site, so its syncs are refused (no loop; the site may record a refusal).
+  - **Step 3 starts where it did:** Wyatt's `uninstall --delete-data`. The release server has to be served again first.
+- **Commits:** this entry's commit and the three before it (`1df3c4d`, `01f6f08`, `321715b`) are pushed to `origin/redteam-1` at wrap-up: the tree was clean and the checks above passed. CI for the pushed HEAD was started and its result is left for next session (`python3 -I scripts/ci-status.py <HEAD's full SHA>`).
+
+**Next session, in order:**
+1. Serve the release again (`tmux new -d -s release 'cd ~/xmr-pay-dev-data/dev-release && python3 -m http.server 8099 --bind 127.0.0.1'`). Read the CI result for the pushed HEAD, if it was pushed. Back up `data.db`, build the plugin and start the dev site, with the watcher on (stop the site at once if any bad row appears).
+2. **Step 3** (the public node; runbook above, 3a–3e). Wyatt runs the uninstall.
+3. **Step 4** (RT-20 live, the built copy with `EMDASH_SITE_URL=https://dev.wyattdilley.com`).
+4. **Step 5** (back to the shop wallet on the own node).
+5. Wyatt rules on RT-32's and RT-33's severity. Then plan both fixes, tests first: RT-32's live shape (`claimedTop` 1, `receivedTop` 2) and RT-33's (a settled tip from before the floor stays settled).
+6. One dev release, which Wyatt signs, then **step 2's rerun**: the old tip's "ignored" line, and a fresh tip that shows nothing received until Wyatt pays it.
+
+## 2026-11-06 · Phase 07b fix sessions · Combined live session: step 3 (public node)
+
+**Checks before starting (Wyatt's list):**
+- **Hashes, re-taken:** `data.db` and `live-before-step2.db` `a46a7baa0dde0a8f55c8faaf0738603ecdd2d4dc2bcf9c8d982116582e8b0f69`; `live-step2-loop.db` `a0e7a7b991159462f1e23266cf60497257134eaedc0b3bb1b76b374ad5a57616`; the bridge's journal `18c82b47008250f9684e54324e302add8a8c691c7bdd9a3ffd41bf9b44c29b39` (304 lines). All match the 2026-11-02 entry. Its "before" hashes for `data.db`, `-wal` and `-shm` can't be rechecked: those files no longer exist.
+- **CI on `8cab888`:** run 41543313890 passed (plugin, theme, bridge with the race detector).
+- **Shipped code:** no diff under `bridge`, `plugin` or `installer` between `1df3c4d` (installed) and `8cab888`.
+
+**Before the site:**
+- **Backup:** `~/xmr-pay-dev-data/redteam/live-before-step3.db`, SHA-256 `82146e67ec49f4ab7cb11176ae9c7539ecdd2ecd33d74b430083a7558fd9e76f`. Counts from it: 59 invoices, 361 pool rows (309 claimed, 50 free, 2 bad).
+- **`/etc/hosts` before the first block:** SHA-256 `1d3d9611532c6edb88c7c2aeaf0bc44ac2fe8e4ea34fd2de74783d96ecd6ea2c`.
+- **Block target:** 127.0.0.2, not the runbook's 127.0.0.1. The dev box's `monerod` listens on `127.0.0.1:38081`, and two of the five blocked nodes use that port, so it would have answered as a second node (Wyatt's check; plan approved with this).
+
+**3a:** `state:bridge.height` set from 2,242,172 to 3,245,092 (node 2,245,092 + 1,000,000) through the KV shortcut, site stopped. `lastSyncAt` not touched: the public tip path has no silence check. Tip `inv_ca1ec50afd39fb95` (index 359, wallet 0, nobody pays it) has `createdHeight` 3,245,092.
+
+**3b, `block 1` (21:26:03 UTC):** the script printed FAIL for `xmr-lux.boldsuck.org`; the block itself is good and the check was wrong.
+- **The false FAIL:** `getent hosts` asks for IPv6 first, finds no IPv6 line in `/etc/hosts`, and goes to DNS, so it returned the host's AAAA record. `curl` exited 7 because it used 127.0.0.2.
+- **What the bridge does:** a throwaway static Go client (`CGO_ENABLED=0`, as `/usr/local/bin/xmr-bridge` is built) resolved all five hosts to 127.0.0.2 only, and all five failed to connect. `stagenet.xmr.kernal.eu` answered with HTTP 200. `getent ahosts` also gives 127.0.0.2.
+- **Why it mattered to check:** this box has working IPv6. `curl -6` straight to that host's address got HTTP 200 (one `get_info`), so the block holds only because the hosts file wins in Go's and glibc's combined lookups. A client asking for IPv6 alone would get past it.
+- **Script changed for `block 2`:** `getent hosts` to `getent ahosts`.
+
+**3c, install on the public node** (phase 05 wallet, `--node https://stagenet.xmr.kernal.eu:38089`, no `--restore-height`; install log from 21:31:49 UTC, service up 21:33:51; evidence `~/xmr-pay-dev-data/live-step3-output.txt`, watcher `live-step3-watch.txt`):
+- **Passed:** the site's height stayed at the inflated 3,245,092 through the pairing. `checks.node` is `unavailable` ("no second node answered…"), and `status` says the same. At 21:35:09 "answering the site's wallet probe" `match=true receivedTop=0`, after 70 s of scanning. Wallet 1 is current, the pool is 2–51 (50 free), the address check is ok, and bad rows are still 2. RT-32 didn't fire.
+- **Not as expected: no clamp line.** The installer said "The site has open invoices from about block 2241400 on". The code is right: the site's suggestion is the minimum over every wallet's watched invoices, and two empty expired wallet-0 tips from 2 November are still watched (`inv_79311d2f506ce6e1`, index 357, `createdHeight` 2,242,120; `inv_0eebd504fb0ec85f`, index 358, 2,242,149). 2,242,120 − 720 = 2,241,400. They would leave the watch at 15:58 and 16:50 UTC on 9 November, and until then no report can move them: wallet 0 isn't reporting. The runbook, written on 2 November, didn't allow for them.
+- **Index 2 is back in the pool:** paid on 2026-10-30 at 2,240,130, below this scan's start, so the wallet doesn't know. Known limit (a restored wallet misses what it didn't scan); no wrong credit, a privacy cost.
+- **RT-32's reach, wider than I told Wyatt:** a default install scans back to the oldest watched invoice − 720, which can be days. So a payment inside that span can fire the loop with no `--restore-height` at all (traced, not run).
+
+Stopped here for Wyatt's call on the clamp; 3d not started.
+
+**3c, second install, for the clamp (Wyatt chose to redo it before 3d):**
+- **Edit:** site stopped, backup `~/xmr-pay-dev-data/redteam/live-before-clamp-edit.db` (SHA-256 `533716c0cf1b81ebb72af752a73a1d4667ca8243c97c694df85ce0aaafef6d45`), then `seq` set to `expiresAt` + 24 h on `inv_79311d2f506ce6e1` and `inv_0eebd504fb0ec85f`, so they leave the watch. A dev-only edit to two evidence rows; `live-before-step3.db` has the originals. The only watched invoice was then the inflated tip.
+- **Clamp, PASS** (installer log, install from 21:39:28 UTC; evidence `~/xmr-pay-dev-data/live-step3-output-2.txt`): "The site suggested scanning from block 3244372, above the node's height 2245099; the new wallet scans from block 2244379 instead." 3,245,092 − 720 = 3,244,372 and 2,245,099 − 720 = 2,244,379.
+- **The rest, PASS:** the height stayed at 3,245,092 through the pairing; the node check is `unavailable`; the wallet answered at 21:41:55 UTC with `match=true receivedTop=0` after 55 s; wallet 1 is current; the pool is 2–51; bad rows are still 2.
+
+**3d, unblock and re-pair the same wallet:**
+- **`unblock 1` (21:44:45 UTC):** `/etc/hosts` back to `1d3d9611…ea2c`. The node check went from `unavailable` to `ok` by 21:45:37.
+- **Height before `pair`:** 3,245,092, both at 21:45:37 (first read with the check `ok`) and at 21:46:24, right before the code. Ordinary syncs with a second node answering didn't lower it.
+- **`pair --code -`, PASS:** at the watcher's 21:46:43 read the height was 2,245,102, the dev box's node's height then, under the new key `lChpFHckCep9yt5h`. So the heal came from the pairing. The inflated tip's floor is now 2,245,072 (`min(3245092, 2245102) − 30`), and that floor moves up with the site's height (RT-34).
+
+**3e, payments held:**
+- **`block 2` (21:47:36 UTC):** all five hosts PASS with the corrected check; `before-block-1` unchanged.
+- **Wyatt's keep-alive prediction, confirmed:** `checks.node.state` was still `ok` at 21:49:50, 2 min 14 s after the block, and the site's height rose once after it. After `sudo systemctl restart xmr-bridge` (service up 21:50:38) it read `unavailable` at the first read, 21:50:47. So a hosts-file block doesn't reach a running bridge's open connection; only a restart cut it. A test-method lesson, with no effect on a shop.
+- **Fresh tip:** `inv_bf39dc72bcab799f` (0.001 XMR, wallet 1 index 2, `createdHeight` 2,245,104), opened only after the precondition held. Index 2 had received a payment on 2026-10-30, below this wallet's scan start.
+- **Payment:** tx `bd9d1605f25d…`, 0.001 XMR, on the site at 21:59:15 UTC as `confirming`, 0 of 2 (`classify`: the full amount seen, under the required depth).
+- **The hold, PASS** (log `~/xmr-pay-dev-data/live-step3e-held.txt`): mined at 2,245,107. At 22:02:14 the dev box's node and the bridge's wallet were at 2,245,110, 3 real confirmations against 2 required, while the site held the transfer at 0, the tip and the public status route said `confirming` 0 of 2, the site's height stayed at 2,245,104, and the node check read `unavailable`. The admin page's alert itself wasn't viewed: read from `checks.node`, which it renders.
+- **`unblock 2` (22:02:34 UTC):** `/etc/hosts` back to `1d3d9611…ea2c`, no marker. **Settled at 22:02:41**, 7 s later, 3 of 2, no restart.
+- **Observation:** Health kept saying "held at 0 confirmations" for 47 s after the tip settled (cleared at 22:03:28, height 2,245,110). The payment check asks a second node every sync, but the height bound only once a minute and its "unavailable" overrides. Cosmetic, up to a minute; not filed.
+
+**Step 3 result: 3a–3e pass.** The clamp, no height on a pairing with no second node, the heal by pairing only, the hold and the release are shown live on `0.0.202611022057-dev.1df3c4d`.
+
+**Not covered:** RT-34 live (nobody paid the inflated tip); the admin page's alert by eye; the IPv6-only client path around a hosts-file block (the bridge doesn't use one).
+
+**Findings:** RT-32 corrected and its reach widened, RT-33 noted, RT-34 added, a setup-friction row. No code changed.
+
+**The state I leave:** the dev site, the release server and the watcher are running, the bridge is on `https://stagenet.xmr.kernal.eu:38089` with key `lChpFHckCep9yt5h` and the phase 05 wallet (wallet 1). `data.db` still holds step 3's changes, including the `seq` edit and tip `inv_ca1ec50afd39fb95`; `live-before-step3.db` is the restore point, if Wyatt wants it.
+
+**Next:** Wyatt says whether to restore `data.db`, then step 4 (RT-20 live), step 5 (back to the shop wallet), his rulings on RT-32, RT-33 and RT-34, the fixes tests first, one dev release, and step 2's rerun. That rerun can't show RT-33 live: the old tip's 24-hour watch has ended, so RT-33 needs a test.
+
+## 2026-11-06 · Combined live session: step 4 (RT-20 live), before the handoff
+
+- **The watcher:** its stop action is now `tmux kill-session -t built` (Wyatt approved the command), then a check that 4322 is free, with SIGTERM to the pid `ss` names on that port as the fallback, and a log of any workerd left.
+- **Dev site stopped, then `npm run build`** at `f1f016f` (the old `dist` was from 2026-10-30, before RT-20's fix). The new `tip_BJmho54D.mjs` holds `crossSite` with `getPublicOrigin`.
+- **The stop command, tried once for real:** built copy up with `HOST=0.0.0.0 PORT=4322 EMDASH_SITE_URL=https://dev.wyattdilley.com`, home and status route 200, workerd running. `tmux kill-session -t built` exited 0, the port was free after about 2 s, and no workerd was left. Started again: home and status route 200.
+- **Wyatt's question: what does `de558a1` accept as the site's own origin? (from the code, EmDash 1.3.1; not run.)** The request's own origin, or `getPublicOrigin`: `config.siteUrl`, then `EMDASH_SITE_URL` / `SITE_URL`, then the request's origin. It does **not** read Settings › General's Site URL (`site:url`). `locals.emdash.config` is the build-time config; `site:url` only reaches `resolveSiteOrigin` and `getChosenSiteOrigin`, which feed `ctx.site` and outbound links. So an admin who sets only the Site URL gets the right address for plugins and a 403 on the tip button. A gap in RT-20's fix against spec change 42 item 3's proposed banner text; Wyatt decides whether release 1 needs it. The second pass he described applies only if the fix read the whole chain, so it isn't run.
+
+### Passkey sign-in behind a proxy with only the Site URL set (from the code, EmDash 1.3.1, Astro 7.3.5; no browser run)
+
+Wyatt's question, before choosing how to close RT-20's gap. **Corrected the same day:** my first version called Astro's `createRequest`, which the Node adapter doesn't use, and wrongly said the `rpId` becomes `localhost`.
+
+- **Result: a passkey can't sign in at the public address.** `passkey/options.ts:59` and `passkey/verify.ts:41` use `getPublicOrigin`, which doesn't read `site:url`. The adapter (`@astrojs/node` `serve-app.js:64`) calls `createRequestFromNodeRequest`: host from `Host`, protocol from the socket. An in-memory call of that function with a proxy that keeps `Host` gave `http://shop.example.com`, so the `rpId` is right but the accepted origin is http. `@emdash-cms/auth` `authenticate.ts:226` refuses the browser's `https://` origin. Registering a passkey there fails the same way (`register.ts:173`). `EMDASH_ALLOWED_ORIGINS` needs `siteUrl`. A proxy that rewrites `Host` gives `http://localhost:4322` and an `rpId` of `localhost`.
+- **Exception, no gap:** with `security.allowedDomains` in the site's own Astro config and `X-Forwarded-Proto` sent, Astro's `FetchState` (`fetch-state.js`, `#applyForwardedHeaders`) moves both the URL and the request to https, so passkeys and the tip both pass with no `siteUrl`. From reading; the in-memory call stops before that step.
+- **Exception, the gap's real reach:** a production build can't run setup without a configured address (`setup/index.ts:72`, `SITE_URL_REQUIRED`), so a site with none was set up under `astro dev` on loopback. Its admin can keep using a passkey through a tunnel to loopback, or a magic link if email is set up, or a handover session. With only the Site URL set, Coffer's install command is right and every tip gets a 403.
+- **Not traced:** Cloudflare Access on a self-hosted Node site, and whether a session at the old address survives setting `EMDASH_SITE_URL` and restarting.
+- **Wyatt's decision (2026-11-06): option 2.** The tip keeps refusing, the limit is recorded, and the banner stops telling admins to change EmDash's address settings. Exact text and the toast are in spec change 42; built in phase 09.
+- **Built:** the owner's message on that refusal (`theme/src/tip.ts`, `proxyNotSetUp`; two new T17 tests). The built copy on 4322 is still `f1f016f` and doesn't have it; no live run of the message yet.
+
+### Step 4 result: RT-20 first pass passed
+
+Wyatt pressed the tip button on `https://dev.wyattdilley.com/posts/welcome` through his tunnel and reports a pass. The watcher logged one new invoice and one newly claimed address at 00:14:34 UTC on 2026-11-07 (17:14 local, the evening of 2026-11-06), bad rows still 2, no stop. The tip stays unpaid; the bridge points at `localhost:4321`, so it can't settle here. The second pass doesn't apply.
+
+**Next:** step 5 (back to the shop wallet on the own node), on Wyatt's word. Then his rulings on RT-32, RT-33 and RT-34.
+
+### Step 5 result: back to the shop wallet on the own node, passed (second install)
+
+**First install (00:33:51 UTC):** Wyatt's Feather wallet `58WW…eSZP`, not the shop wallet. My hand-off said only "the shop wallet", a name the records also use for his Feather wallet; `docs/setup-friction.md` has the row. The site correctly matched wallet 1: `match=true receivedTop=2`, catch-up to 3, free rows 4–53, no loop. Output kept as `live-step5-output-1.txt`.
+
+**Second install (00:48:48 UTC):** `59nA…etgQ`, no `--node`, no `--restore-height`; evidence `live-step5-output.txt`, `live-step3-watch.txt`.
+- **Installer:** own node on 127.0.0.1:38081; scan from 2,244,396 (the first-pass tip's 2,245,116 − 720); no clamp line.
+- **Bridge:** 00:50:49 `match=true receivedTop=0`, catch-up to 359, caught up 00:50:58, re-offer from 360 with count 0, created 50.
+- **Site:** key `gcczMoiL0O46qhtJ`, wallet 0, height 2,245,206 with the node at 2,245,207, free rows 360–409 with nothing skipped, 312 claimed, 2 bad (306 and 100356, the baseline), address check OK, no watcher stop.
+- **First-pass tip `inv_cbaca928ccb6a291`:** expired `wallet_changed` at 00:50:49. **My prediction was wrong:** I said that after its 00:44:32 deadline it would expire normally on wallet 1 first. It stayed `new` past the deadline with no evidence coming in, as the expire-on-evidence rule says, and expired at the switch.
+- **Settled tip `inv_bf39dc72bcab799f`:** still settled with its transfer. Recorded under RT-33.
+- **`/etc/hosts`:** still the recorded hash.
+
+**Not covered:** a new payment to wallet 0 (none was made), and the admin page by eye.
+
+**CI:** run 42318147527 passed on `d381cbe` (plugin, theme, bridge with the race detector).
+
+**Running:** dev site, watcher (baseline 2), release server, and the bridge on `59nA…etgQ`.
+
+**Next:** Wyatt's rulings on RT-32, RT-33 and RT-34; the fixes, tests first; one dev release he signs; step 2's rerun.
+
+## 2026-11-06 · Phase 07b fix sessions · RT-32, RT-33, RT-34 fixed in code (spec change 48)
+
+**Wyatt's rulings:** RT-32 Medium, blocks release 1. RT-33 Low, doesn't block, closed with RT-34's fix. RT-34 Medium, fix in release 1; unit-tested, not live, by his decision. Plan approved with his changes; the record is spec change 48.
+
+**RT-32 (bridge):** `checkPool` compares digests for every index the wallet holds; the bound applies only to indexes it doesn't hold. The wallet is saved after every create. A failed save warns on Health and in the log, the addresses still go out, and every sync tries again. A circuit breaker has two triggers: `bad_created` and `too_many` (100 created for the pool without `claimedTop` rising; catch-up doesn't count).
+
+**Test 7, real wallet-rpc, view-only shop wallet copy (`TestLiveStoreSurvivesKill`):**
+- Without `store`, as Wyatt asked first: FAIL, index 50 forgotten after `kill -9`. So the test can fail, and the address count didn't survive a crash.
+- With `store`: PASS, index 50 kept.
+
+**RT-33, RT-34 (plugin):** `settledFloor` and `floorPin`, with the estimate from the time since creation. The ignored line uses the same floor as totals. Mutation check: putting back my plan's flaw (Wyatt's catch) fails 2 tests in `rt34.test.ts`, including "nothing counted in totals ever appears on the ignored line". The one exception, by his ruling: a settled invoice with no stored floor counts its old payments and still lists them.
+
+**Test results:**
+- Bridge: gofmt and vet clean; all 21 packages pass; race detector passes on `bridgeloop` and `cmd/xmr-bridge`; the static build works. New: 15 subtests in `rt32_test.go`, `TestStore`, `TestStatusBreaker`.
+- Plugin: typecheck clean, validate passes, bundle 73.0 KB. Default config 454 passed, 12 expected fail, 1 skipped; goods config 101 passed, 1 skipped. New: `rt34.test.ts` and `admin-48.test.ts`.
+- No existing test changed, apart from `Store` on the bridge's shared fake wallet.
+
+**Not covered:** nothing here has run on the dev site or through a real bridge yet. Theme and contract tests weren't rerun; neither changed.
+
+**Text for Wyatt to review (spec change 48):** my additions to his banner, for one and for no free addresses, and the amber line for a failed save.
+
+**State:** dev site, watcher and release server stopped. The bridge is on `59nA…etgQ` and backs off while the site is stopped. These commits are local; `origin/redteam-1` is at `d381cbe`.
+
+**Next:** Wyatt pushes or says to, CI on the tip, a dev release he signs, then step 2's rerun: restore `live-before-step2.db`, install the Feather wallet `58WW…eSZP` with `--restore-height 2230020`. Expected: no bad rows, no loop, the old tip's ignored line, and a fresh tip showing nothing received until he pays.
+
+### Before the dev release (Wyatt's list, 2026-11-06)
+
+- **Pushed** `b21ad5b`, `427049e`, `04de32d`, `0d6d7b6` to `origin/redteam-1`.
+- **Shared vector:** `contract/test-vectors/bridge-checks.json`, read by `TestBridgeChecksVector` and `plugin/tests/sync/vectors.test.ts`: both stop reasons, a failed save, both together, neither. Renaming a reason on either side fails its test (tried once on each, then restored).
+- **Banner with no free addresses:** Wyatt's text. Checked: an empty pool gives `NO_ADDRESS_AVAILABLE`, which the theme treats as a fallback case (`theme/src/tip.ts`, `FALLBACK_CODES`), so a site with an 18 A address still shows it.
+- **Failed-save line:** Wyatt's text.
+- **Known limit:** now names a failed save followed by a crash.
+
+**Step 2's rerun, in order (updated):**
+1. Build the plugin for the dev site. Wyatt uninstalls the bridge.
+2. **Both banners by eye:** with the site stopped and no bridge running, `python3 -I ~/xmr-pay-dev-data/live-banners.py` writes the two checks into `state:bridge` (dry run on a copy passed; it refuses while the site or the bridge runs). Start `astro dev`, Wyatt looks at the admin page through his tunnel, then stop the site. The restore in step 3 removes the write.
+3. Restore `live-before-step2.db`, start the site, the watcher on (bad rows baseline from that backup).
+4. Install the Feather wallet `58WW…eSZP` with `--restore-height 2230020`. Expected: no bad rows, no loop.
+5. **After the pool fills:** Wyatt runs `sudo systemctl restart xmr-bridge` once. Expected: still no bad rows.
+6. The old tip's ignored line, and a fresh tip showing nothing received until he pays.
+
+**Test results after this list:** bridge gofmt and vet clean, all 21 packages pass. Plugin typecheck clean, validate passes, bundle 73.1 KB; default config 459 passed, 12 expected fail, 1 skipped; goods config 101 passed, 1 skipped. CI run 42329784544 passed on `0d6d7b6`, before these changes. The commit below is local until Wyatt says to push it.
+
+**CI and the dev release:** CI run 42331090673 passed on `82ac08d` (plugin, theme, bridge with the race detector). Dev release `0.0.202611070301-dev.82ac08d` built from a clean tree, in `~/xmr-pay-dev-data/dev-release/`, unsigned until Wyatt runs `scripts/sign-dev-release.sh`. SHA-256: `release.json` `05ff9dfeb2dea14a66685456976f85979d723d14673de962c37ad51ab399115e`, `install.sh` `a073a0da3648c951e955efbd70fb52821c6de38ecd3699381c43a17edc359b0a`, amd64 `bcd6ca396c2a17ff08c24fe9d31882f4365619093170d6f78655c8e41a798e19`, arm64 `9f8f6a1a592d68b902af60ffe48a86b0a99d706d0c93535f68d528cead628abc`.
+
+### Step 2's rerun on dev release `0.0.202611070301-dev.82ac08d`: passed
+
+Times UTC, 2026-11-07. Restored `live-before-step2.db` (hash `a46a7baa…`); Wyatt's Feather wallet `58WW…eSZP`, own node, `--restore-height 2230020`. Evidence: `live-rerun-output-install.txt`, `live-rerun-output-restart.txt`, `live-step3-watch.txt`, `live-rerun-feather.txt`.
+
+- **The signed update:** the old bridge updated itself to this release at 03:34:02, just before the uninstall, so the real updater accepted Wyatt's signature. Not planned.
+- **Both new banners by eye (Wyatt):** both show on the dev site. Written with `live-banners.py`; one stop reason (`too_many`) and the failed-save line. Before the restore, so the restore removed the write.
+- **RT-32, the shape that looped on 2026-11-02:** 03:45:56 `match=true receivedTop=2`, re-offer `from=2 count=0`, `created pool addresses count=50`, once. Free rows 3-52, consecutive; index 52 is above the old bound of 51. Still 2 bad rows (306, 100356), address check OK, no mismatch, no loop, the watcher never stopped the site.
+- **The restart (Wyatt's item):** `sudo systemctl restart xmr-bridge` at 03:48:53, so `receivedTop` is gone from memory. Nothing created, rows still 3-52, still 2 bad rows, address check OK.
+- **RT-33's symptom:** the old tip `inv_f7ea94de1471f114` stayed settled, with no new alert. Its 24-hour window has ended, so it wasn't being watched; the unit tests are what cover RT-33.
+- **RT-31's line (spec change 47):** Wyatt read it on the admin page. It says the older payments "were ignored", which is false for this tip because they count. Recorded under spec change 48; not changed during the live check.
+- **The fresh tip `inv_78bc3086b267cac7`** (wallet 1, index 3, `createdHeight` 2,245,295), paid by Wyatt from the Feather buyer wallet through its pay page:
+  - before payment: `new`, 0 received on the status route;
+  - 04:08:02: seen, `confirming`, 0 of 2; the pool topped back up to 50;
+  - 04:15:26: settled, mined at 2,245,306, 2 confirmations, `settledFloor` 2,245,265 (`createdHeight` − 30), no `floorPin`;
+  - the status route agrees and shows no floor fields; no new alert.
+
+**Not covered:** the fresh tip in the `58WW…` wallet's Feather history (Wyatt's to check); RT-34 live (unit-tested, not live, his decision); `bad_created` and "none left" by eye (tests cover the wording); the breaker tripping live, and a failed save live.
+
+**Wyatt's finding:** the admin page can't tie a person to a row. Logged as spec change 49 (proposed, not built). My view: it doesn't block release 1.
+
+**Waiting on Wyatt:** the older-payments wording; whether items 1-3 of spec change 49 go in phase 09; whether to go back to step 5's state (`live-before-step2-rerun.db`, then the shop wallet).
+
+## 2026-11-06 · Combined live session: handoff
+
+**Tonight's result:** step 2's rerun passed on dev release `0.0.202611070301-dev.82ac08d`. RT-32 is fixed and live-checked. RT-33 and RT-34 are fixed in code and unit-tested. RT-20's first pass passed. Wyatt confirmed the fresh tip (txid `2cc3ae6e…`, 0.001 XMR) is in the `58WW…` wallet's Feather history.
+
+**CI:** run 42340203092 passed on `7918bc3` (plugin, theme, bridge with the race detector). `origin/redteam-1` is at `7918bc3`; this entry's commit, with tonight's spec notes, is local and in the bundle.
+
+**The state I leave (Wyatt, 2026-11-06: no swap tonight):**
+- **The bridge:** installed, running `82ac08d` on **Wyatt's Feather wallet `58WW…eSZP` (wallet 1)**, own node, key `Px6/BDHqOl3kPXto`, `--restore-height 2230020`. It backs off while the site is stopped, and logs failed update checks while the release server is stopped.
+- **`data.db`:** from after step 2's rerun, matching that bridge: wallet 1 current, height 2,245,323, 310 claimed, 50 free, 2 bad; 26 expired, 1 review, 33 settled. Read-only copy: `redteam/live-after-step2-rerun.db` (SHA-256 `b18068c4e0918a973f0aa8efee946e6c572662efded14fcde301a1888840f112`).
+- **Stopped:** dev site, built copy, watcher, release server. The release in `~/xmr-pay-dev-data/dev-release/` is signed. `/etc/hosts` has its recorded hash. Wyatt's tunnel route to 4322 is down.
+- **Wallet names, from here on:** the dev box CLI wallet (`59nA…etgQ`, `~/stagenet-wallets/shop`, wallet 0) and Wyatt's Feather wallet (`58WW…eSZP`, wallet 1). Both have been called "the shop wallet". A separate Feather buyer wallet pays the tips.
+
+**Next session, in order:**
+1. **Swap back to wallet 0.** With the site stopped: restore `redteam/live-before-step2-rerun.db` (SHA-256 `1572b9019496663940a9b921a44f7fc066db2ee8601848bb853b8f712d59788c`), then Wyatt uninstalls (`sudo xmr-bridge uninstall --delete-data`). Only then start the site and the release server: a site restored under a running bridge would refuse its key. Issue a code when he's at the prompt; he installs `59nA…etgQ`, reading its details himself with `nano -v ~/.config/xmr-pay-dev/stagenet.env`. Expected: wallet 0, `claimedTop` 359, free rows 360-409, no bad rows beyond 2.
+2. **The Mark settled fix (spec change 48), tests first.** Mark settled stores the floor. Wyatt decides whether the no-floor line then goes (Claude's recommendation) or takes his approved wording. Not built tonight; found by reading the code, not run.
+3. **Spec change 49:** items 1-3 go in phase 09; items 4-5 block release 2.
+
+## 2026-11-08 · Phase 07b fix sessions · Step 1 of the handoff: back to wallet 0, passed
+
+Plan approved with Wyatt's changes: push the handoff first; hash and WAL checks after the restore; the bridge's data folder confirmed gone; the watcher's stop action shown and tried before the install; `--pair "$(cat <file>)"` instead of typing the code; push this entry and check CI. Times UTC.
+
+- **Pushed** `3f4f4c6` to `origin/redteam-1`. CI run 42514858815 passed (plugin, theme, bridge with the race detector).
+- **Before the restore:** backup `redteam/live-before-swap0.db`, SHA-256 `b18068c4e0918a973f0aa8efee946e6c572662efded14fcde301a1888840f112`. That's the same hash as `live-after-step2-rerun.db`, so nothing changed while the site was stopped.
+- **Restore (19:24):** `setup-test-reset.mjs --restore redteam/live-before-step2-rerun.db`; the state it replaced is in `baseline/data.db.before-restore-20261108T192424799Z`. Checked before the site started:
+  - `data.db` SHA-256 `1572b9019496663940a9b921a44f7fc066db2ee8601848bb853b8f712d59788c`, equal to the backup;
+  - no `-wal` or `-shm`, before and after the count read;
+  - counts equal to the backup: 62 invoices, 364 pool rows (312 claimed, 50 free, 2 bad), wallet 0, key `gcczMoiL…`.
+- **Uninstall (Wyatt, `--delete-data`):** `swap0-uninstall-output.txt`. Checked without sudo:
+  - the service is inactive;
+  - `/var/lib/xmr-bridge` (the view-only copy of `58WW…eSZP`), `/etc/xmr-bridge`, the unit file and `/usr/local/bin/xmr-bridge` are gone;
+  - there's no `xmr-bridge` user, and no bridge or `monero-wallet-rpc` process is left.
+- **The watcher's stop action, shown to Wyatt and tried:** `npx astro dev stop` in the site folder, then up to 15 s for 4321 to be free, SIGTERM to the pids `ss` names as the fallback, and a log of any workerd left. Step 4's `tmux kill-session -t built` is gone since step 5.
+  - **Proof run:** a scratchpad copy that logs to the scratchpad, with a baseline of 1, against the agent-started `astro dev`. It tripped at 19:26:57; the stop exited 0; 4321 was free at 19:27:00; `astro dev status` reported none running and no workerd was left.
+  - The site was started again, and the real watcher (`live-step3-watch.py 2`) started at 19:27:25.
+- **Install:**
+  - **Wallet:** the dev box CLI wallet `59nA…etgQ`, details read by Wyatt with `nano -v`.
+  - **The code:** issued at 19:28:12 into `swap0-pair-code.txt` after Wyatt said he was ready; then he pressed Enter.
+  - **Installer:** the log starts at 19:29:14. Own node 127.0.0.1:38081; scan from 2,244,396 (the same as step 5's second install); no clamp line.
+  - **Bridge (journal):** `82ac08d`, up at 19:31:46. Then 19:32:30 `match=true receivedTop=0`, catch-up to 359, caught up 19:32:39, re-offer `from=360 count=0`, `created pool addresses count=50`, once.
+  - **`status`:** paired, key `UZep0Y+m…`, node check off (own node), address check ok, 50 of 50 addresses ready.
+- **Site (read-only):**
+  - wallet 0 current, key `UZep…`; the previous key is kept;
+  - `claimedTop` 359, free rows 360–409, consecutive;
+  - 2 bad rows (306, 100356); wallet and pool checks ok;
+  - invoices unchanged (28 expired, 1 review, 33 settled); no new alert (the one `reversed` alert was already in the backup);
+  - the watcher logged no STOP.
+- **A snag:** the collect script's first run left no output file and its cause isn't known; it's a row in `docs/setup-friction.md`. The script now refuses root, uses an absolute path and prints where it wrote. The second run gave `swap0-output.txt`.
+- **After:** `redteam/live-after-swap0.db`, SHA-256 `9135c05296ab9afd85ed8fdc31450b8026dce23c5b61b88a8c78e14ce5d43eb0`. Its counts match the restore.
+- **Tidied:**
+  - deleted the used `swap0-pair-code.txt` and the expired `3i-pair-code.txt` and `3j-pair-code.txt`;
+  - stopped the watcher, the dev site (`astro dev status`: none) and the release server;
+  - 4321, 4322 and 8099 are free, and no tmux sessions or leftover shells remain.
+
+**Not covered:** a new payment to wallet 0, and the admin page by eye.
+
+**State:** the bridge is installed on wallet 0 (`59nA…etgQ`, key `UZep…`, own node, `82ac08d`). It backs off while the site is stopped and logs failed update checks while the release server is stopped.
+
+**Next:** step 2, the Mark settled fix (spec change 48), tests first. First Wyatt decides whether the no-floor line goes once Mark settled stores the floor (my recommendation), or keeps his approved wording.
+
+## 2026-11-08 · Phase 07b fix sessions · Step 2 of the handoff: Mark settled stores the floor (spec change 48)
+
+**Wyatt's decisions (2026-11-08):**
+- Drop the ignored line's no-floor wording and the no-floor fallback. 1.0.0 can't create a settled invoice without a floor once Mark settled stores one.
+- Marking settled changes the status, not the money. Totals count only transfers at or above the floor, never the requested amount, and the settled count rises by one.
+- A test for a missing or non-number `state:bridge` height.
+- Answer 1(a) no longer applies (`docs/decisions.md`, the RT-33 record).
+- No live look now; he checks the admin page by eye after spec change 49's rows are built.
+
+**What the code did before the change, run with the new tests:**
+- A checkout tip in review (`wallet_changed`) with 0.0007 XMR, all below its floor, marked settled: Received went from 0.001 to **0.0017 XMR**, and no floor was stored.
+- One transfer above the floor and one below: both added (0.0017).
+- A pre-floor settled row: its old payments counted (0.0013).
+- The requested amount was never added; totals only sum transfers.
+
+**Built:**
+- **`core/invoice.ts`:** `storeSettledFloor` (the pin, else the moving floor), used by a sync's settle and by Mark settled.
+- **The fallback removed:** `floorHeight` is `settledFloor ?? floorPin ?? movingFloor`, and `ignoredOld` is `belowFloor` alone.
+- **The height guard:** `movingFloor` treats a site height that isn't a positive whole number as unknown, so the floor is `createdHeight − 30`.
+- **`admin.ts`:** the settle verb stores the floor from `state:bridge`'s height. A reversed tip keeps its first floor.
+
+**Tests:**
+- **New:** `plugin/tests/routes/admin-settle-floor.test.ts`, 15 tests: Wyatt's case, the case with a later heal, one transfer above and one below, the stored floor and the pin, a reversed tip, 10 bad `state:bridge` heights, and the `inv_f7ea…` shape.
+- **Replaced:** `rt34.test.ts`'s two RT-33 tests checked the removed fallback.
+- **Mutation checks:**
+  - **Without the admin's floor store:** 11 fail. Wyatt's case at first didn't; with the fallback gone, the moving floor gave the same answer at the test's height. So I added the heal (the site drops below the old payments' blocks). It then fails with 0.0017.
+  - **Without the height guard:** 3 fail (heights 1.5, `true`, `"12"`). The other bad values never pass `> 0`.
+- **Results:**
+  - Typecheck clean, validate passes, bundle 73.1 KB.
+  - Default config: 472 passed, 12 expected fail, 1 skipped (459 before, +15 −2).
+  - Goods config: 101 passed, 1 skipped.
+  - Log: `~/xmr-pay-dev-data/plugin-tests-48-settle.txt`.
+
+**What old dev rows show:** simulated on `live-after-swap0.db` at height 2,246,511, and tested on the row's shape. Only `inv_f7ea94de1471f114` changes.
+- **Admin page:** settled, 0 XMR, with "Older payments to this address were ignored: 0.0003 XMR in 3 transfers, mined at blocks 2,230,085 to 2,240,100, before this tip."
+- **Tips Received:** drops from 0.023095718039 to 0.022795718039 XMR. The settled count stays at 21.
+- **Status route:** it re-evaluates without storing, so it answers `review` with 0 received.
+
+**Docs:** spec change 48 (floor items 1 and 3, and the decision), `docs/decisions.md`, the RT-33 record, and matrix rows T14, R10 and P02.
+
+**Not covered:** nothing live (Wyatt's decision). Theme and contract tests weren't rerun; neither uses the floor.
+
+**CI:** run 42515955689 passed on `32aad54` (step 1). This commit is pushed and its CI is checked below.
+
+**Next:** step 3, spec change 49: items 1–3 go in phase 09, and items 4–5 block release 2. Then the session-end bundle.
+
+## 2026-11-08 · Phase 07b fix sessions · Step 3 of the handoff: spec change 49 placed, then the session-end handoff
+
+**CI:** run 42520126113 passed on `a6e58ce` (step 2: plugin, theme, bridge with the race detector).
+
+**Wyatt's decisions (2026-11-08):** phase 08 builds items 4 and 5. Before 1.0.0's storage contract is frozen, phase 09 decides whether item 4's txid lookup needs a new index. Feather's check in 09b pays through the full `monero:` link or QR.
+
+**Written (docs only):**
+- **`docs/phases/09-release.md`:**
+  - a Wyatt checkbox, and a step 1 bullet for the txid decision (index plus a day-one field in 1.0.0, or a bounded scan measured on the dev site);
+  - a step 3 bullet for items 1–3, with the pay token never on a row (tested under T09), Wyatt's by-eye check, and the newest-10 limit for step 1's review;
+  - a 09b gate for items 4–5 with the Feather check.
+- **`docs/phases/08-store-adapter.md`:** a section for items 4 and 5.
+- **`docs/spec-changes.md` 49:** where each part is scheduled. **`docs/decisions.md`:** a row for the split.
+
+**Wyatt's question, not built: could a "show older tips" control that reads only stored data fit phase 09 without a contract change?** From the code, yes.
+- **An existing pattern:** All invoices already pages with a storage cursor (`invoices_page` and `invoices_newest` actions on the private `admin` route, `plugin/src/admin.ts:793-799`).
+- **The query already exists:** the Tips view already queries `where: { kind: "tip" }, orderBy: { createdAt: "desc" }` (`admin.ts:743`), which is covered by the declared `["kind", "createdAt"]` index.
+- **Nothing in the contract changes:** a `tips_page` action with a cursor adds no route, collection, index, capability, page or widget. Its value is checked the way `invoices_page`'s is, under F04.
+- **Caveats:**
+  - Test tips (no `via`) are filtered out after the query, so a page can show fewer than 10 visitor tips.
+  - Tips past the 30-day purge show without notes.
+  - Each page costs the same Block Kit budget as today's 10.
+- **Effect:** with items 1–3 on each row, any tip can be matched by eye, which eases the newest-10 limit in release 1. It doesn't search by txid.
+- It's a new admin action, so it's Wyatt's call whether phase 09 takes it.
+
+**The state I leave:**
+- **The bridge:** installed on **wallet 0**, the dev box CLI wallet `59nA…etgQ`, own node, key `UZep…`, `82ac08d`. It backs off while the site is stopped and logs failed update checks while the release server is stopped.
+- **`data.db`:** the after-swap state, `redteam/live-after-swap0.db` (SHA-256 `9135c052…3eb0`).
+- **Stopped:** dev site, built copy, watcher, release server. No pairing-code files are left in `~/xmr-pay-dev-data/`.
+- **`origin/redteam-1`:** this entry's commit, pushed. A session-end bundle follows; the next session's entry records its name and hash.
+
+**Next session:**
+1. Wyatt says whether "show older tips" goes in phase 09.
+2. Then the rest of 07b's fix sessions or phase 09, as Wyatt names.
+
+### Addendum: "show older tips" goes in phase 09 (Wyatt, 2026-11-08)
+
+- **Written (docs only):**
+  - `docs/phases/09-release.md` step 3: the `tips_page` action, with tests first: [F04] a malformed or forged cursor, [F04] a non-admin request refused, [T30] test tips filtered, [T09] no pay token.
+  - Step 1's security review lists it as new admin surface after 07b pass 1.
+  - A row in `docs/decisions.md`.
+- **CI on `07c8796`:** run 42525837313 passed (plugin, theme, bridge with the race detector), checked before this commit was pushed. A fresh bundle follows; the next session's entry records its name and hash.
+- **Next session:** phase 09 or the rest of 07b's fix sessions, as Wyatt names.
+
+## 2026-11-08 · Phase 07b fix sessions · Triage of the open findings, and the handoff before phase 09
+
+Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
+
+**Wyatt's rulings (all of my calls taken; recorded in `docs/decisions.md` and the findings table):**
+- **RT-08: accepted limit** (was High).
+  - Prevention holds while the honest wallet host runs (live 2026-11-02).
+  - A thief who took the key from the wallet host can also stop it. Then new tips can go to the thief's wallet until the host is back or the admin re-pairs.
+  - The final wording is in spec change 44, with Wyatt's correction: a thief there has the view key too, so can see incoming payments.
+- **RT-12: accepted limit** (was Medium): a docs line; re-checked at the EmDash 1.4.0 check.
+- **Fix before release 1:**
+  - **RT-05:** put an IPv6 /64 in one bucket; about ½ session.
+  - **RT-07:** claim the code first with `ctx.kv.compareAndSet`, then a live `c6` rerun; about 1 session. Not changed by spec changes 45–48; 45 moved the burn to the end of pairing, which widened the window.
+  - **RT-15:** scan newest first, then cut the per-sync cost; 1–2 sessions. The session starts with a re-measure on the built copy, since spec changes 46–48 added per-sync work after the 10-30 figure.
+  - **The Lows** RT-02, RT-03, RT-10, RT-14, RT-22 and RT-23, together; about 1 session.
+- **Left for release 1:** RT-01, RT-04, RT-06, RT-09, RT-18 and RT-21. RT-13 and RT-19 get docs lines in phase 09.
+- **Release 2 list:** RT-25 (phase 09's 09b section). **Wyatt's upstream list:** RT-16 and RT-17.
+
+**Question for later (in `docs/decisions.md`, "Still to decide"):** could RT-08's re-check after an outage cover every row added since the bridge's last check, not only the last 24 hours? If that's small, it narrows the accepted gap.
+
+**What's left before phase 09** (its first checkbox: 07b done, no High open, every Medium fixed or accepted):
+1. RT-07 (1 session, plus live `c6`).
+2. RT-15 (1–2 sessions, re-measure first; built copy, no sudo).
+3. RT-05 (½ session).
+4. The six Lows (about 1 session).
+5. **The EmDash 1.4.0 check** through `docs/emdash-upgrade-checklist.md` (decided 2026-10-31; its 7-day mark has passed). It re-checks RT-12 and RT-13 there; a dependency upgrade, so Wyatt approves it first.
+6. Wyatt's answer to the RT-08 re-check question, if it's to go in before phase 09.
+
+**Not done this session:** matrix T03's text isn't updated to the final wording yet (spec change 44 holds it). The next fix session does that with RT-07's matrix row.
+
+**State:** unchanged from the step 3 entry: the bridge on wallet 0, with everything else stopped. A bundle follows.
+
+## 2026-11-13 · Phase 07b fix sessions · RT-07 fixed (spec change 50), live `c6` passed
+
+**The last session's bundle:** `~/xmr-pay-dev-data/bundles/coffer-redteam-1-20261108-07c2bba.bundle`, SHA-256 `2c1e7fa04ef170912be6cdfbcf61628aec2fc04880ae88933c981f19d255468f`.
+
+**Wyatt's ruling (2026-11-13, in `docs/decisions.md`):** release on error. The pairing code is claimed first; a failed write puts it back, so spec change 45's retry holds. Only a site killed mid-pairing leaves the code spent.
+
+**Built (commits `7aa7b57` spec change 50, `c05c815` the fix):**
+- **`plugin/src/sync/handle.ts`:** after the code and signature checks, `store.claimPairing` before any other write; a lost claim returns `PAIRING_REJECTED`. 45's steps run in a `try`; a throw calls `store.releasePairing`, then rethrows. The final write of the pairing state is gone.
+- **`plugin/src/store.ts`:** `claimPairing` (`ctx.kv.getVersioned`, then `compareAndSet` on that revision) and `releasePairing` (a conditional write on the claim's revision; never throws). `setPairing` is removed from `SyncStore`.
+- **No trust-contract change:** the same KV key and fields; no route, collection, capability, setting or dependency.
+- **`scripts/redteam/round2-live.mjs c6`:** every round also checks that the keys that sync are exactly the ones told they paired.
+- **Docs:** spec change 50; a decisions row; matrix T13 Covered (21 Covered, 6 Partial, 3 Planned, 1 Gap, counted from the table); matrix T03 now carries spec change 44's final wording and RT-08 as an accepted limit (left over from 11-08); RT-07's finding; an upgrade-checklist row for `ctx.kv.compareAndSet`.
+
+**Tests, written first and seen red (8 failing before the fix):**
+- `handle.test.ts`: two pair requests held at the first write after the claim: one `ok`, one `PAIRING_REJECTED`, the winner's key stored, the loser's sync `BAD_SIGNATURE`; a second request while one is in flight is refused and writes nothing; a code issued during a pairing stays active; a release never revives a code over a newer one; a failure at the wallet-state write leaves the code usable. 45's "fails after the drops" test passes unchanged.
+- `store.test.ts`: the claim on a KV with revisions (two at once, one applied; missing, used and replaced codes; release; a failing release doesn't throw).
+- `redteam/sync.test.ts`: C6's race is a normal test now, 5 rounds.
+
+**Results:**
+- Plugin: typecheck clean, validate passes, bundle 73.5 KB. Default config 482 passed, 11 expected fail, 1 skipped (45 files); goods config 101 passed, 1 skipped.
+- Script tests: 49 passed.
+- **Live `c6` on the dev site (`astro dev`, Node runner): 3 of 3 rounds PASS.** One `ok` each round; the other got `PAIRING_REJECTED` and its next sync `BAD_SIGNATURE`. Evidence: `~/xmr-pay-dev-data/redteam/round2-c6-2026-11-13T164250177Z.txt`.
+- Not run: theme and bridge suites (nothing of theirs changed). CI hasn't seen these commits: not pushed.
+
+**Not covered:** a site killed between the claim and the end of a pairing (the code is spent; stated in spec change 50). The Cloudflare runner (release 1 is Node only).
+
+**The state I leave:**
+- `data.db` restored from `redteam/rt07-before.db` (SHA-256 `9135c052…3eb0`, the same as `live-after-swap0.db`): 62 invoices, 364 pool rows, the bridge's key present. The state the run left is in `baseline/data.db.before-restore-20261113T164521510Z`.
+- The dev site is stopped (ports 4321 and 4322 free, no tmux sessions). The site's `node_modules` plugin build is the new one. The bridge is still installed on wallet 0 and backs off while the site is stopped.
+- `redteam-1` is two commits plus this entry ahead of `origin/redteam-1` (`07c2bba`). A bundle follows.
+
+**For Wyatt:**
+1. A nod on spec change 50, item 4: a code issued while another pairing is in flight stays valid (it used to be overwritten).
+2. Whether to push `redteam-1` (then CI).
+
+**What's left before phase 09:** RT-15 (re-measure first), RT-05, the six Lows, the EmDash 1.4.0 check, and the RT-08 re-check question.
+
+**Next step:** RT-15, starting with a re-measure of the per-sync cost on the built copy (`scripts/redteam/backlog-live.mjs`).
+
+### Addendum: Wyatt's answers (2026-11-13)
+
+- Spec change 50, item 4 accepted: a code issued while another pairing is in flight stays valid. The entry's status is updated; no code change.
+- Push `redteam-1`: done with this commit. CI's result and this commit's bundle go in the next session's entry.
+
+## 2026-11-13 · Phase 07b fix sessions · RT-15: the re-measure (Part 1 of its plan), no fix yet
+
+**CI:** run 43467574210 passed on `4e23bea` (RT-07's fix: plugin, theme, bridge with the race detector). That commit's bundle: `~/xmr-pay-dev-data/bundles/coffer-redteam-1-20261113-4e23bea.bundle`, SHA-256 `48fcd8c175c1729f9c9b8fae6782698742813f5734d7a1889f229ac57f3b45a4`.
+
+**What was run** (built copy on loopback port 4322, Node; no sudo, no money; `data.db` backed up to `redteam/rt15-before.db` first):
+1. **Baseline on today's code,** `backlog-live.mjs run --built` at 20,100 seeded tips with the past-cap probe: pairing sync 27.9 s, first sync 27.8 s, 40 drain syncs all `ok`, slowest 28.1 s. About 0.5 s slower than 10-30 (27.0–27.5 s); about 1.9 s under the 30 s wall. The probe stayed unwatched through all 40. L7: 40 of 40 checkouts answered, slowest 2.1 s. All checks PASS (`h1-2026-11-13T171720106Z.txt`).
+2. **Stage timings,** from a temporary build that wrote each stage's time to one KV key (the patch was never committed; it's gone from the tree and from `plugin/dist`, checked). Three syncs each at 5,000, 10,000 and 20,100 rows:
+
+   | Rows | Whole sync | "Recent" scan | Tips scan | Everything else |
+   | --- | --- | --- | --- | --- |
+   | 5,000 | 1.9 s | 0.9 s | 0.9 s | 0.08 s |
+   | 10,000 | 6.4 s | 3.1 s | 3.2 s | 0.15 s |
+   | 20,100 | 27.6 s | 13.3 s | 13.9 s | 0.35 s |
+
+**What it shows** (details and evidence files in RT-15's finding):
+- The two scans in `watchCandidates` are about 99% of a sync, and they read the same rows twice. The watch list, the check list, the response and spec changes 46–48's work are all small.
+- The cost is quadratic in the rows a scan matches. EmDash 1.3.1 runs one SQL query per 100-row page, and SQLite sorts every matching row for each page (`USE TEMP B-TREE FOR ORDER BY`).
+- An `orderBy` doesn't avoid that sort and costs more per page (34.6 ms against 9.2 ms in SQLite alone at 10,000 rows). So "newest first" through `orderBy` fixes which rows the cap drops but not the time. Not yet measured through the plugin.
+- Caveat: the seed gives every row one `created_at`, which may overstate the "recent" scan on a real flood. The tips scan's sort doesn't depend on it.
+
+**Script changes (`scripts/redteam/backlog-live.mjs`):**
+- A `time` mode (`--syncs`, `--kv`), in CLAUDE.md's table.
+- The seed's index range moved to 200,000: a "bad" pool row at 100356, left by spec change 46's live tests, collided with it (the first seed attempt failed and wrote nothing).
+- **A fault fixed:** `seq` counted up from the start time, and spec change 46's bound refuses a `seq` 5 minutes off the clock. Today's first run had its drain syncs refused after the seventh and still printed PASS for the drain timing and L7. `seq` now follows the clock, and both checks need an `ok` answer. The 2026-11-02 run wasn't affected (no drain syncs, under 5 minutes).
+- No test covers this live script's own logic (none did before). Script tests: 49 passed.
+
+**Not run:** plugin, theme and bridge suites (no shipped code changed). A seed with spread-out `created_at` values. The wallet host's own cost of watching 20,000 addresses. Cloudflare.
+
+**The state I leave:** `data.db` restored from `redteam/rt15-before.db` (62 invoices, 364 pool rows, the bridge's key present). Built copy and dev site stopped, ports free, no tmux sessions. `plugin/dist` and the site's `dist` are clean builds of the committed code. The bridge is on wallet 0. This entry's commits are local; a bundle follows.
+
+**For Wyatt, before Part 2 (the fix):**
+- "Newest first" as decided needs a second look: through `orderBy` it makes each page dearer. Two other ways to get the same result are in the closing message; the fix plan will measure them.
+- Which cost fix: read each row once (about half), a time budget, or an index on a "watched until" field (a storage contract change, before 1.0.0).
+
+**Next step:** plan RT-15's fix with Wyatt's choice, tests first.
+
+### Addendum: Wyatt's decisions for RT-15's fix, the other live scripts, and the index question (2026-11-13)
+
+- **Decisions** (row in `docs/decisions.md`): time slices walking back from now, half-open bounds, no `orderBy`; read-once, slices and a required scan budget of about 12 s (oldest rows cut, Health warning); no "watched until" index for 1.0.0; the seed gets a flood shape and a dense-burst shape with spread `created_at` before measuring; a boundary test.
+- **Pushed:** `origin/redteam-1` at `0c0f4a9`; CI was still running when this was written.
+- **Do the other live scripts treat a refused sync as a failure?**
+  - `round1-live.mjs`: yes. Its one real sync (the pairing) is checked for `ok`.
+  - `round2-live.mjs`: yes. `freshSite` throws on a refused pairing or address push; C6 and J1 check each sync's answer.
+  - `dev-e2e.mjs`: **two checks didn't,** both of the "nothing changes" kind, which a refused sync also satisfies: "a time-locked transfer of the full amount isn't counted" and "an older seq with the payment gone changes nothing". Both now also need the sync's `ok`, as does "the rest arrives". Run live on the dev site after the change: ALL AS EXPECTED, exit 0 (backup `redteam/e2e-20261113.db`, restored: 62 invoices, 364 pool rows, the bridge's key present).
+  - All three count `seq` up from their start time, as `backlog-live` did. None runs for 5 minutes, and in each a refused sync now fails loudly, so they're left as they are.
+- **Does adding an index in a 1.x need more than a backfill?** From EmDash's docs (Storage, "Adding indexes"; Manifest, "Trust contract"; the admin's update flow) and 1.3.1's code; not tried on a site:
+  - EmDash creates an added index the next time the plugin loads (`CREATE INDEX IF NOT EXISTS` on the JSON field), over the rows already there.
+  - It needs a new plugin version. A major version is asked for "when the change breaks an existing query or uniqueness assumption"; a plain added index breaks neither. The Manifest page says "a major version for a broadened contract" without saying whether an added index broadens it.
+  - The update flow asks the admin to confirm again when permissions or MCP tools are added or a route goes from private to public. An index isn't on that list.
+  - So beyond the version bump: **the backfill is ours,** since old rows lack the new field and a range query on it won't match them (the old scan has to stay as the fallback until the backfill finishes); a downgrade drops the index; and CLAUDE.md's own rule ("any broadening is a major version") is Wyatt's to read for this case.
+
+## 2026-11-13 · Phase 07b fix sessions · RT-15 Part 2, step 1: the new seed shapes overturn the 27 s figure; stopped before the fix
+
+**CI:** run 43478679522 passed on `0c0f4a9`.
+
+**Wyatt approved Part 2** (slices, read-once, a required 12 s budget) and asked for the seed to spread `created_at` first. Step 1 only was done:
+- `backlog-live.mjs seed --shape flood|burst` (expired unpaid tips; each row its own `created_at`).
+- Today's unchanged code on the built copy, three syncs each:
+
+  | Seed | Rows | Whole sync |
+  | --- | --- | --- |
+  | Old seed (one `created_at` for all) | 20,100 | 27.6 s |
+  | Flood (spread over 8 days) | 15,360 | 0.9 s |
+  | Flood | 20,100 | 1.1 s |
+  | Flood | 25,000 | 1.2–1.3 s |
+  | Burst (one minute) | 5,000 | 0.4 s |
+  | Burst (one minute, rows sharing milliseconds) | 20,000 | 1.5–1.6 s |
+
+**What it means:** the 27–28 s measured on 10-26, 10-30 and this morning came from the seed giving every row one `created_at`, which EmDash's paging handles badly. Real rows get a millisecond stamp each. This morning's "quadratic" conclusion and its "seed artifact for the recent scan only" caveat were wrong; RT-15's finding carries the correction and what's left (0.9 s at the spam cap's maximum, rows read twice, the cap keeping the oldest tips, no time budget).
+
+**Stopped here** (CLAUDE.md: evidence against what the plan assumed). No plugin code or test was written for Part 2. Wyatt decides whether slices and the budget still go ahead, in full or reduced, and RT-15's severity.
+
+**State:** `data.db` restored from `redteam/rt15b-before.db` (62 invoices, 364 pool rows, the bridge's key present). Built copy and dev site stopped, ports free. `plugin/dist` and the site's `dist` are clean builds of the committed plugin code. Commits local from `0372a22` on; `origin/redteam-1` is at `0c0f4a9`. A bundle follows.
+
+## 2026-11-13 · Phase 07b fix sessions · RT-15 closed with a wording change (Wyatt's ruling), no plugin code
+
+**Wyatt's ruling** (decisions row; spec change 51):
+1. RT-15 is **Low** (was Medium on "within 2 s of the wall").
+2. The spec's 0.2 s estimate becomes the measured numbers (built copy, dev box: 0.9 s at 15,360 rows, 1.1 s at 20,100). What the cap drops past 20,000 rows is an accepted limit.
+3. The EmDash upgrade checklist gets the flood-seed timing run: fail above 5 s for a 20,100-row flood sync on the built copy. Used in the 1.4.0 upgrade.
+4. Read-tips-once, newest-first scanning and a time budget are backlog items for after release 1 (listed in spec change 51). The morning's fix decision (slices, read-once, a 12 s budget) isn't built.
+5. Push `0372a22`, `c335839` and this commit, then check CI.
+
+**Done:**
+- `docs/spec-changes.md` 51 (accepted wording, the guard, the backlog), RT-15's finding (table row and section: Low, closed), the decisions row (the morning's row marked replaced), matrix R11's text (still Partial), and the checklist's new row plus a line under "EmDash 1.4.0".
+- `backlog-live.mjs time --max-ms <n>`: a timed sync slower than that is a FAIL (default 30000, as before). CLAUDE.md's row names the checklist run and the seed shapes.
+
+**Test results:**
+- Script tests: 49 passed.
+- The checklist run, live on the built copy (20,100-row flood, `--max-ms 5000`): 3 of 3 PASS at 1,190, 1,140 and 1,114 ms (`h1-2026-11-13T225626197Z.txt`).
+- The same with `--max-ms 500`: 3 of 3 FAIL, exit 1, which shows the limit can fail (`h1-2026-11-13T225645412Z.txt`).
+- No plugin file changed, so the plugin suites weren't rerun.
+
+**Not done, for Wyatt:** `plugin/src/store.ts`'s comment on `MAX_SCAN_PAGES` still says "a 15,000-row scan took about 0.2 s". Left alone under "no plugin code"; a one-line comment fix when a later commit touches the file.
+
+**State:** `data.db` restored from `redteam/rt15b-before.db` (62 invoices, 364 pool rows, the bridge's key present). Built copy and dev site stopped, ports free.
+
+**What's left before phase 09:** RT-05, the six Lows (RT-02, RT-03, RT-10, RT-14, RT-22, RT-23), the EmDash 1.4.0 check (a dependency upgrade: Wyatt approves first; it now includes the flood-seed timing run), and the RT-08 re-check question.
+
+**Next step:** RT-05 (an IPv6 /64 counted as one client), plan first.
+
+## 2026-11-13 · Phase 07b fix sessions · RT-05 fixed: an IPv6 visitor's bucket is their /64
+
+**CI:** run 43523536718 passed on `52574d8` (RT-15's close).
+
+**Before RT-05:** `plugin/src/store.ts`'s `MAX_SCAN_PAGES` comment now gives the measured cost (spec change 51) instead of the 0.2 s estimate (`d40aa91`, comment only).
+
+**Wyatt approved the plan with /64** (decisions row; spec change 52).
+
+**Done, tests first:**
+- Red: the `[RT-05]` test with `it.fails` removed and two of three new behaviour tests failed with `expected 'ok' to be 'TOO_MANY_OPEN'`; the parser's test file failed on the missing module. The third new test (text that isn't an address) passed before the fix, as it should: that behaviour is unchanged.
+- `plugin/src/clientip.ts`, `clientKeyText`: IPv6 gives its /64, an IPv4-mapped address its IPv4 address, everything else the text as given. `clientBucket` in `checkout.ts` hashes that. Nothing else in the bucket changed.
+- `plugin/tests/redteam/ipcap.test.ts`: the RT-05 test flipped to `it`, three new `[T18][T05] [RT-05]` tests, and the `[P03][T18]` test also looks for the IPv6 prefix in two more spellings. `plugin/tests/core/clientip.test.ts`: 36 parser cases.
+- Docs: spec change 52, RT-05's finding (fixed), matrix T18 from Gap to Covered (22 Covered, 6 Partial, 3 Planned, no Gap, across 31 rows).
+
+**Test results:**
+- Plugin, default config: 522 passed, 10 expected fail, 1 skipped (was 482, 11 and 1: 36 parser cases, 3 new tests and the flipped one). Goods config: 101 passed, 1 skipped.
+- Typecheck clean, manifest valid, bundle check passed at 74.6 KB (was 73.5 KB).
+
+**Not covered:** a live run. The dev site never sets `requestMeta.ip` (round 1, L2), so only the test host reaches this code. The dev site wasn't started; `data.db` wasn't touched.
+
+**Accepted limit (spec change 52):** a visitor given a /56 or /48 can still move between /64s.
+
+**What's left before phase 09:** the six Lows (RT-02, RT-03, RT-10, RT-14, RT-22, RT-23), the EmDash 1.4.0 check (a dependency upgrade: Wyatt approves first; it includes the flood-seed timing run), and the RT-08 re-check question.
+
+**Next step:** the Lows, plan first; Wyatt picks the order or whether they go in one session.
+
+## 2026-11-13 · Phase 07b fix sessions · The Lows, session 1: RT-02, RT-03, RT-10, RT-14 fixed (plugin and theme)
+
+**CI:** run 43534025888 passed on `2346103` (RT-05).
+
+**Wyatt approved the plan for the six Lows** with these answers (decisions row; spec change 53):
+- RT-03: remove the lone surrogate, keep the tip; no cut may leave half a character; a test with an emoji at the limit.
+- RT-23: the wire state stays `ok` with a different detail. The admin page is fixed in session 2 only if it can tell "nothing was checked" from data it has or a field already on the wire, never from the bridge's detail text.
+- RT-14: the handler gets its allowed actions from the code that builds the page's menu.
+- RT-22: a line on what Ctrl-C does once the machine has started changing (below).
+- Order: this session now; session 2 (RT-22, RT-23, the bridge) when he's at the terminal.
+
+**Done, each test red first:**
+- **RT-02:** `parseKraken(text, currency)` reads only the pair asked for (`XXMRZ<cur>` or `XMR<cur>`). The supported currencies are USD and EUR, both with replies already in the tests.
+- **RT-03:** `cleanNote` removes lone surrogates with the format characters, before the count. A note is never cut (over 140 code points it is refused), so the "clean after cutting" case can't arise; the tests show an emoji at the limit kept whole and one character over refused.
+- **RT-10:** `refusedPath` in `theme/src/back.ts` compares in lower case.
+- **RT-14:** `rowVerbs` and `reviewVerbs` build the page's menu and review buttons, and `invoiceAction` checks against their union (`offeredVerbs`). **A narrowing:** a tip in review now takes only the action its item shows (before, either). New test: for all seven review cases, on a tip, the handler takes exactly what the item shows; it failed without the fix on "late, paid in full: expire".
+- The test tip in Setup has no action of its own (checked in `admin.ts`); it settles through the review queue like any tip.
+
+**Test results:**
+- Plugin, default config: 529 passed, 7 expected fail, 1 skipped (was 522, 10, 1: three flipped, four new). Goods config: 102 passed, 1 skipped (was 101: the new RT-14 test runs there too). Commit `8127934`'s message says 101 for the goods config; 102 is the real count.
+- Theme: 80 passed, 1 skipped; typecheck clean.
+- Plugin typecheck clean, manifest valid, bundle check passed at 74.6 KB.
+- No live run: none of the four changes a path the dev site exercises differently from the test host. The dev site wasn't started; `data.db` wasn't touched.
+
+**RT-22, for the install docs (read from `bridge/internal/installer/install.go`, not tried live):** once the installer has started changing the machine, Ctrl-C stops it at the step in progress and nothing is rolled back: the folders, the binary and whatever was finished stay, and what it did is in `/var/lib/xmr-bridge/log/install.log`. Running the installer again finishes the job and keeps an existing wallet program and wallet; if the Ctrl-C came after "Pairing with…", the code is used, so press the button for a new one first. Session 2's live step can confirm this.
+
+**Commits:** RT-02 and RT-03 share one commit (both change `plugin/tests/redteam/checkout.test.ts`), then RT-10, RT-14, and the docs. Local; not pushed.
+
+**What's left before phase 09:** session 2 of the Lows (RT-22, RT-23; a dev release and Wyatt's sudo step), the EmDash 1.4.0 check (Wyatt approves the upgrade first; it includes the flood-seed timing run), and the RT-08 re-check question.
+
+**Next step:** session 2, when Wyatt is at the terminal: un-skip the three Go tests, RT-23 then RT-22, then the script for his step.

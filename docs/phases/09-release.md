@@ -13,7 +13,10 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
 **Before the session** (from the plan change's waiting list):
 
 - [ ] Phase 07b is done: no Critical or High finding open, every Medium fixed or accepted in `docs/decisions.md`.
-- [ ] The mainnet second-node list for the cross-check (spec change 13).
+- [x] The mainnet second-node list for the cross-check (spec change 13): decided 2026-11-02, https only (`node.monerodevs.org:18089`, `xmr-node.cakewallet.com:18081`, `ravfx.its-a-node.org:18081`), built in `1162b8f`.
+- [ ] Grow the HTTPS second-node list (Wyatt, 2026-11-02). Today it's three mainnet nodes, one per operator, and stagenet still uses http because only one of its nodes has a certificate that verifies.
+  - **Why it matters:** with a remote node and no second node answering, every payment is held and no height is reported.
+  - **How to add a node:** probe it read-only, as on 2026-11-02 (synchronized, restricted, `get_block` by height, the same block hash as the others, a certificate that verifies), and only from an operator not already listed.
 - [ ] The self-update admin-copy question.
 - [ ] An install host that serves the bridge files without redirects (spec change 21).
 - [x] The Atmosphere account to publish under (below; done 2026-10-23).
@@ -21,6 +24,7 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
 - [ ] Session 7g (EmDash 1.3 check) is done: `release.requires` and the listing text are in the manifest, and they name versions actually tested (spec change 41, items 3, 4, 9).
 - [ ] A browser with passkey support, for approving each release (spec change 41 A).
 - [ ] The repository is still public: the release service trusts only public GitHub provenance.
+- [ ] Spec change 49 item 4's txid lookup: a new index or a bounded scan, decided before 1.0.0's storage contract is frozen (step 1 below; Wyatt, 2026-11-08).
 
 **Accounts and keys (in this order)**
 
@@ -47,21 +51,58 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
 - Start from `docs/redteam-findings.md` and the matrix (`docs/security-matrix.md`) as phase 07b left them, not from scratch.
 - Walk the spec's Security model table row by row and point to the code and test that covers each threat. Anything uncovered is a blocker.
 - Review: signature and freshness checks, pairing, spam limits, money math, the state machine, admin action validation, buyer-data purge, the pay page's privacy headers, the installer's prompts and file permissions, the systemd hardening, download and update verification, and dependency audits (`pnpm audit`, `govulncheck`, with Wyatt's approval to install it).
+- **Before the storage contract is frozen (Wyatt, 2026-11-08): does spec change 49 item 4's lookup by txid need a new index, or will a bounded scan do?** A txid sits inside `transfers[]`, which has no index.
+  - **If it needs an index:** declare it in 1.0.0, and write the field it reads on every invoice from day one. Check with `emdash-docs` and the plugin types whether EmDash can index a value inside an array; if it can't, the field is a top-level one. Then release 2 stays 1.x with no new consent. It's a storage trust-contract change, so it's a spec change first, and Wyatt decides.
+  - **If a bounded scan works:** 1.0.0 doesn't change. Measure it on the dev site at the scan's cap, as 07b H1 measured the large backlog.
+  - Either way, phase 08 then only builds the lookup.
 - Confirm the manifest's trust contract matches the spec exactly, and the bundle is under its caps. Confirm `release.requires` still names only versions tested (7g, or a later upgrade check).
 - Write `docs/security-review.md` with findings and fixes. Wyatt decides whether an outside review is needed before mainnet.
 - The published security report covers tips. Threats that only orders face stay in it, each marked "covered in release 2", not dropped.
 - The release-1 switch is off in the release build (`checkout` takes tips only), and the theme package exports no PayButton.
+- **New admin surface since 07b pass 1 (Wyatt, 2026-11-08): the `tips_page` action** (step 3).
+  - Review it the way 07b's B2 reviewed the row actions: forged and malformed values, refusals that change nothing, never a crash.
+  - Rows F04 and T30; its tests are listed in step 3.
 
 **2. Build and sign**
 
-- Reproducible bridge builds for linux amd64 and arm64: `CGO_ENABLED=0`, `-trimpath`, pinned Go version, version stamped from the tag. A script produces the binaries, a checksum file, and the unsigned release manifest.
+- Reproducible bridge builds for linux amd64 and arm64: `CGO_ENABLED=0`, `-trimpath`, the Go version pinned in `bridge/go.mod` (go1.27.3 or later, RT-28), version stamped from the tag. **CI builds them** from a clean checkout with provenance (CLAUDE.md tier 3; Wyatt, 2026-10-31): the binaries, a checksum file and the unsigned release manifest.
+- **Before signing, Wyatt rebuilds on the dev box** with the same Go and the same flags and confirms the hashes match CI's. The signing key never goes to CI.
+- Just before publishing, rerun `govulncheck -mode binary` on the release binaries and `pnpm audit` on the release packages (07b F5; nothing called is the bar).
 - Wyatt signs the release manifest offline with the real key and hands back only the signature. Pin the real public key in the bridge (replacing the placeholder), with tests proving that release builds contain neither the placeholder, the dev release key, the `--release-url` dev option, nor the RFC 8032 test keys.
 - GitHub Releases hold the binaries, checksums and signatures. Tags and releases are created only after Wyatt approves.
 
 **3. Install host:** (before writing any admin-facing install text, reread `docs/setup-friction.md`) for the bridge and `install.sh` only; the registry hosts the plugin (spec change 41 item 2). The static `install.sh` for this release, verifying the bridge the way phase 03 decided, published to the install host. Replace the placeholder install URL in the plugin with the real one.
 
 - **Open item (spec change 21, 2026-10-12): no redirects on the wget path.** On a machine without curl, `install.sh` downloads the bridge with `wget --max-redirect=0`, because wget can't limit a redirect's protocol the way curl's `--proto` does. The bridge binaries must therefore be served from `RELEASE_BASE` without a redirect. GitHub Releases asset URLs redirect, so either the install host serves the binaries itself, or `RELEASE_BASE` points at an address that answers directly. Test the published install command on a machine with wget and no curl.
+- **Lines from the 07b triage (Wyatt, 2026-11-08):**
+  - RT-12: one CPU-bound plugin request can hold the others for up to 30 s on the Node runner.
+  - RT-13: slow connections are limited at the proxy or platform, next to the checkout rate limit.
+  - RT-19: get the pairing code last, right before running the install command.
+  - The report's T03 uses spec change 44's final wording (RT-08).
 - **The install docs list what the wallet host needs:** Linux with systemd, `sh`, curl or wget, `sha256sum`, and `sudo` or a root login.
+- **The install docs say to use a wallet made for this shop, not one with history** (spec change 46's known limit, 2026-11-01). A wallet restored from keys stops at the first gap of 200 unused subaddresses, so a reused wallet paired as new can hand out addresses that already received payments.
+- **The install docs say a site behind a proxy that ends https must give EmDash its public address the way EmDash documents it** (`siteUrl`, `EMDASH_SITE_URL` or `SITE_URL`; RT-20's known limit, Wyatt 2026-11-06). The Site URL in Settings › General alone isn't enough: the plugin gets the right address, but every visitor's tip is refused with a 403. The tip page's note for the admin ("See Coffer's install guide") points here, so this section must exist before release. Warn first that setting one of these moves passkey sign-in to that address, and passkeys made at the old address stop working, so a sole admin with no email set up could be locked out. Link EmDash's guide: https://docs.emdashcms.com/reference/configuration/#reverse-proxy-setup.
+- **Build the admin page's banner and toast text from spec change 42** (Wyatt's decision of 2026-11-06, exact text there; replaces item 3's earlier proposal). Tests in `plugin/tests/routes/admin-site.test.ts` and `admin-route.test.ts` change to match.
+- **Spec change 49, items 1–3** (Wyatt, 2026-11-06), on each row in the Tips list and All invoices:
+  - the invoice ID, copyable;
+  - each transfer's txid, amount and block (already in `transfers[]`);
+  - the address in short form.
+  - Admin page only, from data already stored, so the trust contract doesn't change.
+  - **The pay token never appears on a row:** a test checks it, tagged T09.
+  - Wyatt checks the page by eye once it's built, `inv_f7ea94de1471f114` included (2026-11-08).
+  - **The limit this leaves goes in step 1's review:** until item 4 exists, a tip can't be found by txid. With "show older tips" below, every tip can still be matched by eye, page by page.
+- **"Show older tips", the `tips_page` action** (Wyatt, 2026-11-08), on the private `admin` route:
+  - **How it pages:** like All invoices' `invoices_page` and `invoices_newest`, with a storage cursor over the query the Tips view already runs (`where: { kind: "tip" }, orderBy: { createdAt: "desc" }`). That's the declared `["kind", "createdAt"]` index.
+  - **No contract change:** no new route, collection, index, capability, page or widget.
+  - **What a page shows:** the rows with items 1–3 above.
+    - Test tips (no `via`) are filtered out after the query, so a page can hold fewer than 10.
+    - Tips past the 30-day purge show without notes.
+    - The totals don't change: they still cover the newest 1,000.
+  - **Tests, written first:**
+    - **[F04] A malformed or forged cursor is refused with an error toast, changes nothing, and never crashes.** Wrong type, empty, oversized, look-alike, another list's cursor, and one built by hand.
+    - **[F04] A non-admin request is refused:** an anonymous user, a signed-in user who isn't an admin, and a request without `X-EmDash-Request`.
+    - **[T30] Test tips are filtered:** they never appear on any page and never count.
+    - **[T09] No page shows a pay token.**
 
 **4. Registry (spec change 41):** `publisher` is Wyatt's DID (the DID, never the handle); `@emdash-cms/plugin-cli` is pinned exactly; `license`, `author`, the `security` contact URL and `repo` (`https://github.com/dwightsabeast/coffer`) are filled in.
 
@@ -100,6 +141,9 @@ After phases 08 and 08b. Same gates as release 1, with these differences:
 - **Version:** registry versions are immutable. Release 1 is 1.0.0 (spec change 41 C). With the trust contract unchanged, release 2 is a minor version, 1.x (new features, no new routes). If phase 08 changed the trust contract (a new index, capability, host or route), it's 2.0.0 (EmDash's rule: major for a broadened contract) and the admin consents again; say so in the release notes. A new public route, or a private route made public, also asks for consent again.
 - **Publishing:** through the same automated release workflow, with a passkey approval (spec change 41 A).
 - **Build:** the release-1 switch is on, and the theme package exports PayButton.
+- **RT-25 (Wyatt, 2026-11-08):** buyer data in an invoice waiting in review is purged 30 days after review began. Fix before orders: a refund address must outlast the admin's decision.
+- **Gate: spec change 49 items 4 and 5 are built (phase 08) and tested** (Wyatt, 2026-11-06).
+  - **The Feather check (Wyatt, 2026-11-08):** does Feather keep the `monero:` URI's `tx_description` in its history? Pay through the full `monero:` link or the QR code, never a copied address and amount: copying drops the description, and that's how Wyatt's test payments have been made so far.
 - **Setup test:** repeat the registry setup test with an order through the store adapter, not only a tip.
 - **Mainnet:** whether to run an orders trial on mainnet, and where, is Wyatt's call. Goods don't ship without pass 2 done.
 

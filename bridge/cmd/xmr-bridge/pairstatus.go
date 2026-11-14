@@ -9,13 +9,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/dwightsabeast/coffer/bridge/internal/bridgeloop"
 	"github.com/dwightsabeast/coffer/bridge/internal/config"
 	"github.com/dwightsabeast/coffer/bridge/internal/crosscheck"
 	"github.com/dwightsabeast/coffer/bridge/internal/installer"
-	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
 	"github.com/dwightsabeast/coffer/bridge/internal/pairing"
 	"github.com/dwightsabeast/coffer/bridge/internal/selfupdate"
 	"github.com/dwightsabeast/coffer/bridge/internal/syncclient"
@@ -40,6 +40,12 @@ func siteClient(cfg config.Config) *syncclient.Client {
 	return &syncclient.Client{Site: cfg.Site, UserAgent: "xmr-bridge/" + version}
 }
 
+// pairHeight is the chain height a pairing request carries (spec change 47, part 4): the site resets its height to it,
+// so only a bounded one (crosscheck.BoundedHeight), else 0, which leaves the site's height as it is.
+func pairHeight(ctx context.Context, cfg config.Config) uint64 {
+	return crosscheck.BoundedHeight(ctx, cfg.Node, string(cfg.Network), nil)
+}
+
 // cmdPair pairs with the site using the one-time code from the admin page's Connect wallet host button. The
 // installer runs the same step; a running bridge picks up the new key at its next sync.
 func cmdPair(ctx context.Context, args []string, stdout, stderr io.Writer) int {
@@ -49,6 +55,11 @@ func cmdPair(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 	code := fs.String("code", "", "the one-time pairing code")
 	if err := fs.Parse(args); err != nil || fs.NArg() != 0 || *path == "" || *code == "" {
 		fmt.Fprint(stderr, usage)
+		return 2
+	}
+	pairCode, err := codeArg(*code)
+	if err != nil {
+		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
 		return 2
 	}
 	cfg, err := config.Load(*path)
@@ -64,13 +75,7 @@ func cmdPair(ctx context.Context, args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
 		return 1
 	}
-	var height uint64
-	nctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	if info, err := noderpc.GetInfo(nctx, cfg.Node, nil); err == nil {
-		height = info.Height
-	}
-	cancel()
-	suggested, err := pairing.Pair(ctx, siteClient(cfg), *code, keyFile(cfg), height, time.Now())
+	suggested, err := pairing.Pair(ctx, siteClient(cfg), pairCode, keyFile(cfg), pairHeight(ctx, cfg), time.Now())
 	if err != nil {
 		fmt.Fprintf(stderr, "xmr-bridge: pairing failed: %v\n", err)
 		return 1
@@ -169,6 +174,34 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 	case crosscheck.Mismatch:
 		healthy = false
 		fmt.Fprintf(stdout, "Node check: MISMATCH: %s\n", nc.Detail)
+	}
+	// Spec change 46: the check of the site's addresses against this wallet.
+	switch pc := st.PoolCheck; {
+	case pc == nil:
+		fmt.Fprintln(stdout, "Address check: not asked yet (the site hasn't sent its addresses to check)")
+	case pc.State == "ok":
+		fmt.Fprintln(stdout, "Address check: ok")
+	default:
+		healthy = false
+		idx := make([]string, len(pc.Bad))
+		for i, b := range pc.Bad {
+			idx[i] = fmt.Sprintf("#%d", b)
+		}
+		fmt.Fprintf(stdout, "Address check: MISMATCH: the site holds addresses that aren't from this wallet (%s). Someone may have this wallet host's key: on the site's admin page, connect a new wallet host, on a machine you trust\n", strings.Join(idx, ", "))
+	}
+	// Spec change 48: the circuit breaker and a failed save of the wallet.
+	switch st.TopUpStopped {
+	case "":
+	case "too_many":
+		healthy = false
+		fmt.Fprintln(stdout, "Top-up:     STOPPED: it created far more addresses than tips have used. Restart with: sudo systemctl restart xmr-bridge")
+	default:
+		healthy = false
+		fmt.Fprintln(stdout, "Top-up:     STOPPED: it found a problem with an address it had just created. Restart with: sudo systemctl restart xmr-bridge")
+	}
+	if st.StoreFailed {
+		healthy = false
+		fmt.Fprintln(stdout, "Wallet save: FAILED: it keeps trying. See: sudo journalctl -u xmr-bridge")
 	}
 	switch wc := st.WalletCheck; {
 	case wc == nil:

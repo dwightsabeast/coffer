@@ -27,6 +27,13 @@ export async function newPairingCode(now: number): Promise<{ code: string; state
 	return { code, state: { codeHash: await hashPairingCode(code), expiresAt: now + PAIRING_TTL_MS, used: false } };
 }
 
+/**
+ * A short ID for a paired bridge key: the first 16 characters of its base64 form (96 bits). Pool rows and the stored
+ * network carry the ID of the key that added them, so checkout can skip anything from an earlier pairing (spec change
+ * 45; a sync already past its signature check when a re-pairing lands can still write after the drop).
+ */
+export const keyId = (publicKey: string): string => publicKey.slice(0, 16);
+
 export const isPairingActive = (state: PairingState | null, now: number): state is PairingState =>
 	state !== null && !state.used && now < state.expiresAt;
 

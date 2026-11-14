@@ -45,7 +45,7 @@ describe("POC scenarios", () => {
 		sim.mine();
 		sim.sync();
 		expect(sim.inv.status).toBe("settled");
-		expect(totals(sim.inv).depth).toBe(5);
+		expect(totals(sim.inv, sim.height).depth).toBe(5);
 	});
 
 	it("[R04] underpay and leave: review (underpaid) after the post-deadline sync", () => {
@@ -184,7 +184,7 @@ describe("attacks the core must refuse", () => {
 		sim.mine(12);
 		sim.sync();
 		expect(sim.inv.status).toBe("new");
-		expect(totals(sim.inv).notCounted).toBe(1);
+		expect(totals(sim.inv, sim.height).notCounted).toBe(1);
 	});
 	it("[T11] double-spend-flagged funds are not counted", () => {
 		const sim = new Sim();

@@ -8,6 +8,8 @@ import (
 	"bytes"
 	"context"
 	"crypto/ed25519"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,7 +30,27 @@ const (
 	maxResponse  = 1 << 20
 	ProtocolV    = 1
 	accessFixURL = "/_emdash/api/plugins/coffer/*"
+	// Spec change 46: the site's check list and probes are capped, and a probe is always index 1.
+	MaxCheck  = 150
+	MaxProbes = 10
+	MaxBad    = 20
 )
+
+// AddressDigest is what the site sends instead of an address (spec change 46, D3): the standard padded base64 of the
+// first 16 bytes of SHA-256 over the address string. contract/test-vectors/address-digest.json pins it.
+func AddressDigest(address string) string {
+	sum := sha256.Sum256([]byte(address))
+	return base64.StdEncoding.EncodeToString(sum[:16])
+}
+
+// isDigest: 24 characters of standard padded base64 for 16 bytes.
+func isDigest(s string) bool {
+	if len(s) != 24 || !strings.HasSuffix(s, "==") {
+		return false
+	}
+	b, err := base64.StdEncoding.Strict().DecodeString(s)
+	return err == nil && len(b) == 16
+}
 
 // ErrTooLarge: the body is over the plugin's limit; the caller sends fewer snapshots or addresses.
 var ErrTooLarge = errors.New("syncclient: request body over the site's limit")
@@ -44,12 +66,40 @@ type Body struct {
 	// Checks reports the wallet host's checks for the admin page (spec change 13). Optional: the plugin ignores
 	// fields it doesn't know, and shows this one from phase 04.
 	Checks *Checks `json:"checks,omitempty"`
+	// Wallet answers the site's probes after a pairing (spec change 46, item 3).
+	Wallet *WalletAnswer `json:"wallet,omitempty"`
+	// ProbeDigest is the digest of this wallet's own index-1 address, sent with the answer and after a pairing on a
+	// site with no history, until a sync carrying it succeeds (spec change 46, Wyatt's review).
+	ProbeDigest string `json:"probeDigest,omitempty"`
+}
+
+// WalletAnswer says which of the site's wallets this one is: Match is the probe's wallet number, or nil for none.
+// ReceivedTop is the wallet's highest subaddress index with a transfer (the site's gap baseline for a new wallet).
+type WalletAnswer struct {
+	Match       *int   `json:"match"`
+	ReceivedTop uint32 `json:"receivedTop"`
+}
+
+// PoolReport is the bridge's check of the site's last check list (spec change 46, item 1): "ok", or "mismatch" with up
+// to MaxBad of the wallet's own indexes the wallet doesn't hold with that digest.
+type PoolReport struct {
+	State string   `json:"state"`
+	Bad   []uint32 `json:"bad"`
 }
 
 // Checks are the wallet host's health checks.
 type Checks struct {
-	Node   *Check `json:"node,omitempty"`   // the remote-node cross-check
-	Wallet *Check `json:"wallet,omitempty"` // the wallet's height against its node's ("ok", "behind", "unavailable"), or "syncing" while the node catches up with the network
+	Node   *Check      `json:"node,omitempty"`   // the remote-node cross-check
+	Wallet *Check      `json:"wallet,omitempty"` // the wallet's height against its node's ("ok", "behind", "unavailable"), or "syncing" while the node catches up with the network
+	Pool   *PoolReport `json:"pool,omitempty"`   // spec change 46: the check of the site's pool against this wallet
+	TopUp  *TopUpCheck `json:"topUp,omitempty"`  // spec change 48: set while the circuit breaker has stopped top-ups
+	Save   *Check      `json:"save,omitempty"`   // spec change 48: state "failed" while the wallet can't be saved
+}
+
+// TopUpCheck says the bridge has stopped adding pool addresses and why ("bad_created" or "too_many"; spec change 48).
+type TopUpCheck struct {
+	State  string `json:"state"`
+	Reason string `json:"reason"`
 }
 
 // Check is one check's state ("off", "ok", "unavailable" or "mismatch") and what it means.
@@ -97,6 +147,26 @@ type Response struct {
 	// RestoreHeight is the site's suggested restore height for a new wallet, on a pairing response only (spec change
 	// 17); 0 when the site doesn't say. A suggestion of 0 reads as 1, so it can never be taken for "today".
 	RestoreHeight uint64
+	// ClaimedTop is the current wallet's highest index the site has handed out (spec change 46, Wyatt's review): the
+	// only numbering cue the bridge follows, since a key thief can add free rows (and so move PoolTop) but not claim.
+	ClaimedTop uint32
+	// Check is the site's rows for this wallet to check, by digest (spec change 46, item 1); nil from an older plugin.
+	Check []CheckEntry
+	// Probes is non-nil while the site waits for this wallet's answer (spec change 46, item 3), possibly empty.
+	Probes []Probe
+}
+
+// CheckEntry is one of the site's pool rows: the wallet's own index and the address's digest.
+type CheckEntry struct {
+	Index  uint32
+	Digest string
+}
+
+// Probe is one wallet the site has used: its number and the digest of its index-1 address.
+type Probe struct {
+	Wallet int
+	Index  uint32
+	Digest string
 }
 
 // Error is a refusal by the site (Code is the plugin's or EmDash's code, or HTTP_<status>) with the fix.
@@ -126,6 +196,8 @@ func hint(code string) string {
 		return "this site runs on Cloudflare Workers, which Coffer doesn't support yet; it works on EmDash sites hosted on Node.js. Nothing was set up, and the pairing code wasn't used"
 	case "UNSUPPORTED_VERSION":
 		return "the site's plugin and this bridge don't share a protocol version. Update the older one"
+	case "SEQ_OUT_OF_RANGE":
+		return "this machine's clock moved back more than 5 minutes; syncs resume when it catches up (check: timedatectl)"
 	case "INVALID_BODY", "INVALID_ENCODING":
 		return "the site refused the request's contents. This is a bridge bug; the log has details"
 	case "INVALID_PLUGIN_REQUEST":
@@ -160,6 +232,12 @@ func (c *Client) Send(ctx context.Context, key ed25519.PrivateKey, body Body) (R
 		if body.Snapshots[i].Transfers == nil {
 			body.Snapshots[i].Transfers = []Transfer{}
 		}
+	}
+	if body.Checks != nil && body.Checks.Pool != nil && body.Checks.Pool.Bad == nil {
+		c, p := *body.Checks, *body.Checks.Pool
+		p.Bad = []uint32{}
+		c.Pool = &p
+		body.Checks = &c
 	}
 	raw, err := json.Marshal(body)
 	if err != nil {
@@ -236,7 +314,17 @@ func parse(status int, data []byte) (Response, error) {
 		PoolTop    int64  `json:"poolTop"`
 		Watch      []int  `json:"watch"`
 		Restore    *int64 `json:"restoreHeight"`
-		Error      *struct {
+		ClaimedTop int64  `json:"claimedTop"`
+		Check      *[]struct {
+			Index  int64  `json:"index"`
+			Digest string `json:"digest"`
+		} `json:"check"`
+		Probes *[]struct {
+			Wallet int64  `json:"wallet"`
+			Index  int64  `json:"index"`
+			Digest string `json:"digest"`
+		} `json:"probes"`
+		Error *struct {
 			Code string `json:"code"`
 		} `json:"error"`
 	}
@@ -249,7 +337,35 @@ func parse(status int, data []byte) (Response, error) {
 	if !d.OK || d.PoolFree == nil || d.PoolTarget == nil || *d.PoolFree < 0 || *d.PoolTarget < 0 || d.PoolTop < 0 || d.PoolTop > 1<<32-1 || d.Watch == nil || (d.Restore != nil && *d.Restore < 0) {
 		return Response{}, bad
 	}
-	r := Response{PoolFree: *d.PoolFree, PoolTarget: *d.PoolTarget, PoolTop: uint32(d.PoolTop), Watch: make([]uint32, 0, len(d.Watch))}
+	if d.ClaimedTop < 0 || d.ClaimedTop > 1<<32-1 {
+		return Response{}, bad
+	}
+	r := Response{PoolFree: *d.PoolFree, PoolTarget: *d.PoolTarget, PoolTop: uint32(d.PoolTop), ClaimedTop: uint32(d.ClaimedTop), Watch: make([]uint32, 0, len(d.Watch))}
+	if d.Check != nil {
+		if len(*d.Check) > MaxCheck {
+			return Response{}, bad
+		}
+		r.Check = make([]CheckEntry, 0, len(*d.Check))
+		for _, c := range *d.Check {
+			if c.Index < 1 || c.Index > 1<<32-1 || !isDigest(c.Digest) {
+				return Response{}, bad
+			}
+			r.Check = append(r.Check, CheckEntry{Index: uint32(c.Index), Digest: c.Digest})
+		}
+	}
+	if d.Probes != nil {
+		if len(*d.Probes) > MaxProbes {
+			return Response{}, bad
+		}
+		r.Probes = make([]Probe, 0, len(*d.Probes))
+		for _, p := range *d.Probes {
+			// Spec change 46 (Wyatt's review): a probe is always index 1, so answering one never creates more than that.
+			if p.Index != 1 || p.Wallet < 0 || p.Wallet > 1<<21 || !isDigest(p.Digest) {
+				return Response{}, bad
+			}
+			r.Probes = append(r.Probes, Probe{Wallet: int(p.Wallet), Index: 1, Digest: p.Digest})
+		}
+	}
 	if d.Restore != nil {
 		r.RestoreHeight = max(uint64(*d.Restore), 1)
 	}

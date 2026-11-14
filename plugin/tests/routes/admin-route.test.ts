@@ -5,7 +5,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { INSTALL_URL, installCommand } from "../../src/admin";
 import { PAIRING_TTL_MS, hashPairingCode } from "../../src/sync/pairing";
-import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -119,7 +119,8 @@ describe("admin page", () => {
 		const res = await host.actions.routes.request("bridge/sync", { method: "POST", rawBody: bytes, headers: await signedHeaders(bytes, now) });
 		expect(((await res.json()) as B).data).toMatchObject({ ok: true });
 		const page = (await host.admin.loadPage("/payments")).blocks as B[];
-		expect(find(page, (x) => x.type === "fields" && x.block_id === "health")?.fields[0]).toEqual({ label: "Wallet host", value: "Paired" });
+		// Paired with no addresses yet: the network comes with the wallet host's first ones (spec change 45).
+		expect(find(page, (x) => x.type === "fields" && x.block_id === "health")?.fields[0]).toEqual({ label: "Wallet host", value: "Paired · network not known yet" });
 		const button = find(page, (x) => x.type === "actions")?.elements[0];
 		expect(button).toEqual({ type: "button", action_id: "connect_wallet_host", label: "Connect a new wallet host", style: "primary" });
 	});
@@ -134,7 +135,7 @@ describe("admin page", () => {
 		expect(find(page, (x) => x.type === "banner" && String(x.title).includes("update"))).toBeDefined();
 		expect(texts((await host.admin.loadWidget("xmr-status")).blocks as B[])).toContain("Wallet host silent");
 		await host.fixtures.plugin.kv("state:bridge", { height: 3_000_000, lastSyncAt: Date.now() - 30_000, version: 1, outdated: false });
-		await host.fixtures.plugin.storage("pool", "1", { addrIndex: 1, address: fakeSubaddress(1, "D"), status: "free" });
+		await host.fixtures.plugin.storage("pool", "1", { addrIndex: 1, address: fakeSubaddress(1, "D"), status: "free", keyId: KEY_IDS.test1 });
 		const healthy = (await host.admin.loadPage("/payments")).blocks as B[];
 		expect(find(healthy, (x) => x.type === "banner" && /silent|update/.test(String(x.title)))).toBeUndefined();
 		expect(texts((await host.admin.loadWidget("xmr-status")).blocks as B[])).toContain("Healthy");

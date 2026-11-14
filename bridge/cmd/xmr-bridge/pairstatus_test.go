@@ -279,3 +279,28 @@ func TestStatusShowsUpdates(t *testing.T) {
 		t.Fatalf("%q", out)
 	}
 }
+
+// Spec change 48: the circuit breaker and a failed save on the wallet host, each with a non-zero exit.
+func TestStatusBreaker(t *testing.T) {
+	p, c := writeConfig(t, "https://shop.example")
+	k, _ := syncsign.NewKey()
+	syncsign.SaveKey(filepath.Join(c.DataDir, "bridge.key"), k)
+	os.MkdirAll(filepath.Join(c.DataDir, "run"), 0o700)
+	now := time.Now()
+	for _, tc := range []struct {
+		st   bridgeloop.Status
+		text string
+	}{
+		{bridgeloop.Status{TopUpStopped: "bad_created"}, "Top-up:     STOPPED: it found a problem with an address it had just created."},
+		{bridgeloop.Status{TopUpStopped: "too_many"}, "Top-up:     STOPPED: it created far more addresses than tips have used."},
+		{bridgeloop.Status{StoreFailed: true}, "Wallet save: FAILED"},
+	} {
+		tc.st.LastAttemptAt, tc.st.LastSyncAt, tc.st.PoolTarget, tc.st.PoolFree = now, now, 50, 50
+		b, _ := json.Marshal(tc.st)
+		os.WriteFile(filepath.Join(c.DataDir, "run", "status.json"), b, 0o600)
+		code, out, _ := run(context.Background(), "status", "--config", p)
+		if code != 1 || !strings.Contains(out, tc.text) {
+			t.Errorf("[R08] [RT-32] %+v: %d %q", tc.st, code, out)
+		}
+	}
+}

@@ -142,7 +142,8 @@ func TestNoSecondNode(t *testing.T) {
 	wrongNet.net = "mainnet"
 	c := checker(t, chain(110), down, wrongNet)
 	got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)})
-	if rep.State != Unavailable || got[0].Confirmations != 10 {
+	// Spec change 13 as amended (Wyatt, 2026-11-02, RT-26): held at 0, not the configured node's count.
+	if rep.State != Unavailable || got[0].Confirmations != 0 {
 		t.Fatalf("report %+v, confirmations %d", rep, got[0].Confirmations)
 	}
 	if wrongNet.blocks.Load() != 0 {
@@ -186,7 +187,7 @@ func TestNeverItsOwnSecondNode(t *testing.T) {
 		u := primary.serve(t).URL
 		c := New(u, "stagenet", []string{u, down.serve(t).URL}, nil)
 		got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)})
-		if rep.State != Unavailable || got[0].Confirmations != 10 {
+		if rep.State != Unavailable || got[0].Confirmations != 0 {
 			t.Fatalf("report %+v, confirmations %d", rep, got[0].Confirmations)
 		}
 		if n := primary.calls.Load(); n != 0 {
@@ -218,7 +219,7 @@ func TestSyncingSecondNodeSkipped(t *testing.T) {
 	only := chain(110)
 	only.syncing = true
 	c = checker(t, chain(110), only)
-	if got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)}); rep.State != Unavailable || got[0].Confirmations != 10 {
+	if got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)}); rep.State != Unavailable || got[0].Confirmations != 0 {
 		t.Fatalf("only a syncing second node: report %+v, confirmations %d", rep, got[0].Confirmations)
 	}
 }

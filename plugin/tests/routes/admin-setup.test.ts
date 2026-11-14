@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 
 import type { Invoice } from "../../src/core/invoice";
-import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -26,7 +26,7 @@ async function setup(o: { paired?: boolean; lastSyncAgo?: number | null; free?: 
 	if (o.paired !== false) await h.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);
 	const ago = o.lastSyncAgo === undefined ? 30_000 : o.lastSyncAgo;
 	if (ago !== null) await h.fixtures.plugin.kv("state:bridge", { height: H0, lastSyncAt: Date.now() - ago, version: 1, outdated: false, ...(o.checks ? { checks: o.checks } : {}) });
-	for (let i = 1; i <= (o.free ?? 3); i++) await h.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: ADDR(i), status: "free" });
+	for (let i = 1; i <= (o.free ?? 3); i++) await h.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: ADDR(i), status: "free", keyId: KEY_IDS.test1 });
 	if (o.price !== false) await h.http.respond(KRAKEN, krakenOk());
 	else for (const url of [KRAKEN, "https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=usd"]) await h.http.respond(url, new Response("down", { status: 502 }));
 	return h;

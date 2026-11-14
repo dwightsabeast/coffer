@@ -22,20 +22,17 @@
 // own live rate fetch (Kraken, then CoinGecko).
 //
 // Node's fetch sends no Origin header, like the Go bridge. Prints one line per check; exit code 0 when all pass.
-import { createHash, generateKeyPairSync, randomBytes, sign } from "node:crypto";
-import { existsSync, writeFileSync } from "node:fs";
+//
+// The request, signing, fake-address and database helpers live in scripts/redteam/lib.mjs (moved there for phase 07b).
+import { randomBytes } from "node:crypto";
+import { writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 
-process.removeAllListeners("warning"); // node:sqlite's experimental notice
-const { DatabaseSync } = await import("node:sqlite");
+import { DEFAULT_DB, DEFAULT_SITE, KEY_OPTION, PLUGIN, RUN_KV, b64url, cleanupCofferRows, fakeAddress, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders as signWith, syncBody as bodyOf, writePairingCode, answerProbes, handoutWait, HANDOUT_WAIT_MS } from "./redteam/lib.mjs";
 
-const PLUGIN = "coffer";
 const PRODUCT = "test-sticker";
 const FAKE_HEIGHT = 1_000_000;
 const POOL_TARGET = 50;
-/** What the run creates and cleanup removes. Wyatt's settings (currency, speed), the salt and the cron flag stay. */
-const RUN_KV = ["state:pairing", "state:bridge", "state:alerts", "state:buckets", "state:purgeCursor"];
-const KEY_OPTION = `plugin:${PLUGIN}:settings:bridgePublicKey`;
 
 // ---- arguments ----
 const args = process.argv.slice(2);
@@ -46,16 +43,13 @@ const value = (name, fallback) => {
 	if (!args[i + 1] || args[i + 1].startsWith("--")) throw new Error(`${name} needs a value`);
 	return args[i + 1];
 };
-const site = new URL(value("--site", "http://localhost:4321"));
-const dbPath = value("--db", `${homedir()}/sites/xmr-dev-site/data.db`);
+const site = loopbackUrl(value("--site", DEFAULT_SITE));
+const dbPath = value("--db", DEFAULT_DB);
 const handCode = value("--pair", null);
-if (!["localhost", "127.0.0.1", "[::1]"].includes(site.hostname)) throw new Error(`refusing ${site.origin}: loopback dev sites only`);
-if (!existsSync(dbPath)) throw new Error(`no database at ${dbPath}`);
 if (handCode !== null && !/^[A-Za-z0-9_-]{22}$/.test(handCode)) throw new Error("--pair takes the 22-character code from the admin page");
 
 // ---- database (the dev site's SQLite file; the site keeps running) ----
-const db = new DatabaseSync(dbPath);
-db.exec("PRAGMA busy_timeout = 5000");
+const db = openSiteDb(dbPath);
 const hasKey = () => db.prepare("SELECT 1 FROM options WHERE name = ?").get(KEY_OPTION) !== undefined;
 /** What an earlier run (or a real pairing) left: one plain description per kind of row. */
 function leftovers() {
@@ -83,10 +77,8 @@ function leftovers() {
 	return found;
 }
 function cleanup() {
-	const a = db.prepare("DELETE FROM _plugin_storage WHERE plugin_id = ? AND collection IN ('pool', 'invoices')").run(PLUGIN).changes;
-	const b = db.prepare(`DELETE FROM _plugin_storage WHERE plugin_id = ? AND collection = '__kv' AND id IN (${RUN_KV.map(() => "?").join(",")})`).run(PLUGIN, ...RUN_KV).changes;
-	const c = db.prepare("DELETE FROM options WHERE name = ?").run(KEY_OPTION).changes;
-	console.log(`cleanup: removed ${a} pool and invoice rows, ${b} KV rows, ${c} bridge key`);
+	const { rows, kv, key } = cleanupCofferRows(db);
+	console.log(`cleanup: removed ${rows} pool and invoice rows, ${kv} KV rows, ${key} bridge key`);
 }
 if (flag("--cleanup-only")) {
 	cleanup();
@@ -95,12 +87,7 @@ if (flag("--cleanup-only")) {
 const issueTo = value("--issue-code", null);
 if (issueTo !== null) {
 	if (!issueTo.startsWith(`${homedir()}/xmr-pay-dev-data/`)) throw new Error("--issue-code writes only under ~/xmr-pay-dev-data/");
-	const code = Buffer.from(randomBytes(16)).toString("base64url");
-	const state = JSON.stringify({ codeHash: Buffer.from(createHash("sha256").update(code).digest()).toString("base64url"), expiresAt: Date.now() + 15 * 60_000, used: false });
-	const now = new Date().toISOString();
-	db.prepare(
-		"INSERT INTO _plugin_storage (plugin_id, collection, id, data, revision, created_at, updated_at) VALUES (?, '__kv', 'state:pairing', ?, ?, ?, ?) ON CONFLICT (plugin_id, collection, id) DO UPDATE SET data = excluded.data, revision = excluded.revision, updated_at = excluded.updated_at",
-	).run(PLUGIN, state, crypto.randomUUID(), now, now);
+	const code = writePairingCode(db);
 	writeFileSync(issueTo, code + "\n", { mode: 0o600 });
 	console.log(`issued a pairing code (valid 15 minutes) into ${issueTo}`);
 	process.exit(0);
@@ -111,62 +98,12 @@ if (found.length > 0) {
 }
 
 // ---- helpers ----
-const b64url = (buf) => Buffer.from(buf).toString("base64url");
-const route = (name) => new URL(`/_emdash/api/plugins/${PLUGIN}/${name}`, site).href;
-const DIGITS = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
-const BLOCK_CHARS = [0, 2, 3, 5, 6, 7, 9, 10, 11];
-/** Monero's block base58: 8-byte blocks to 11 characters, the last partial block to its own length. */
-function base58(bytes) {
-	let out = "";
-	for (let i = 0; i < bytes.length; i += 8) {
-		const block = bytes.subarray(i, i + 8);
-		let n = 0n;
-		for (const b of block) n = (n << 8n) | BigInt(b);
-		let s = "";
-		for (let k = 0; k < BLOCK_CHARS[block.length]; k++, n /= 58n) s = DIGITS[Number(n % 58n)] + s;
-		out += s;
-	}
-	return out;
-}
-/**
- * A fake subaddress for a pool index: a network byte (36, stagenet's, by default), the index, made-up key bytes and a
- * zero checksum. Since spec change 36 the plugin reads the network byte and drops an address it can't read.
- */
-function fakeAddress(index, tag = 36) {
-	const bytes = Buffer.alloc(69);
-	bytes[0] = tag;
-	bytes.writeUInt32BE(index, 1);
-	for (let k = 5; k < 65; k++) bytes[k] = (k * 37 + 11) & 0xff;
-	return base58(bytes);
-}
-
-/** A bridge key for this run only (kept in memory). */
-function newKey() {
-	const { privateKey, publicKey } = generateKeyPairSync("ed25519");
-	return { privateKey, publicB64: publicKey.export({ format: "der", type: "spki" }).subarray(-32).toString("base64") };
-}
+const route = (name) => routeOn(site, name);
 const bridgeKey = newKey();
 let seq = Date.now();
 
-async function send(url, { method = "POST", body, headers = {} } = {}) {
-	const res = await fetch(url, { method, headers, body });
-	const text = await res.text();
-	let json;
-	try {
-		json = JSON.parse(text);
-	} catch {
-		json = { raw: text.slice(0, 120) };
-	}
-	// Plugin results arrive as { data }; host errors as { error: { code } }.
-	const data = json.data;
-	const code = data?.error?.code ?? json.error?.code ?? null;
-	return { status: res.status, json, data, code };
-}
-function signedHeaders(bytes, { key = bridgeKey, ts = String(Math.floor(Date.now() / 1000)) } = {}) {
-	const sig = sign(null, Buffer.concat([Buffer.from(`${ts}\n`), bytes]), key.privateKey).toString("base64");
-	return { "content-type": "application/json", "x-xmr-ts": ts, "x-xmr-sig": sig };
-}
-const syncBody = (fields) => Buffer.from(JSON.stringify({ v: 1, seq: ++seq, height: FAKE_HEIGHT, addresses: [], snapshots: [], ...fields }));
+const signedHeaders = (bytes, { key = bridgeKey, ts } = {}) => signWith(bytes, { key, ts });
+const syncBody = (fields) => bodyOf(fields, { seq: ++seq, height: FAKE_HEIGHT });
 const sync = (bytes, opts, extra = {}) => send(route("bridge/sync"), { body: bytes, headers: { ...signedHeaders(bytes, opts), ...extra } });
 
 let failures = 0;
@@ -206,12 +143,7 @@ try {
 	// 4. Pairing: a code from the admin page (--pair), or the KV shortcut.
 	let code = handCode;
 	if (code === null) {
-		code = b64url(randomBytes(16));
-		const state = JSON.stringify({ codeHash: b64url(createHash("sha256").update(code).digest()), expiresAt: Date.now() + 15 * 60_000, used: false });
-		const now = new Date().toISOString();
-		db.prepare(
-			"INSERT INTO _plugin_storage (plugin_id, collection, id, data, revision, created_at, updated_at) VALUES (?, '__kv', 'state:pairing', ?, ?, ?, ?) ON CONFLICT (plugin_id, collection, id) DO UPDATE SET data = excluded.data, revision = excluded.revision, updated_at = excluded.updated_at",
-		).run(PLUGIN, state, crypto.randomUUID(), now, now);
+		code = writePairingCode(db);
 	}
 	const firstAddresses = Array.from({ length: 10 }, (_, i) => ({ index: i + 1, address: fakeAddress(i + 1) }));
 	const wrongPair = syncBody({ pair: { code: b64url(randomBytes(16)), publicKey: bridgeKey.publicB64 } });
@@ -219,6 +151,8 @@ try {
 	check("pair with a wrong code: PAIRING_REJECTED", r.code === "PAIRING_REJECTED", show(r));
 	const pairBytes = syncBody({ addresses: firstAddresses, pair: { code, publicKey: bridgeKey.publicB64 } });
 	r = await sync(pairBytes);
+	// Spec change 46: on a site with history the site waits for the wallet answer and takes no addresses until then.
+	r = await answerProbes((fields) => sync(syncBody({ ...fields, addresses: firstAddresses })), r, { probeAddress: firstAddresses[0].address });
 	check(`pair ${handCode ? "(admin page code)" : "(KV shortcut)"}, 10 addresses: ok, 10 free`, r.data?.ok === true && r.data.poolFree === 10, show(r));
 	r = await sync(syncBody({ pair: { code, publicKey: newKey().publicB64 } }), newKey());
 	check("the same code again, another key: refused", r.code !== null && r.data?.ok !== true, show(r));
@@ -241,6 +175,10 @@ try {
 	const bom = Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), syncBody({})]);
 	r = await sync(bom);
 	check("signed body with a leading BOM: INVALID_ENCODING", r.code === "INVALID_ENCODING", show(r));
+
+	// Spec change 46: a new pool row is handed out only once it's 45 s old (the honest wallet host checks it first).
+	console.log(`waiting ${HANDOUT_WAIT_MS / 1000} s: new pool rows are handed out only once they're 45 s old (spec change 46)`);
+	await handoutWait();
 
 	// 6. Checkout as a same-origin browser would send it. Release 1 (the switch off, spec change 22): products are
 	// refused like an unknown kind; a tip of $1.00 at the live rate, with a client-sent amount ignored.
@@ -276,12 +214,13 @@ try {
 	check("status: seen (under the floor)", r.data?.status === "seen" && r.data.receivedAtomic === p1.amount, `status ${r.data?.status}, received ${r.data?.receivedAtomic}`);
 	// A time-locked transfer of the full amount beside it: never counted (spec "Payment logic").
 	const locked = { ...part(inv.amountAtomic), unlockTime: "99999999" };
-	r = await sync(syncBody({ snapshots: [{ index, transfers: [at(p1, 0, 0), at(locked, 0, 0)] }] }));
+	// The sync itself must be accepted: a refused one would also leave the status as it was.
+	const lockedSync = await sync(syncBody({ snapshots: [{ index, transfers: [at(p1, 0, 0), at(locked, 0, 0)] }] }));
 	r = await status();
-	check("a time-locked transfer of the full amount isn't counted", r.data?.status === "seen" && r.data.receivedAtomic === p1.amount, `status ${r.data?.status}, received ${r.data?.receivedAtomic}`);
-	r = await sync(syncBody({ snapshots: [{ index, transfers: [at(p1, 0, 0), at(locked, 0, 0), at(p2, 0, 0)] }] }));
+	check("a time-locked transfer of the full amount isn't counted", lockedSync.data?.ok === true && r.data?.status === "seen" && r.data.receivedAtomic === p1.amount, `sync ${show(lockedSync).slice(0, 40)}; status ${r.data?.status}, received ${r.data?.receivedAtomic}`);
+	const restSync = await sync(syncBody({ snapshots: [{ index, transfers: [at(p1, 0, 0), at(locked, 0, 0), at(p2, 0, 0)] }] }));
 	r = await status();
-	check("status: the rest arrives: confirming", r.data?.status === "confirming" && r.data.receivedAtomic === inv.amountAtomic, `status ${r.data?.status}, received ${r.data?.receivedAtomic}`);
+	check("status: the rest arrives: confirming", restSync.data?.ok === true && r.data?.status === "confirming" && r.data.receivedAtomic === inv.amountAtomic, `status ${r.data?.status}, received ${r.data?.receivedAtomic}`);
 	for (let c = 1; c <= required; c++) {
 		r = await sync(syncBody({ height: FAKE_HEIGHT + c, snapshots: [{ index, transfers: [p1, locked, p2].map((t) => at(t, c, FAKE_HEIGHT + 1)) }] }));
 		const s = await status();
@@ -289,9 +228,9 @@ try {
 		check(`sync: ${c} of ${required} confirmations: ${want}`, r.data?.ok === true && s.data?.status === want, `status ${s.data?.status}, confirmations ${s.data?.confirmations}`);
 	}
 	seq -= 10; // a snapshot older than the one that settled the invoice
-	r = await sync(syncBody({ height: FAKE_HEIGHT + required, snapshots: [{ index, transfers: [] }] }));
+	const olderSync = await sync(syncBody({ height: FAKE_HEIGHT + required, snapshots: [{ index, transfers: [] }] }));
 	r = await status();
-	check("an older seq with the payment gone changes nothing", r.data?.status === "settled", `status ${r.data?.status}`);
+	check("an older seq with the payment gone is accepted and changes nothing", olderSync.data?.ok === true && r.data?.status === "settled", `sync ${show(olderSync).slice(0, 40)}; status ${r.data?.status}`);
 	check("final status", r.data?.status === "settled" && r.data.receivedAtomic === inv.amountAtomic && r.data.settledAt !== null, `settled at ${r.data?.settledAt}, received ${r.data?.receivedAtomic}`);
 } catch (err) {
 	failures++;

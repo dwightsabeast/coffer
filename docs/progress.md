@@ -5464,3 +5464,39 @@ Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
 **What's left before phase 09:** session 2 of the Lows (RT-22, RT-23; a dev release and Wyatt's sudo step), the EmDash 1.4.0 check (Wyatt approves the upgrade first; it includes the flood-seed timing run), and the RT-08 re-check question.
 
 **Next step:** session 2, when Wyatt is at the terminal: un-skip the three Go tests, RT-23 then RT-22, then the script for his step.
+
+## 2026-11-14 · Phase 07b fix sessions · Handoff: where the Lows plan stands
+
+No code this entry. It records the state for the next session.
+
+**Pushed and green:** `origin/redteam-1` is at `3298438`. CI run 43556215286 passed on it (plugin, theme, bridge). The entry above says "Local; not pushed": Wyatt gave the word afterwards and all five commits went up.
+
+**Done from the six-Lows plan:** session 1 (RT-02, RT-03, RT-10, RT-14; spec change 53).
+
+**Open with Wyatt:** RT-14's narrowing (a tip in review takes only the action its item shows) was flagged to him; he hasn't said whether it stands.
+
+**Session 2, not started (RT-23, RT-22; the bridge). Needs Wyatt at the terminal for one sudo step. Plan first, as usual; his answers from 2026-11-13 already cover it:**
+
+1. Un-skip the three Go tests and see them fail:
+   - `bridge/cmd/xmr-bridge/redteam_test.go`, `TestRedteamNodeCheckNothingChecked`
+   - `bridge/internal/bridgeloop/redteam_test.go`, `TestRedteamStaleNodeCheck`
+   - `bridge/internal/installer/redteam_test.go`, `TestRedteamCtrlCAtAPromptStopsTheInstaller`
+2. **RT-23:**
+   - The bridge stops repeating the old node-check result when nothing is watched, and records the time of the last check in its status file.
+   - `xmr-bridge status` (`bridge/cmd/xmr-bridge/pairstatus.go`, near line 167) prints distinct lines for "checked" and "nothing was checked".
+   - The wire state stays `ok` with a different detail. No contract change before release 1 (Wyatt).
+   - Admin page: first read what the Health line (`plugin/src/admin.ts`, near line 274) shows. Fix it only if the page can tell "nothing was checked" from data it already has or a field already on the wire. If it would mean matching the bridge's detail text, note it and leave it for after release 1.
+3. **RT-22:**
+   - The prompt read returns on Ctrl-C, restores the terminal's echo, and prints "Cancelled. Nothing was changed on this machine."
+   - `Install` checks for cancellation after each answer.
+4. `gofmt`, `go vet`, `go test ./...` (one at a time; `free -m` first).
+5. A dev release (`scripts/build-dev-release.sh`), then one sudo script for Wyatt, shown to him first: Ctrl-C at the view-key prompt, then `xmr-bridge status`, all into one output file under `~/xmr-pay-dev-data/`. It can also confirm the RT-22 line in the entry above (what Ctrl-C does after changes start), which is read from the code only.
+6. Docs: RT-23's status lines added to spec change 53; matrix rows T15, R13, T14; findings; progress; the session-end bundle.
+
+**After session 2, before phase 09:**
+- The EmDash 1.4.0 check through `docs/emdash-upgrade-checklist.md`. It is a dependency upgrade, so Wyatt approves first. It includes the flood-seed timing run (`seed --shape flood --count 20100`, then `time --max-ms 5000` on the built copy).
+- The RT-08 re-check question in "Still to decide".
+
+**State of the box:** working tree clean; dev site and built copy stopped; `data.db` as restored from `redteam/rt15b-before.db` (62 invoices, 364 pool rows, bridge key present).
+
+**Next step:** session 2 of the Lows, plan first, when Wyatt is at the terminal.

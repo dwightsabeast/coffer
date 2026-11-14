@@ -168,7 +168,21 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 	case "", crosscheck.Off:
 		fmt.Fprintln(stdout, "Node check: off (the node is your own)")
 	case crosscheck.OK:
-		fmt.Fprintf(stdout, "Node check: ok%s\n", via(nc.Node))
+		// RT-23: "ok" only for a check that compared a mined payment with a second node; else what wasn't checked
+		// and why, with the age of the last real check either way.
+		if nc.Checked > 0 {
+			fmt.Fprintf(stdout, "Node check: ok (%d mined payment(s) checked with %s, %s ago)\n", nc.Checked, nc.Node, now.Sub(st.NodeCheckedAt).Round(time.Second))
+			break
+		}
+		why := nc.Detail
+		if why == "" {
+			why = "no mined payments to check"
+		}
+		last := "none checked since the bridge started"
+		if !st.NodeCheckedAt.IsZero() {
+			last = fmt.Sprintf("last checked %s ago", now.Sub(st.NodeCheckedAt).Round(time.Second))
+		}
+		fmt.Fprintf(stdout, "Node check: nothing checked (%s; %s)\n", why, last)
 	case crosscheck.Unavailable:
 		fmt.Fprintf(stdout, "Node check: unavailable: %s\n", nc.Detail)
 	case crosscheck.Mismatch:
@@ -228,11 +242,4 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 		return 1
 	}
 	return 0
-}
-
-func via(node string) string {
-	if node == "" {
-		return ""
-	}
-	return " (checked with " + node + ")"
 }

@@ -39,6 +39,9 @@ type Report struct {
 	State  State  `json:"state"`
 	Detail string `json:"detail,omitempty"`
 	Node   string `json:"node,omitempty"` // the second node used (host only)
+	// Checked is how many mined payments this check found in their block on a second node (RT-23: an OK with none
+	// checked nothing). For the status file only; the site is sent the state and the detail.
+	Checked int `json:"checked,omitempty"`
 }
 
 // defaults are public nodes per network (spec change 13, open question 12). Stagenet: checked from the dev box on
@@ -192,6 +195,7 @@ func (c *Checker) Check(ctx context.Context, ts []walletrpc.Transfer) ([]walletr
 	}
 	host := hostOf(second)
 	rep := Report{State: OK, Node: host}
+	checked := 0
 	primaryHashes := map[uint64]string{}
 	var (
 		altTried, altOK bool
@@ -241,6 +245,7 @@ func (c *Checker) Check(ctx context.Context, ts []walletrpc.Transfer) ([]walletr
 						c.verified[key] = true
 						c.mu.Unlock()
 						out[i].Confirmations = min(t.Confirmations, altHeight-t.Height)
+						checked++
 						continue
 					}
 				}
@@ -261,6 +266,11 @@ func (c *Checker) Check(ctx context.Context, ts []walletrpc.Transfer) ([]walletr
 			c.mu.Unlock()
 		}
 		out[i].Confirmations = min(t.Confirmations, secondConf)
+		checked++
+	}
+	rep.Checked = checked
+	if rep.State == OK && checked == 0 {
+		rep.Detail = fmt.Sprintf("%s hasn't reached the block of a mined payment yet, so it is held at 0 confirmations until it has", host)
 	}
 	return out, rep
 }

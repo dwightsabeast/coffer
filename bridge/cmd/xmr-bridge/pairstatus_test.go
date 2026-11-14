@@ -186,7 +186,7 @@ func TestStatusNodeCheck(t *testing.T) {
 		text string
 	}{
 		crosscheck.Off:         {0, "off (the node is your own)"},
-		crosscheck.OK:          {0, "ok (checked with second.example:38089)"},
+		crosscheck.OK:          {0, "nothing checked (block 100 differs; none checked since the bridge started)"},
 		crosscheck.Unavailable: {0, "unavailable"},
 		crosscheck.Mismatch:    {1, "MISMATCH: block 100 differs"},
 	} {

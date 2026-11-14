@@ -4,8 +4,11 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"strings"
 	"testing"
+	"time"
 
+	"github.com/dwightsabeast/coffer/bridge/internal/crosscheck"
 	"github.com/dwightsabeast/coffer/bridge/internal/walletrpc"
 )
 
@@ -53,7 +56,6 @@ func TestRedteamReportedHeightJump(t *testing.T) {
 // site and the status file. With nothing watched it never runs, so an old result is repeated unchanged.
 func TestRedteamStaleNodeCheck(t *testing.T) {
 	t.Run("[R13][T14] [RT-23] once nothing is watched, the node check sent isn't the old result repeated unchanged", func(t *testing.T) {
-		t.Skip("RT-23 open")
 		l, w, s, _ := setup(t)
 		l.o.CrossCheck = &fakeCheck{}
 		s.target, s.watch = 0, []uint32{5}
@@ -67,6 +69,43 @@ func TestRedteamStaleNodeCheck(t *testing.T) {
 		l.SyncOnce(ctx)
 		if later := *s.last().Checks.Node; reflect.DeepEqual(later, checked) {
 			t.Fatalf("with nothing watched, still sending %+v", later)
+		}
+	})
+}
+
+// RT-23: the status file carries when a mined payment was last checked, and keeps that time once nothing is watched.
+func TestRedteamNodeCheckedAt(t *testing.T) {
+	t.Run("[R13][T14] [RT-23] the status file has the time of the last real check; the site is told nothing was checked", func(t *testing.T) {
+		l, w, s, _ := setup(t)
+		clock := time.Unix(1790000000, 0)
+		l.o.Now = func() time.Time { return clock }
+		fc := &fakeCheck{payment: &crosscheck.Report{State: crosscheck.OK, Detail: "no mined payments to check"}}
+		l.o.CrossCheck = fc
+		s.target, s.watch = 0, []uint32{5}
+		w.transfers[5] = []walletrpc.Transfer{tr('a', "1000", 100)}
+		ctx := context.Background()
+		l.SyncOnce(ctx)
+		l.SyncOnce(ctx)
+		if st := l.Status(); !st.NodeCheckedAt.IsZero() {
+			t.Fatalf("a check that checked nothing set the time: %v", st.NodeCheckedAt)
+		}
+		fc.payment = &crosscheck.Report{State: crosscheck.OK, Node: "second.example:38089", Checked: 1}
+		l.SyncOnce(ctx)
+		if st := l.Status(); !st.NodeCheckedAt.Equal(clock) || st.NodeCheck.Checked != 1 {
+			t.Fatalf("after a real check: %v, %+v", st.NodeCheckedAt, st.NodeCheck)
+		}
+		checkedAt := clock
+		s.watch = nil
+		l.SyncOnce(ctx) // still the old watch list: the site's reply to this sync empties it
+		clock = clock.Add(4 * time.Hour)
+		l.SyncOnce(ctx)
+		l.SyncOnce(ctx)
+		st := l.Status()
+		if !st.NodeCheckedAt.Equal(checkedAt) || st.NodeCheck.State != crosscheck.OK || st.NodeCheck.Checked != 0 || st.NodeCheck.Node != "" {
+			t.Fatalf("with nothing watched: %v, %+v", st.NodeCheckedAt, st.NodeCheck)
+		}
+		if n := s.last().Checks.Node; n.State != "ok" || !strings.Contains(n.Detail, "nothing to check") {
+			t.Fatalf("the site was sent %+v", n)
 		}
 	})
 }

@@ -129,6 +129,9 @@ type Status struct {
 	Pending       int               `json:"pending"`
 	Warnings      []string          `json:"warnings,omitempty"`
 	NodeCheck     crosscheck.Report `json:"nodeCheck"`
+	// NodeCheckedAt is when the cross-check last found a mined payment in its block on a second node (zero: not since
+	// this process started). RT-23: status tells a passed check from one with nothing to check, and gives its age.
+	NodeCheckedAt time.Time `json:"nodeCheckedAt"`
 	// WalletCheck is the wallet check last sent to the site (nil without NodeInfo).
 	WalletCheck *syncclient.Check `json:"walletCheck,omitempty"`
 	// What the site did with the syncs sent since this process started (for the update rule).
@@ -1254,6 +1257,13 @@ func (l *Loop) create(ctx context.Context, w Wallet, n int) ([]syncclient.Addres
 // arrived), each with at most 32 transfers: the largest, ties to the earlier height (spec change 12).
 func (l *Loop) snapshots(ctx context.Context, w Wallet, chunk []uint32) ([]syncclient.Snapshot, []string, error) {
 	if len(chunk) == 0 {
+		// RT-23: with nothing watched nothing is checked, and the last result isn't repeated as if it were new.
+		if l.o.CrossCheck != nil {
+			l.mu.Lock()
+			l.payCheck = crosscheck.Report{State: crosscheck.OK, Detail: "no payment addresses are watched, so there was nothing to check"}
+			l.combineNodeCheck()
+			l.mu.Unlock()
+		}
 		return nil, nil, nil
 	}
 	all, err := w.GetTransfers(ctx, chunk)
@@ -1265,6 +1275,9 @@ func (l *Loop) snapshots(ctx context.Context, w Wallet, chunk []uint32) ([]syncc
 		all, rep = l.o.CrossCheck.Check(ctx, all)
 		l.mu.Lock()
 		l.payCheck = rep
+		if rep.Checked > 0 {
+			l.st.NodeCheckedAt = l.o.Now()
+		}
 		l.combineNodeCheck()
 		l.mu.Unlock()
 		if rep.State == crosscheck.Mismatch || rep.State == crosscheck.Unavailable {

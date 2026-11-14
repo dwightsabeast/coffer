@@ -24,7 +24,6 @@ import (
 // to check" (crosscheck.go:144), and status prints only "ok" (pairstatus.go:166). Seen live in F1's watch.
 func TestRedteamNodeCheckNothingChecked(t *testing.T) {
 	t.Run("[R13][T14] [RT-23] status doesn't say ok when the cross-check had nothing to check", func(t *testing.T) {
-		t.Skip("RT-23 open")
 		p, c := writeConfig(t, "https://shop.example")
 		k, _ := syncsign.NewKey()
 		syncsign.SaveKey(filepath.Join(c.DataDir, "bridge.key"), k)
@@ -38,6 +37,35 @@ func TestRedteamNodeCheckNothingChecked(t *testing.T) {
 			t.Fatalf("says ok with nothing checked: %q", out)
 		}
 	})
+	for _, c := range []struct {
+		name string
+		st   bridgeloop.Status
+		want string
+	}{
+		{"[R13][T14] [RT-23] a passed check says how many payments, with which node, and how long ago",
+			bridgeloop.Status{NodeCheckedAt: time.Now().Add(-2 * time.Minute), NodeCheck: crosscheck.Report{State: crosscheck.OK, Node: "second.example:38089", Checked: 3}},
+			"Node check: ok (3 mined payment(s) checked with second.example:38089, 2m0s ago)\n"},
+		{"[R13][T14] [RT-23] nothing checked now, with the age of the last real check",
+			bridgeloop.Status{NodeCheckedAt: time.Now().Add(-4 * time.Hour), NodeCheck: crosscheck.Report{State: crosscheck.OK, Detail: "no payment addresses are watched, so there was nothing to check"}},
+			"Node check: nothing checked (no payment addresses are watched, so there was nothing to check; last checked 4h0m0s ago)\n"},
+		{"[R13][T14] [RT-23] nothing checked since the bridge started",
+			bridgeloop.Status{NodeCheck: crosscheck.Report{State: crosscheck.OK, Detail: "no mined payments to check"}},
+			"Node check: nothing checked (no mined payments to check; none checked since the bridge started)\n"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			p, cfg := writeConfig(t, "https://shop.example")
+			k, _ := syncsign.NewKey()
+			syncsign.SaveKey(filepath.Join(cfg.DataDir, "bridge.key"), k)
+			os.MkdirAll(filepath.Join(cfg.DataDir, "run"), 0o700)
+			c.st.LastAttemptAt, c.st.LastSyncAt, c.st.PoolTarget, c.st.PoolFree = time.Now(), time.Now(), 50, 50
+			b, _ := json.Marshal(c.st)
+			os.WriteFile(filepath.Join(cfg.DataDir, "run", "status.json"), b, 0o600)
+			code, out, _ := run(context.Background(), "status", "--config", p)
+			if code != 0 || !strings.Contains(out, c.want) {
+				t.Fatalf("%d %q", code, out)
+			}
+		})
+	}
 }
 
 // RT-28 (Step 6, F5): govulncheck v1.9.0 found 10 called standard-library vulnerabilities in go1.27.1. Two reach the

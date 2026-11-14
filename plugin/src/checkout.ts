@@ -5,6 +5,7 @@
  */
 import type { PluginContext } from "emdash/plugin";
 
+import { clientKeyText } from "./clientip";
 import { type MoneroNetwork, subaddressNetwork } from "./core/address";
 import { ATOMIC_PER_XMR, DUST_ATOMIC, GOODS_ENABLED, type Speed, PRESETS, SILENT_MS } from "./core/constants";
 import { type Invoice, newInvoice } from "./core/invoice";
@@ -12,7 +13,8 @@ import { atomicToXmr, priceToMinor } from "./core/money";
 import { invoiceUri } from "./core/uri";
 import { type Currency, getRate, isCurrency } from "./rates";
 import { KV, SETTING, invoices, pool } from "./store";
-import type { BridgeState } from "./sync/handle";
+import type { BridgeState, NetworkRecord } from "./sync/handle";
+import { keyId } from "./sync/pairing";
 
 export type CheckoutErrorCode = "INVALID_REQUEST" | "PRODUCT_NOT_FOUND" | "ENTRY_NOT_FOUND" | "RATE_UNAVAILABLE" | "NO_ADDRESS_AVAILABLE" | "TOO_MANY_OPEN" | "WALLET_HOST_SILENT" | "WALLET_HOST_SYNCING";
 /** `amountAtomic` and `amountXmr` are null for an open tip (no amount asked). */
@@ -27,6 +29,14 @@ export const MAX_PER_CLIENT = 5;
 const BUCKET_WINDOW_MS = 30 * 60_000;
 const MAX_BUCKETS = 500;
 const CLAIM_ATTEMPTS = 10;
+/**
+ * Spec change 46 (D3): a free row is handed out only once it's this old, so the honest wallet host has checked it
+ * (every free row is in every check list, and it syncs every 12-15 s) before any tipper sees it. A row with no
+ * addedAt is from before spec change 46 and counts as old.
+ */
+export const HANDOUT_WAIT_MS = 45_000;
+/** Free rows read per attempt, lowest first; the youngest are skipped. */
+const FREE_READ = 20;
 
 /**
  * The chain height an invoice is made at: the last sync's, while the wallet host is not silent and its node has caught
@@ -37,6 +47,9 @@ const CLAIM_ATTEMPTS = 10;
 export function checkoutHeight(bridge: BridgeState | null, now: number): number | "WALLET_HOST_SILENT" | "WALLET_HOST_SYNCING" {
 	if (!bridge || bridge.lastSyncAt === undefined || now - bridge.lastSyncAt > SILENT_MS) return "WALLET_HOST_SILENT";
 	if (bridge.checks?.wallet?.state === "syncing") return "WALLET_HOST_SYNCING";
+	// No height yet (spec change 47, Wyatt's answer 2: a remote node with no second node to bound it): an invoice created
+	// now would have no floor for good, so checkout waits, tips too, until the site's first height.
+	if (bridge.height === 0) return "WALLET_HOST_SYNCING";
 	return bridge.height;
 }
 
@@ -71,12 +84,13 @@ const ENTRY_ID = /^[A-Za-z0-9_-]{1,100}$/;
 
 /**
  * A tip's note as plain text: control characters become spaces, format characters (bidi overrides, zero-width
- * characters) go, runs of whitespace collapse, and the ends are trimmed. Undefined when nothing is left; null when it
- * isn't a string or is longer than TIP_NOTE_MAX.
+ * characters) and lone surrogates (half a character: not text, spec change 53) go, runs of whitespace collapse, and
+ * the ends are trimmed. Undefined when nothing is left; null when it isn't a string or is longer than TIP_NOTE_MAX.
+ * A note over the limit is refused, never cut, so no cut can leave half a pair behind.
  */
 export function cleanNote(raw: unknown): string | null | undefined {
 	if (typeof raw !== "string") return null;
-	const note = raw.replace(/\p{Cc}/gu, " ").replace(/\p{Cf}/gu, "").replace(/\s+/g, " ").trim();
+	const note = raw.replace(/\p{Cc}/gu, " ").replace(/[\p{Cf}\p{Cs}]/gu, "").replace(/\s+/g, " ").trim();
 	if (note === "") return undefined;
 	return [...note].length <= TIP_NOTE_MAX ? note : null;
 }
@@ -139,14 +153,14 @@ const base64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).rep
 /** A new invoice's id and its status token (the buyer's only handle on it). */
 export const newIds = () => ({ id: `inv_${hex(crypto.getRandomValues(new Uint8Array(8)))}`, token: base64url(crypto.getRandomValues(new Uint8Array(16))) });
 
-/** Short-lived hashed buckets: a per-site salt in KV, never a raw IP. */
+/** Short-lived hashed buckets: a per-site salt in KV, never a raw IP. One client is an IPv4 address or an IPv6 /64 (spec change 52). */
 async function clientBucket(ctx: PluginContext, ip: string, now: number) {
 	let salt = await ctx.kv.get<string>(KV.salt);
 	if (!salt) {
 		salt = hex(crypto.getRandomValues(new Uint8Array(16)));
 		await ctx.kv.set(KV.salt, salt);
 	}
-	const key = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${salt}|${ip}`)))).slice(0, 16);
+	const key = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${salt}|${clientKeyText(ip)}`)))).slice(0, 16);
 	const all = (await ctx.kv.get<Record<string, number[]>>(KV.buckets)) ?? {};
 	for (const k of Object.keys(all)) {
 		all[k] = all[k].filter((t) => now - t < BUCKET_WINDOW_MS);
@@ -181,15 +195,24 @@ async function findProduct(ctx: PluginContext, idOrSlug: string) {
 /**
  * Claims a free pool row with updateIf (one winner per row), then stores the invoice; `subaddress` is unique on invoices.
  * The build gets the row's network (spec change 36). A row whose network can't be read (sync drops those since 7e, so
- * only an older row) is claimed with no invoice, so it's never handed out, as when the database refuses an invoice.
+ * only an older row), one on another network than the stored one, or one added under another bridge key (spec change
+ * 45) is claimed with no invoice, so it's never handed out, as when the database refuses an invoice.
  */
-export async function claimAndStore(ctx: PluginContext, build: (row: { addrIndex: number; address: string; network: MoneroNetwork }) => Invoice): Promise<Invoice | null> {
+export async function claimAndStore(ctx: PluginContext, build: (row: { addrIndex: number; address: string; network: MoneroNetwork }) => Invoice, now: number = Date.now()): Promise<Invoice | null> {
+	// Spec change 45: only the paired key's rows, on its network once one is stored. A row from an earlier pairing (a
+	// sync already running when the re-pairing landed) or on another network is skipped like an unreadable one.
+	const key = await ctx.settings.get<string>(SETTING.publicKey);
+	if (!key) return null;
+	const currentId = keyId(key);
+	const record = await ctx.kv.get<NetworkRecord>(KV.network);
+	const siteNetwork = record?.keyId === currentId ? record.network : null;
 	for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt++) {
-		const free = await pool(ctx).query({ where: { status: "free" }, orderBy: { addrIndex: "asc" }, limit: 5 });
-		if (free.items.length === 0) return null;
-		const pick = free.items[attempt % free.items.length];
+		const read = await pool(ctx).query({ where: { status: "free" }, orderBy: { addrIndex: "asc" }, limit: FREE_READ });
+		const free = read.items.filter((r) => r.data.addedAt === undefined || now - r.data.addedAt >= HANDOUT_WAIT_MS).slice(0, 5);
+		if (free.length === 0) return null;
+		const pick = free[attempt % free.length];
 		const network = subaddressNetwork(pick.data.address);
-		if (network === null) {
+		if (network === null || pick.data.keyId !== currentId || (siteNetwork !== null && network !== siteNetwork)) {
 			await pool(ctx).updateIf(pick.id, { where: { status: "free" }, set: { status: "claimed" } }).catch(() => undefined);
 			continue;
 		}
@@ -285,7 +308,7 @@ async function productInvoice(ctx: PluginContext, input: ProductInput, speed: Sp
 
 /**
  * A visitor's tip (spec change 33): taken whatever the wallet host's state, at the last sync's height (which never goes
- * down; with no sync ever there's no pool either). A fiat amount without a price becomes an open tip; any amount asks
+ * down between pairings; with no sync ever there's no pool either), except while the site has no height at all (47). A fiat amount without a price becomes an open tip; any amount asks
  * for at least the floor. Settling is at the floor whatever was asked (`minAtomic`). Marked `via: "checkout"`, so the
  * admin's test tips stay apart.
  */
@@ -296,7 +319,12 @@ async function tipInvoice(ctx: PluginContext, input: TipInput, speed: Speed, sit
 		if (!entry || entry.status !== "published") return { error: { code: "ENTRY_NOT_FOUND" } };
 		if (typeof entry.data.title === "string" && entry.data.title.trim() !== "") title = entry.data.title.trim();
 	}
-	const chainHeight = (await ctx.kv.get<BridgeState>(KV.bridge))?.height ?? 0;
+	const bridge = await ctx.kv.get<BridgeState>(KV.bridge);
+	const chainHeight = bridge?.height ?? 0;
+	// Spec change 47 (Wyatt's answer 2): the one wallet-host state a tip waits for. A wallet host that has reported but
+	// given no height yet (a remote node with no second node to bound it): a tip made now would have no floor for good
+	// (RT-31). It lasts only until the site's first height. A site that never synced has no pool either: no address.
+	if (bridge && chainHeight === 0) return { error: { code: "WALLET_HOST_SYNCING" } };
 
 	let fiatMinor: bigint | null = null;
 	let xmrAtomic: bigint | null = null;

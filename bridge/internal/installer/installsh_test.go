@@ -18,6 +18,7 @@ const fakeBridge = `#!/bin/sh
 case "$0" in "$FAKE_NOEXEC"*) [ -n "$FAKE_NOEXEC" ] && exit 126 ;; esac
 if [ "$1" = version ]; then exit 0; fi
 printf '%s\n' "$0 $*" > "$RECORD"
+cat > "$RECORD.stdin" 2>/dev/null
 `
 
 type shCase struct {
@@ -25,8 +26,10 @@ type shCase struct {
 	served           map[string][]byte // path -> body
 	template         bool              // leave the placeholders
 	noexecTmp        bool
-	redirect         bool   // the server answers each download with a redirect to the file
-	tools            string // "": the system PATH; "curl", "wget" or "none": only that downloader (see toolPath)
+	redirect         bool     // the server answers each download with a redirect to the file
+	tools            string   // "": the system PATH; "curl", "wget" or "none": only that downloader (see toolPath)
+	args             []string // install.sh's arguments (default: --site https://shop.example --pair <code>)
+	stdin            *string  // set to what the fake bridge read on stdin
 }
 
 // toolPath returns a folder holding links to the programs install.sh and the admin page's command use, plus the
@@ -97,7 +100,11 @@ func runInstallSh(t *testing.T, c shCase) (code int, out, record, sudoLog string
 	scriptPath := filepath.Join(dir, "install.sh")
 	os.WriteFile(scriptPath, []byte(script), 0o644)
 	recordPath, sudoPath := filepath.Join(dir, "record"), filepath.Join(dir, "sudo.log")
-	cmd := exec.Command("/bin/sh", scriptPath, "--site", "https://shop.example", "--pair", "AbCdEfGhIjKlMnOpQrSt_-")
+	args := c.args
+	if args == nil {
+		args = []string{"--site", "https://shop.example", "--pair", "AbCdEfGhIjKlMnOpQrSt_-"}
+	}
+	cmd := exec.Command("/bin/sh", append([]string{scriptPath}, args...)...)
 	path := fake + ":/usr/bin:/bin"
 	if c.tools != "" {
 		path = fake + ":" + toolPath(t, c.tools)
@@ -116,6 +123,10 @@ func runInstallSh(t *testing.T, c shCase) (code int, out, record, sudoLog string
 	}
 	r, _ := os.ReadFile(recordPath)
 	s, _ := os.ReadFile(sudoPath)
+	if c.stdin != nil {
+		in, _ := os.ReadFile(recordPath + ".stdin")
+		*c.stdin = string(in)
+	}
 	return code, string(o), strings.TrimSpace(string(r)), string(s), tmp
 }
 
@@ -126,8 +137,9 @@ func TestInstallShGood(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("exit %d: %s", code, out)
 	}
-	if !strings.HasSuffix(rec, "/xmr-bridge install --site https://shop.example --pair AbCdEfGhIjKlMnOpQrSt_-") {
-		t.Fatalf("handed off as %q", rec)
+	// Spec change 46, item 6: the code goes to the installer on stdin, not on its command line.
+	if !strings.HasSuffix(rec, "/xmr-bridge install --site https://shop.example --pair -") || strings.Contains(sudo, "AbCdEfGhIjKlMnOpQrSt_-") {
+		t.Fatalf("handed off as %q (sudo saw %q)", rec, sudo)
 	}
 	if !strings.Contains(sudo, "/xmr-bridge install --site") {
 		t.Fatalf("not run with sudo: %q", sudo)
@@ -199,7 +211,7 @@ func TestInstallShWget(t *testing.T) {
 	c := linuxAmd64()
 	c.tools = "wget"
 	code, out, rec, _, tmp := runInstallSh(t, c)
-	if code != 0 || !strings.HasSuffix(rec, "/xmr-bridge install --site https://shop.example --pair AbCdEfGhIjKlMnOpQrSt_-") || !strings.Contains(out, "SHA-256 matches") {
+	if code != 0 || !strings.HasSuffix(rec, "/xmr-bridge install --site https://shop.example --pair -") || !strings.Contains(out, "SHA-256 matches") {
 		t.Fatalf("exit %d, record %q: %s", code, rec, out)
 	}
 	if e, _ := os.ReadDir(tmp); len(e) != 0 {
@@ -239,6 +251,43 @@ func TestInstallShWgetRefuses(t *testing.T) {
 		c.redirect, c.tools = true, "curl"
 		if code, out, rec, _, _ := runInstallSh(t, c); code != 0 || rec == "" {
 			t.Fatalf("curl and a redirect: exit %d: %s", code, out)
+		}
+	})
+}
+
+func TestInstallShPassesTheCodeOnStdin(t *testing.T) {
+	t.Run("[T29] the pairing code reaches xmr-bridge install on stdin, in either flag spelling, other arguments unchanged", func(t *testing.T) {
+		for name, args := range map[string][]string{
+			"--pair <code>":                {"--site", "https://shop.example", "--pair", "AbCdEfGhIjKlMnOpQrSt_-", "--node", "http://127.0.0.1:38081"},
+			"--pair=<code>":                {"--site", "https://shop.example", "--pair=AbCdEfGhIjKlMnOpQrSt_-", "--node", "http://127.0.0.1:38081"},
+			"-pair <code>":                 {"-pair", "AbCdEfGhIjKlMnOpQrSt_-", "--site", "https://shop.example", "--node", "http://127.0.0.1:38081"},
+			"code with a space kept whole": {"--site", "https://shop.example", "--pair", "a b", "--node", "http://127.0.0.1:38081"},
+		} {
+			t.Run(name, func(t *testing.T) {
+				var in string
+				c := linuxAmd64()
+				c.args, c.stdin = args, &in
+				code, out, rec, sudo, _ := runInstallSh(t, c)
+				want := "AbCdEfGhIjKlMnOpQrSt_-"
+				if name == "code with a space kept whole" {
+					want = "a b"
+				}
+				if code != 0 || in != want+"\n" || strings.Contains(rec, want) || strings.Contains(sudo, want) {
+					t.Fatalf("exit %d, stdin %q, record %q, sudo %q: %s", code, in, rec, sudo, out)
+				}
+				if !strings.Contains(rec, "--pair -") || !strings.Contains(rec, "--site https://shop.example") || !strings.Contains(rec, "--node http://127.0.0.1:38081") {
+					t.Fatalf("arguments %q", rec)
+				}
+			})
+		}
+	})
+	t.Run("without --pair, nothing is piped and the arguments are as given", func(t *testing.T) {
+		var in string
+		c := linuxAmd64()
+		c.args, c.stdin = []string{"--site", "https://shop.example"}, &in
+		code, out, rec, _, _ := runInstallSh(t, c)
+		if code != 0 || in != "" || !strings.HasSuffix(rec, "install --site https://shop.example") {
+			t.Fatalf("exit %d, stdin %q, record %q: %s", code, in, rec, out)
 		}
 	})
 }

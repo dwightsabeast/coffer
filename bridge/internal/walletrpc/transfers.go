@@ -3,6 +3,7 @@ package walletrpc
 import (
 	"context"
 	"fmt"
+	"sort"
 	"strconv"
 )
 
@@ -92,4 +93,30 @@ func isTxID(s string) bool {
 		}
 	}
 	return true
+}
+
+// ReceivedIndexes returns every account-0 subaddress index with an incoming or pool transfer, sorted, once each (spec
+// change 46: the probe answer's receivedTop, and which created addresses are unused for the re-offer). It asks for
+// every subaddress, so the answer grows with the shop's history; the client's 16 MiB response cap bounds it.
+func (c *Client) ReceivedIndexes(ctx context.Context) ([]uint32, error) {
+	var r struct {
+		In   []rawTransfer `json:"in"`
+		Pool []rawTransfer `json:"pool"`
+	}
+	params := map[string]any{"in": true, "pool": true, "out": false, "account_index": 0}
+	if err := c.call(ctx, "get_transfers", params, &r); err != nil {
+		return nil, err
+	}
+	seen := map[uint32]bool{}
+	for _, t := range append(r.In, r.Pool...) {
+		if t.SubaddrIndex.Major == 0 {
+			seen[t.SubaddrIndex.Minor] = true
+		}
+	}
+	out := make([]uint32, 0, len(seen))
+	for i := range seen {
+		out = append(out, i)
+	}
+	sort.Slice(out, func(a, b int) bool { return out[a] < out[b] })
+	return out, nil
 }

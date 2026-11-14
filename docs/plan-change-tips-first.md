@@ -365,7 +365,7 @@ The spec says the worst case is free goods, not lost funds. For tips, the matchi
 | Overpay: settles, and the excess is recorded | R04 | E2E | 1 if a tip invoice carries a fixed amount, otherwise 2 |
 | Pay after expiry, inside the 24-hour window | R03 | E2E | 1 |
 | Pay an expired invoice's address after its watch ends | R03 | E2E | 1 |
-| One transaction paying two invoices at once (Feather's pay-to-many): both settle, each counted once, though they share a txid | R01, T07 | E2E | 1 |
+| One transaction paying two invoices at once (two "address, amount" lines in Feather's Pay to field): both settle, each counted once, though they share a txid | R01, T07 | E2E | 1 |
 
 Reorgs, reversed payments, time-locked and double-spend transfers can't be produced on stagenet on demand. They stay at the Host and Go layers with faked replies, and the report says so.
 

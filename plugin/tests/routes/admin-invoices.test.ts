@@ -8,7 +8,8 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { MAX_REQUIRED } from "../../src/core/constants";
 import { type Invoice, type Transfer, newInvoice } from "../../src/core/invoice";
-import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { siteIndex } from "../../src/core/walletindex";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -40,7 +41,7 @@ async function setup(invoices: Invoice[] = []) {
 	host = h;
 	await h.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);
 	await h.fixtures.plugin.kv("state:bridge", { height: H0 + 5, lastSyncAt: Date.now() - 30_000, version: 1, outdated: false });
-	await h.fixtures.plugin.storage("pool", "9999", { addrIndex: 9999, address: ADDR(9999), status: "free" });
+	await h.fixtures.plugin.storage("pool", "9999", { addrIndex: 9999, address: ADDR(9999), status: "free", keyId: KEY_IDS.test1 });
 	await h.http.respond(KRAKEN, new Response(JSON.stringify({ error: [], result: { XXMRZUSD: { c: ["150.00", "1.0"] } } })));
 	for (let i = 0; i < invoices.length; i += 50) await Promise.all(invoices.slice(i, i + 50).map((inv) => h.fixtures.plugin.storage("invoices", inv.id, inv)));
 	return h;
@@ -101,6 +102,18 @@ describe("invoice list", () => {
 		expect(label("inv_0008")).toBe(`Seen · 12.00 USD · received ${DUE} XMR · 0 confirmations · created 5 min ago`);
 	});
 
+	it("[P02][T03] spec change 46's reasons read as words, not codes", async () => {
+		await setup([
+			invoice(1, { status: "review", reviewReason: "not_your_wallet" }),
+			invoice(2, { status: "review", reviewReason: "wallet_changed", transfers: [transfer({ confirmations: 0, height: 0 })] }),
+			invoice(3, { status: "expired", expiredReason: "wallet_changed" }),
+		]);
+		const b = await load();
+		expect(item(b, "inv_0001").label).toMatch(/^Needs decision: address not from your wallet · /);
+		expect(item(b, "inv_0002").label).toMatch(/^Needs decision: paid to your previous wallet · /);
+		expect(item(b, "inv_0003").label).toMatch(/^Expired \(wallet changed\) · /);
+	});
+
 	it("details: status, amount, Due, Received, confirmations, created, expires (changes 1 and 6)", async () => {
 		await setup([invoice(1, { status: "confirming", transfers: [transfer({ amountAtomic: "40000000000", confirmations: 1 })] })]);
 		const t = item(await load(), "inv_0001");
@@ -144,6 +157,12 @@ describe("invoice list", () => {
 		// Buyer-supplied text stays plain text.
 		expect(field(t, "Buyer email")).toBe("a@example.invalid");
 		expect(inner.find((x) => x.type === "context" && String(x.text).startsWith("Buyer's note"))?.text).toBe("Buyer's note: Leave it at the door");
+	});
+
+	it("[P02] the payment address number is the wallet's own index, as the wallet app shows it (spec change 46)", async () => {
+		await setup([invoice(267, { addrIndex: siteIndex(1, 3) })]);
+		const inner = deep(item(await load(), "inv_0267").blocks);
+		expect(inner.some((x) => x.type === "context" && x.text === "Payment address (#3)")).toBe(true);
 	});
 
 	it("no Product field; the Open product link stays, beside the Actions menu (change 5)", async () => {

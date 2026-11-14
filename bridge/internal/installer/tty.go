@@ -2,6 +2,7 @@ package installer
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -15,10 +16,16 @@ import (
 
 const maxAnswer = 512
 
+// ErrCancelled: the admin pressed Ctrl-C (or the installer was told to stop) before anything was changed.
+var ErrCancelled = errors.New("cancelled")
+
 type prompter struct {
 	in   *bufio.Reader
 	out  io.Writer
 	echo func(on bool) error
+	// done, when set, ends a prompt that is waiting for its answer (RT-22: Ctrl-C at a prompt). The read it leaves
+	// behind stays blocked until the process exits, so nothing is asked after it.
+	done <-chan struct{}
 }
 
 func newPrompter(in io.Reader, out io.Writer, echo func(on bool) error) *prompter {
@@ -26,8 +33,8 @@ func newPrompter(in io.Reader, out io.Writer, echo func(on bool) error) *prompte
 }
 
 // OpenTTY returns a prompter on /dev/tty, which works when the installer's own input is a pipe from curl. Close it
-// when done.
-func OpenTTY() (Prompter, func() error, error) {
+// when done. A prompt waiting for its answer returns ErrCancelled when ctx is cancelled.
+func OpenTTY(ctx context.Context) (Prompter, func() error, error) {
 	f, err := os.OpenFile("/dev/tty", os.O_RDWR, 0)
 	if err != nil {
 		return nil, nil, errors.New("the installer needs a terminal to ask for the shop wallet's details")
@@ -48,10 +55,39 @@ func OpenTTY() (Prompter, func() error, error) {
 		}
 		return nil
 	}
-	return newPrompter(f, f, echo), f.Close, nil
+	p := newPrompter(f, f, echo)
+	p.done = ctx.Done()
+	return p, f.Close, nil
 }
 
+// readLine waits for one line, or for done.
 func (p *prompter) readLine() (string, error) {
+	if p.done == nil {
+		return p.read()
+	}
+	select {
+	case <-p.done:
+		return "", ErrCancelled
+	default:
+	}
+	type answer struct {
+		line string
+		err  error
+	}
+	ch := make(chan answer, 1)
+	go func() {
+		line, err := p.read()
+		ch <- answer{line, err}
+	}()
+	select {
+	case a := <-ch:
+		return a.line, a.err
+	case <-p.done:
+		return "", ErrCancelled
+	}
+}
+
+func (p *prompter) read() (string, error) {
 	line, err := p.in.ReadSlice('\n')
 	if errors.Is(err, bufio.ErrBufferFull) || len(line) > maxAnswer+1 {
 		return "", errors.New("that answer is too long")
@@ -64,7 +100,11 @@ func (p *prompter) readLine() (string, error) {
 
 func (p *prompter) Ask(prompt string) (string, error) {
 	fmt.Fprint(p.out, prompt)
-	return p.readLine()
+	line, err := p.readLine()
+	if errors.Is(err, ErrCancelled) {
+		fmt.Fprintln(p.out) // the cursor is still on the prompt's line
+	}
+	return line, err
 }
 
 func (p *prompter) AskSecret(prompt string) (secret.String, error) {

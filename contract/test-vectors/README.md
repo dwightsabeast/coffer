@@ -33,5 +33,34 @@ EmDash wraps every plugin route's result: success is HTTP 200 `{ "success": true
 | `UNSUPPORTED_VERSION` | `v` is neither the current nor the previous version |
 | `PAIRING_NOT_ACTIVE` | A `pair` field from the paired bridge when no code was ever issued |
 | `PAIRING_REJECTED` | A wrong code while one is active, or a `pair` field from the paired bridge after its code was used or expired |
+| `SEQ_OUT_OF_RANGE` | Verified, but `seq` is more than 300 s from `x-xmr-ts` × 1000 (spec change 46, item 5) |
 
 Success (`data`): `{ "ok": true, "poolFree": <free addresses>, "poolTarget": 50, "watch": [<subaddress indexes to keep reporting>] }`.
+
+## Spec change 46: the pool check, the probe, and numbering from handed-out rows
+
+`address-digest.json` holds one address and its digest; the plugin (`plugin/tests/sync/vectors.test.ts`) and the bridge (`bridge/internal/syncclient/spec46_test.go`) both check it. Regenerate it with `node contract/test-vectors/make-address-digest.mjs`; never edit it by hand. Signing is unchanged, so `sync-signature.json` is too.
+
+- **Digest:** the standard padded base64 of the first 16 bytes of SHA-256 over the address string's UTF-8 bytes (24 characters). The site sends digests, never addresses, so a key holder learns no address it didn't already have.
+- **Indexes:** every address and snapshot index is the current wallet's own subaddress index, 1..2³²−1; anything outside is `INVALID_BODY`. The site numbers wallet *w*'s rows *w* × 2³² + index internally; the wire never shows that.
+- **`seq`:** the bridge clock in ms, within 300 s of `x-xmr-ts` × 1000, or `SEQ_OUT_OF_RANGE`.
+
+**New response fields (`data`):**
+
+| Field | Meaning |
+| --- | --- |
+| `claimedTop` | The current wallet's highest index the site has handed out (claimed). Free, `bad` and `dropped` rows don't count, so a stolen key can't move it. 0 while waiting for the probe answer. The bridge's only numbering cue: it catches up to it, never further than `claimedTop + 50`, and re-offers above it. `poolTop` stays, unused for numbering. |
+| `check` | Up to 150 `{ index, digest }` of the current wallet's rows for the bridge to check: every free row (lowest first), rows added in the last 24 h, open invoices' rows, then a rotation that moves on every 30 s. |
+| `probes` | Present only while the site waits for the bridge's answer after a re-pair on a site with history; possibly empty. Up to 10 `{ wallet, index: 1, digest }`, most recent first. A probe at any index but 1 is a malformed response. While present: `poolTop`, `claimedTop` 0, an empty `watch`, and the site takes no addresses and applies no snapshots. |
+
+**New request fields:**
+
+| Field | Meaning |
+| --- | --- |
+| `wallet` | The answer to `probes`: `{ "match": <wallet> \| null, "receivedTop": <highest index with a transfer> }`. `null` starts a new wallet whose gap baseline is `receivedTop`; a match not among the probes is ignored. |
+| `probeDigest` | The digest of the bridge's own index-1 address. Sent with the answer, and with every sync until one carrying it succeeds; the site keeps the first as the current wallet's probe and ignores later ones. A malformed one is dropped. |
+| `checks.pool` | The check of the last `check` list: `{ "state": "ok" }`, or `{ "state": "mismatch", "bad": [<own index>…] }` with at most 20. An index the wallet holds with another digest is bad; so is one it doesn't hold above `claimedTop + 50`. A mismatch goes out at once (a sync with no snapshots or addresses), before any catch-up; "ok" waits until every row can be compared. The site turns bad rows "bad", sends their invoices to review, and shows a red banner until the next pairing; an "ok" never clears it. |
+
+## Spec change 48: the circuit breaker and a failed save
+
+`bridge-checks.json` is read by the bridge's tests (`bridge/internal/bridgeloop/rt32_test.go`) and the plugin's (`plugin/tests/sync/vectors.test.ts`). Each case gives the bridge's state and the `checks` it must send: `topUp` (`state: "stopped"`, `reason: "bad_created" | "too_many"`) and `save` (`state: "failed"`). The plugin keeps exactly that, and drops anything malformed without refusing the body.

@@ -22,7 +22,9 @@ export function isWatched(inv: Invoice, now: number): boolean {
 	if (inv.status === "expired" || inv.status === "review") return now < inv.expiresAt + LATE_WINDOW_MS;
 	if (inv.status === "settled") {
 		if (inv.settledAt === undefined || now >= inv.settledAt + LATE_WINDOW_MS) return false;
-		return inv.reconfirmingSince !== undefined || totals(inv).depth < FINAL_DEPTH;
+		// The floor it settled under (spec change 48), the same one evaluate uses. The height doesn't matter here: a settled
+		// invoice's floor doesn't depend on it.
+		return inv.reconfirmingSince !== undefined || totals(inv, 0).depth < FINAL_DEPTH;
 	}
 	return false;
 }

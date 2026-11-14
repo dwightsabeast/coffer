@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 
 import { newInvoice } from "../../src/core/invoice";
-import { PUBLIC_KEYS } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -26,7 +26,7 @@ async function setup(o: { done?: boolean; paired?: boolean; review?: boolean; si
 		await h.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);
 		await h.fixtures.plugin.kv("state:bridge", { height: H0, lastSyncAt: Date.now() - (o.silent ? 12 * 60_000 : 30_000), version: 1, outdated: false });
 	}
-	for (let i = 1; i <= 3; i++) await h.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: ADDR(i), status: "free" });
+	for (let i = 1; i <= 3; i++) await h.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: ADDR(i), status: "free", keyId: KEY_IDS.test1 });
 	if (o.done) await h.fixtures.plugin.kv("state:setupDone", true);
 	if (o.review) {
 		const inv = newInvoice({ network: "stagenet", id: "inv_r", token: "r".repeat(22), kind: "product", fiatMinor: 1200n, currency: "USD", rate: { minor: 15000n, source: "t" }, speed: "standard", subaddress: ADDR(9), addrIndex: 9, now: Date.now() - 3_600_000, chainHeight: H0 });

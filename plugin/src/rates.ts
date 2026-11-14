@@ -34,13 +34,15 @@ export function decimalToMinorFloor(text: string, decimals: number = FIAT_DECIMA
 
 const sane = (v: bigint | null): v is bigint => v !== null && v >= MIN_RATE_MINOR && v <= MAX_RATE_MINOR;
 
-/** Kraken: {"error":[],"result":{"XXMRZUSD":{"c":["555.37000000","1.7"],...}}}; "c" is the last trade, a string. */
-export function parseKraken(text: string): bigint | null {
+/** Kraken: {"error":[],"result":{"XXMRZUSD":{"c":["555.37000000","1.7"],...}}}; "c" is the last trade, a string. Null unless the reply holds the pair for `currency`. */
+export function parseKraken(text: string, currency: Currency): bigint | null {
 	try {
 		const j = JSON.parse(text) as { error?: unknown[]; result?: Record<string, { c?: unknown[] }> };
 		if (!Array.isArray(j.error) || j.error.length > 0 || !j.result) return null;
-		const pairs = Object.values(j.result);
-		const last = pairs.length === 1 ? pairs[0]?.c?.[0] : undefined;
+		// Only the pair asked for, under Kraken's own name for it or the request's spelling. Anything else in the reply,
+		// another pair alone included, is no answer (RT-02).
+		const pair = Object.hasOwn(j.result, `XXMRZ${currency}`) ? j.result[`XXMRZ${currency}`] : Object.hasOwn(j.result, `XMR${currency}`) ? j.result[`XMR${currency}`] : undefined;
+		const last = pair?.c?.[0];
 		return typeof last === "string" ? decimalToMinorFloor(last) : null;
 	} catch {
 		return null;
@@ -54,7 +56,7 @@ export function parseCoinGecko(text: string, currency: Currency): bigint | null 
 }
 
 const SOURCES: Array<{ source: Rate["source"]; url: (c: Currency) => string; parse: (text: string, c: Currency) => bigint | null }> = [
-	{ source: "api.kraken.com", url: (c) => `https://api.kraken.com/0/public/Ticker?pair=XMR${c}`, parse: (t) => parseKraken(t) },
+	{ source: "api.kraken.com", url: (c) => `https://api.kraken.com/0/public/Ticker?pair=XMR${c}`, parse: parseKraken },
 	{ source: "api.coingecko.com", url: (c) => `https://api.coingecko.com/api/v3/simple/price?ids=monero&vs_currencies=${c.toLowerCase()}`, parse: parseCoinGecko },
 ];
 

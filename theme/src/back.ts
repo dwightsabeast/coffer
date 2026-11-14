@@ -8,7 +8,11 @@ const MAX_LENGTH = 512;
 const REFUSED = ["/pay/coffer", "/_emdash"];
 const CONTROL = /[\u0000-\u001f\u007f]/;
 
-const refusedPath = (path: string) => REFUSED.some((p) => path === p || path.startsWith(`${p}/`));
+/** In any casing (RT-10): a server or proxy that ignores case must not turn "/_EMDASH" into the admin. */
+const refusedPath = (path: string) => {
+	const lower = path.toLowerCase();
+	return REFUSED.some((p) => lower === p || lower.startsWith(`${p}/`));
+};
 
 /** A same-origin `pathname + search` (no fragment), or null. */
 export function safeReturn(value: unknown, origin: string): string | null {

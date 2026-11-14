@@ -1,0 +1,24 @@
+{
+	"$schema": "./node_modules/@emdash-cms/plugin-cli/schemas/emdash-plugin.schema.json",
+
+	"slug": "coffer-canary",
+	"publisher": "did:plc:aaaaaaaaaaaaaaaaaaaaaaaa",
+
+	"license": "MIT",
+	"author": { "name": "Wyatt Dilley" },
+	"security": { "email": "security@example.invalid" },
+	"description": "Phase 07b sandbox canary. Never shipped.",
+
+	// Coffer's trust contract exactly (plugin/emdash-plugin.jsonc), so each probe runs with the grants Coffer has and no
+	// more. The storage names match Coffer's too: the probes check that a second plugin sees its own empty collections,
+	// never Coffer's rows.
+	"capabilities": ["content:read", "network:request"],
+	"allowedHosts": ["api.coingecko.com", "api.kraken.com"],
+	"storage": {
+		"pool": { "indexes": ["status"], "uniqueIndexes": ["addrIndex"] },
+		"invoices": {
+			"indexes": ["status", "expiresAt", ["kind", "createdAt"]],
+			"uniqueIndexes": ["token", "subaddress"]
+		}
+	}
+}

@@ -2,8 +2,11 @@
 import { describe, expect, it } from "vitest";
 
 import { handleSync } from "../../src/sync/handle";
-import { decodeBase64, decodeStrict, verifySignature } from "../../src/sync/protocol";
+import { decodeBase64, decodeStrict, parseSyncBody, verifySignature } from "../../src/sync/protocol";
 import vectors from "../../../contract/test-vectors/sync-signature.json";
+import digestVector from "../../../contract/test-vectors/address-digest.json";
+import checksVector from "../../../contract/test-vectors/bridge-checks.json";
+import { addressDigest } from "../../src/core/digest";
 import { MemoryStore, fromB64 } from "./helpers";
 
 describe("shared signature vectors", () => {
@@ -26,6 +29,23 @@ describe("shared signature vectors", () => {
 			const out = await handleSync({ body, headers: { "x-xmr-ts": v.ts, "x-xmr-sig": v.signature }, now: Number(v.ts) * 1000 }, store);
 			if (v.expected === "ok") expect(out.response).toMatchObject({ ok: true });
 			else expect(out.response).toEqual({ error: { code: v.expected } });
+		});
+	}
+});
+
+describe("the shared address digest (spec change 46, D3)", () => {
+	it("[T03] addressDigest matches contract/test-vectors/address-digest.json", async () => {
+		expect(digestVector.digest).toHaveLength(24);
+		expect(await addressDigest(digestVector.address)).toBe(digestVector.digest);
+	});
+});
+
+describe("the shared bridge checks (spec change 48)", () => {
+	for (const c of checksVector.cases) {
+		it(`[R08][F08] [RT-32] ${c.name}: the plugin keeps what the bridge sends`, () => {
+			const r = parseSyncBody(JSON.stringify({ v: 1, seq: 1, height: 3_000_000, addresses: [], snapshots: [], checks: c.wire }));
+			if (!r.ok) throw new Error(`refused: ${r.code}`);
+			expect(r.value.checks ?? {}).toEqual(c.wire);
 		});
 	}
 });

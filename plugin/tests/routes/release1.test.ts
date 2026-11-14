@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash-cms/plugin-test";
 
 import { GOODS_ENABLED } from "../../src/core/constants";
-import { PUBLIC_KEYS } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -26,7 +26,7 @@ async function setup() {
 	await h.fixtures.plugin.kv("state:setupDone", true);
 	await h.fixtures.collection({ slug: "products", label: "Products", fields: [{ slug: "title", label: "Title", type: "string" }, { slug: "price", label: "Price", type: "number" }] } as never);
 	await h.fixtures.content("products", { slug: "handbook", status: "published", data: { title: "Handbook", price: 12 } } as never);
-	for (let i = 1; i <= 3; i++) await h.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: fakeSubaddress(i, "R"), status: "free" });
+	for (let i = 1; i <= 3; i++) await h.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: fakeSubaddress(i, "R"), status: "free", keyId: KEY_IDS.test1 });
 	await h.http.respond("https://api.kraken.com/0/public/Ticker?pair=XMRUSD", new Response(JSON.stringify({ error: [], result: { XXMRZUSD: { c: ["150.00", "1.0"] } } })));
 	return h;
 }

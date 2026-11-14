@@ -6,9 +6,12 @@ import { deletePluginData } from "../../src/store";
 
 function fakeCtx() {
 	const cols: Record<string, Map<string, unknown>> = { pool: new Map(), invoices: new Map() };
-	for (let i = 1; i <= 230; i++) cols.pool.set(String(i), { addrIndex: i });
+	// Every status, a row left "dropped" by a failed pairing included (spec change 45).
+	for (let i = 1; i <= 230; i++) cols.pool.set(String(i), { addrIndex: i, status: ["free", "claimed", "dropped"][i % 3] });
 	for (let i = 1; i <= 7; i++) cols.invoices.set(`inv_${i}`, { id: `inv_${i}` });
-	const kv = new Map<string, unknown>([["state:pairing", {}], ["state:bridge", {}], ["state:alerts", []], ["cache:rate:USD", {}], ["cache:rate:EUR", {}], ["unrelated", 1]]);
+	const kv = new Map<string, unknown>([["state:pairing", {}], ["state:bridge", {}], ["state:alerts", []], ["state:network", { network: "stagenet", keyId: "k" }], ["cache:rate:USD", {}], ["cache:rate:EUR", {}], ["unrelated", 1],
+		// Spec change 46: the wallets and each one's gap baseline (wallet 1 trimmed from the list, its baseline kept).
+		["state:wallets", { current: { keyId: "k", wallet: 3 }, list: [{ wallet: 3 }, { wallet: 2 }, { wallet: 0 }] }], ["state:paidTop", 9], ["state:paidTop:1", 4], ["state:paidTop:2", 5], ["state:paidTop:3", 0]]);
 	const settings = new Map<string, unknown>([["bridgePublicKey", "k"], ["currency", "USD"], ["speed", "fast"]]);
 	const collection = (m: Map<string, unknown>) => ({
 		async query({ limit }: { limit: number }) {
@@ -22,7 +25,7 @@ function fakeCtx() {
 	});
 	const ctx = {
 		storage: { pool: collection(cols.pool), invoices: collection(cols.invoices) },
-		kv: { delete: async (k: string) => kv.delete(k) },
+		kv: { get: async (k: string) => kv.get(k) ?? null, delete: async (k: string) => kv.delete(k) },
 		settings: { delete: async (k: string) => settings.delete(k) },
 	};
 	return { ctx, cols, kv, settings };

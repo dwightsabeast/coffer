@@ -1,0 +1,10 @@
+{
+	"description": "Spec change 48: the checks a bridge sends for its circuit breaker and a failed save. The bridge's state in, the wire form out: the bridge must produce `wire`, and the plugin must keep it.",
+	"cases": [
+		{ "name": "nothing to say", "bridge": { "topUpStopped": "", "storeFailed": false }, "wire": {} },
+		{ "name": "stopped: an address it created came back bad", "bridge": { "topUpStopped": "bad_created", "storeFailed": false }, "wire": { "topUp": { "state": "stopped", "reason": "bad_created" } } },
+		{ "name": "stopped: too many created", "bridge": { "topUpStopped": "too_many", "storeFailed": false }, "wire": { "topUp": { "state": "stopped", "reason": "too_many" } } },
+		{ "name": "a failed save", "bridge": { "topUpStopped": "", "storeFailed": true }, "wire": { "save": { "state": "failed" } } },
+		{ "name": "stopped and a failed save", "bridge": { "topUpStopped": "too_many", "storeFailed": true }, "wire": { "topUp": { "state": "stopped", "reason": "too_many" }, "save": { "state": "failed" } } }
+	]
+}

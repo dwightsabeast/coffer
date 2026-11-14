@@ -36,6 +36,16 @@ Phase 08, store adapter. Read docs/phases/08-store-adapter.md and docs/progress.
 - No webhooks and no shared secret, per the spec. The store confirms by calling `status` on its server and checking `orderRef`, `amountMinor` and `currency` against its own order.
 - The consent dialog must not change: no new routes, capabilities or hosts.
 
+**Plugin: tie a person to an invoice (spec change 49, items 4 and 5; Wyatt, 2026-11-08)**
+
+- **Item 4, a lookup on the admin page:** by invoice ID, txid, address or pay-page token, including tips older than the newest-tips list.
+  - ID, token and address are direct reads (the row key and two unique indexes).
+  - The txid needs whatever phase 09 decided before 1.0.0 was frozen: the index it declared (and the field 1.0.0 already writes), or a bounded scan.
+  - **The token is a secret:** the lookup may accept one typed in, but never shows or echoes it.
+- **Item 5, the ID for the payer:** on the pay page, on the Tip received card, and in the `monero:` URI's description (capped at 100 characters today, with the entry's title).
+  - It adds a field to the public `status` response, so the contract doc and its conformance tests change with it.
+  - Feather's live check is in 09b (pay through the full link or QR).
+
 **Contract (`contract/`)**
 
 - `contract/README.md`: the payment contract as a short standalone doc (create, get, five statuses, what the store must check, no webhooks, no shared secret, security notes), written so a card, Lightning or bank-transfer method could implement it.

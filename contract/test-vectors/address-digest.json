@@ -1,0 +1,5 @@
+{
+	"description": "Spec change 46: an address and the digest the site and the bridge compute for it (base64 of the first 16 bytes of SHA-256 over the address string).",
+	"address": "7CofferAddressDigestTestVector11111111111111111111111111111111111111111111111111111111111111111",
+	"digest": "qYtoTZjlFXXSf7Ul9MFxxg=="
+}

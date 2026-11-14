@@ -6,7 +6,8 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { GAP_ALERT, UNPAID_RUN_ALERT } from "../../src/core/constants";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
-import { PUBLIC_KEYS } from "../sync/helpers";
+import { siteIndex } from "../../src/core/walletindex";
+import { KEY_IDS, PUBLIC_KEYS } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -34,12 +35,16 @@ interface Setup {
 	price?: boolean;
 	paidTop?: number | null;
 	clientIp?: boolean;
+	/** The stored network record; default on a paired site: stagenet for test1, as its first sync would set (spec change 45). */
+	network?: unknown;
 }
 
 async function setup(o: Setup = {}) {
 	const h = await createPluginRuntimeTestHost();
 	host = h;
 	if (o.paired !== false) await h.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);
+	const network = o.network === undefined ? (o.paired !== false ? { network: "stagenet", keyId: KEY_IDS.test1 } : null) : o.network;
+	if (network !== null) await h.fixtures.plugin.kv("state:network", network);
 	const ago = o.lastSyncAgo === undefined ? 30_000 : o.lastSyncAgo;
 	if (ago !== null || o.heardAgo !== undefined) {
 		const now = Date.now();
@@ -52,7 +57,7 @@ async function setup(o: Setup = {}) {
 			...(o.checks ? { checks: o.checks } : {}),
 		});
 	}
-	for (let i = 1; i <= (o.free ?? 50); i++) await h.fixtures.plugin.storage("pool", String(1000 + i), { addrIndex: 1000 + i, address: ADDR(1000 + i), status: "free" });
+	for (let i = 1; i <= (o.free ?? 50); i++) await h.fixtures.plugin.storage("pool", String(1000 + i), { addrIndex: 1000 + i, address: ADDR(1000 + i), status: "free", keyId: KEY_IDS.test1 });
 	for (const i of o.claimed ?? []) await h.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: ADDR(i), status: "claimed", invoiceId: `inv_${i}` });
 	if (o.paidTop !== undefined && o.paidTop !== null) await h.fixtures.plugin.kv("state:paidTop", o.paidTop);
 	if (o.clientIp !== undefined) await h.fixtures.plugin.kv("state:clientIp", o.clientIp);
@@ -78,10 +83,29 @@ function invoice(id: string, index: number, over: Partial<Invoice> = {}): Invoic
 const paidTransfer = { txid: "ab".repeat(32), amount: "80000000000", amountAtomic: "80000000000", confirmations: 12, height: H0 + 1, timestamp: 1_790_000_100, doubleSpendSeen: false, unlockTime: "0", seenAt: 1, poolTs: 1 };
 
 describe("health panel", () => {
+	it("[T20] the wallet host line shows the network stored for the paired key (spec change 45)", async () => {
+		await setup({ network: { network: "mainnet", keyId: KEY_IDS.test1 } });
+		expect(field(await load(), "Wallet host")).toBe("Paired · mainnet");
+	});
+
+	it("[T20] the network is not known yet with none stored, or with one stored for another key", async () => {
+		for (const network of [null, { network: "stagenet", keyId: KEY_IDS.test2 }]) {
+			await setup({ network });
+			expect(field(await load(), "Wallet host"), JSON.stringify(network)).toBe("Paired · network not known yet");
+			await host?.dispose();
+			host = undefined;
+		}
+	});
+
+	it("not paired: the wallet host line says so, with no network", async () => {
+		await setup({ paired: false, free: 0 });
+		expect(field(await load(), "Wallet host")).toBe("Not paired");
+	});
+
 	it("a healthy site: one line per check, the addresses meter with its hint, no banners", async () => {
 		await setup({ checks: { node: { state: "off" }, wallet: { state: "ok", detail: "wallet and node at block 3000000" } }, free: 48, claimed: [1, 2], paidTop: 2 });
 		const b = await load();
-		expect(field(b, "Wallet host")).toBe("Paired");
+		expect(field(b, "Wallet host")).toBe("Paired · stagenet");
 		expect(field(b, "Last sync")).toBe("less than a minute ago");
 		expect(field(b, "Wallet height")).toBe("3000000, in step with its node");
 		expect(field(b, "Price feed")).toBe("1 XMR = 150.00 USD (api.kraken.com)");
@@ -263,6 +287,24 @@ describe("health panel", () => {
 			}
 		});
 	}
+
+	it("[P02] the gap is the current wallet's, in its own numbers (spec change 46): wallet 0's history doesn't count", async () => {
+		const h = await setup({ claimed: [356], paidTop: 300 });
+		await h.fixtures.plugin.kv("state:wallets", { current: { keyId: KEY_IDS.test1, wallet: 1 }, list: [{ wallet: 1, probe: { digest: "qYtoTZjlFXXSf7Ul9MFxxg==" } }, { wallet: 0 }] });
+		await h.fixtures.plugin.kv("state:paidTop:1", 5);
+		const n = siteIndex(1, 5 + GAP_ALERT);
+		await h.fixtures.plugin.storage("pool", String(n), { addrIndex: n, address: ADDR(7), status: "claimed", invoiceId: "inv_w1" });
+		const b = await load();
+		expect(field(b, "Unpaid addresses since the last payment")).toBe(`${GAP_ALERT} (warning at ${GAP_ALERT})`);
+		expect(banners(b).find((x) => x.title === "Your wallet app may miss payments")?.description).toContain(`(address #5)`);
+		expect(banners(b).find((x) => x.title === "Your wallet app may miss payments")?.description).toContain(`up to #${5 + GAP_ALERT},`);
+	});
+
+	it("[P02] while the site waits for the probe answer there's no current wallet, so no gap", async () => {
+		const h = await setup({ claimed: [9 + GAP_ALERT], paidTop: 9 });
+		await h.fixtures.plugin.kv("state:wallets", { current: { keyId: KEY_IDS.test1, wallet: null }, list: [{ wallet: 0, probe: { digest: "qYtoTZjlFXXSf7Ul9MFxxg==" } }] });
+		expect(field(await load(), "Unpaid addresses since the last payment")).toBe(`0 (warning at ${GAP_ALERT})`);
+	});
 
 	it("the highest paid index is worked out once from the invoices when it was never recorded", async () => {
 		const h = await setup({ claimed: [3, 7, 40] });

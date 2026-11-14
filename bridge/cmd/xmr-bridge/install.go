@@ -38,6 +38,11 @@ func cmdInstall(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		fmt.Fprint(stderr, usage)
 		return 2
 	}
+	pairCode, err := codeArg(*code)
+	if err != nil {
+		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
+		return 2
+	}
 	sys := installer.RealSystem()
 	if sys.Euid() != 0 {
 		fmt.Fprintln(stderr, "xmr-bridge: the installer needs root: run it with sudo")
@@ -48,16 +53,19 @@ func cmdInstall(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
 		return 1
 	}
-	tty, closeTTY, err := installer.OpenTTY()
+	tty, closeTTY, err := installer.OpenTTY(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
 		return 1
 	}
 	defer closeTTY()
 	log := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	opts := installer.Options{Paths: installer.Paths{Root: "/"}, Site: *site, Code: *code, Node: *node, RestoreHeight: *restore,
+	opts := installer.Options{Paths: installer.Paths{Root: "/"}, Site: *site, Code: pairCode, Node: *node, RestoreHeight: *restore,
 		NoAutoUpdate: *noUpdate, AllowSameMachine: *sameMachine, Exe: exe}
 	if err := installer.Install(ctx, opts, sys, tty, installSteps(log)); err != nil {
+		if errors.Is(err, installer.ErrCancelled) { // the installer has said so on the terminal
+			return 1
+		}
 		fmt.Fprintf(stderr, "xmr-bridge: install stopped: %v\n", err)
 		return 1
 	}
@@ -76,12 +84,9 @@ func installSteps(log *slog.Logger) installer.Steps {
 		InstallWalletRPC: func(ctx context.Context, binDir string) error { return installWalletRPC(ctx, binDir, log) },
 		CreateWallet:     createWallet,
 		Pair: func(ctx context.Context, cfg config.Config, code string) (uint64, error) {
-			var height uint64
-			if info, err := noderpc.GetInfo(ctx, cfg.Node, nil); err == nil {
-				height = info.Height
-			}
-			return pairing.Pair(ctx, siteClient(cfg), code, keyFile(cfg), height, time.Now())
+			return pairing.Pair(ctx, siteClient(cfg), code, keyFile(cfg), pairHeight(ctx, cfg), time.Now())
 		},
+		BoundedHeight: pairHeight,
 	}
 }
 

@@ -7,7 +7,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 import { MAX_OPEN_TOTAL, MAX_PER_CLIENT, checkoutHeight } from "../../src/checkout";
 import { SILENT_MS } from "../../src/core/constants";
 import { type Invoice, newInvoice } from "../../src/core/invoice";
-import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
+import { KEY_IDS, PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
 
 let host: PluginRuntimeTestHost | undefined;
@@ -33,7 +33,8 @@ async function setup(opts: { pool?: number; products?: boolean; lastSyncAgo?: nu
 			await host.fixtures.content("products", { slug, status, data: { title: `Test ${slug}`, price } } as never);
 		}
 	}
-	for (let i = 1; i <= (opts.pool ?? 5); i++) await host.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: ADDR(i), status: "free" });
+	await host.fixtures.plugin.setting("bridgePublicKey", PUBLIC_KEYS.test1);
+	for (let i = 1; i <= (opts.pool ?? 5); i++) await host.fixtures.plugin.storage("pool", String(i), { addrIndex: i, address: ADDR(i), status: "free", keyId: KEY_IDS.test1 });
 	return host;
 }
 

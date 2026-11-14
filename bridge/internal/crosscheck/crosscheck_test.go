@@ -142,7 +142,8 @@ func TestNoSecondNode(t *testing.T) {
 	wrongNet.net = "mainnet"
 	c := checker(t, chain(110), down, wrongNet)
 	got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)})
-	if rep.State != Unavailable || got[0].Confirmations != 10 {
+	// Spec change 13 as amended (Wyatt, 2026-11-02, RT-26): held at 0, not the configured node's count.
+	if rep.State != Unavailable || got[0].Confirmations != 0 {
 		t.Fatalf("report %+v, confirmations %d", rep, got[0].Confirmations)
 	}
 	if wrongNet.blocks.Load() != 0 {
@@ -186,7 +187,7 @@ func TestNeverItsOwnSecondNode(t *testing.T) {
 		u := primary.serve(t).URL
 		c := New(u, "stagenet", []string{u, down.serve(t).URL}, nil)
 		got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)})
-		if rep.State != Unavailable || got[0].Confirmations != 10 {
+		if rep.State != Unavailable || got[0].Confirmations != 0 {
 			t.Fatalf("report %+v, confirmations %d", rep, got[0].Confirmations)
 		}
 		if n := primary.calls.Load(); n != 0 {
@@ -218,7 +219,7 @@ func TestSyncingSecondNodeSkipped(t *testing.T) {
 	only := chain(110)
 	only.syncing = true
 	c = checker(t, chain(110), only)
-	if got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)}); rep.State != Unavailable || got[0].Confirmations != 10 {
+	if got, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)}); rep.State != Unavailable || got[0].Confirmations != 0 {
 		t.Fatalf("only a syncing second node: report %+v, confirmations %d", rep, got[0].Confirmations)
 	}
 }
@@ -271,4 +272,39 @@ func TestDefaultNodes(t *testing.T) {
 	if DefaultNodes("regtest") != nil {
 		t.Fatal("unknown network has a list")
 	}
+}
+
+// RT-23: the report counts the mined payments found in their block on a second node, so "ok" can be told from
+// "nothing was checked".
+func TestRedteamReportCountsWhatWasChecked(t *testing.T) {
+	t.Run("[R13][T14] [RT-23] an honest check counts its mined payments, also from its cache", func(t *testing.T) {
+		c := checker(t, chain(110), chain(108))
+		ts := []walletrpc.Transfer{transfer(tx1, 100, 10), transfer(tx2, 0, 0)}
+		for i := 0; i < 2; i++ {
+			if _, rep := c.Check(context.Background(), ts); rep.State != OK || rep.Checked != 1 || rep.Node == "" {
+				t.Fatalf("check %d: %+v", i, rep)
+			}
+		}
+	})
+	t.Run("[R13][T14] [RT-23] nothing mined: nothing checked", func(t *testing.T) {
+		c := checker(t, chain(110), chain(108))
+		if _, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx2, 0, 0)}); rep.State != OK || rep.Checked != 0 || rep.Detail == "" {
+			t.Fatalf("%+v", rep)
+		}
+	})
+	t.Run("[R13][T14] [RT-23] a second node that hasn't reached the block: nothing checked, and the detail says why", func(t *testing.T) {
+		c := checker(t, chain(110), chain(100))
+		_, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)})
+		if rep.State != OK || rep.Checked != 0 || !strings.Contains(rep.Detail, "hasn't reached") {
+			t.Fatalf("%+v", rep)
+		}
+	})
+	t.Run("[R13][T14] [RT-23] a mismatch counts nothing as checked", func(t *testing.T) {
+		primary := chain(110)
+		primary.hashes[100] = fake1
+		c := checker(t, primary, chain(110))
+		if _, rep := c.Check(context.Background(), []walletrpc.Transfer{transfer(tx1, 100, 10)}); rep.State != Mismatch || rep.Checked != 0 {
+			t.Fatalf("%+v", rep)
+		}
+	})
 }

@@ -1925,3 +1925,27 @@ The EmDash upgrade checklist gets a row: a 20,100-row flood seed on the built co
 - A time budget for the scans, so a slow host cuts the watch (with the Health warning) before it reaches the wall.
 
 These replace Wyatt's earlier decision of the same day (time slices, read-once and a required 12 s budget before release 1), which rested on the 27 s figure. Spec change 35's option A (a KV watch index) is unchanged.
+
+## 52. For IPv6 the per-visitor bucket is the visitor's /64, not one address (RT-05)  (status: accepted, 2026-11-13, Wyatt: /64)
+Found in: 07b pass 1, RT-05 (round 1, `plugin/tests/redteam/ipcap.test.ts`).
+Spec says:
+- Security model, address-pool exhaustion: "Per-visitor hashed buckets with short retention apply only when `requestMeta.ip` is set". It doesn't say what one visitor is for IPv6.
+- T18: a visitor "can neither dodge nor poison the per-client cap".
+
+Evidence: the bucket's key is a salted hash of the IP text as given, so every IPv6 address has its own bucket of five. An ISP gives an IPv6 customer at least a /64 (2^64 addresses). Five tips from `2001:db8:1:2::1` to `::5` and a sixth from `2001:db8:1:2:ffff::9` were all taken; a sixth from one IPv4 address is refused.
+
+### Accepted
+
+1. **IPv6: the bucket is the first 64 bits.** Any spelling of an address (compressed, full, upper case, a zone suffix, brackets) gives the same bucket as every other address in its /64.
+2. **An IPv4-mapped IPv6 address** (`::ffff:198.51.100.7`) uses the IPv4 address's bucket.
+3. **IPv4 is unchanged:** one address, one bucket.
+4. **Text that isn't an IP address is hashed as given,** as before. Checkout never fails because of the client IP's form.
+5. **Unchanged:** the salt, the hashed key and its length, five open per bucket, the 30-minute window, the KV value's shape. Nothing more is stored: the key is still a salted hash, now of the prefix (P03).
+
+### Accepted limit
+
+A visitor whose ISP gives more than a /64 (a /56 is 256 of them, a /48 is 65,536) can still move between /64s and fill the site-wide cap, as a site without client IPs lets anyone do. Wyatt chose /64 over /56 (which would put up to 256 neighbouring customers in one bucket on ISPs that give a /64) and over two buckets per request. The site-wide cap and the proxy rate-limit rule in the install docs stay the backstop.
+
+### Not covered
+
+No live run: on the dev site `requestMeta.ip` is never set (07b round 1, L2), so the code is reached only through the test host's `requestMeta`.

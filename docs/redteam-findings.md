@@ -12,7 +12,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-02 | Low | T06 | 1, 1 | A Kraken reply for a different pair is taken as the price | open; **fix before release 1** (Wyatt, 2026-11-08) |
 | RT-03 | Low | T08, F02 | 1, 1 | A tip note with a lone surrogate is stored as is | open; **fix before release 1** (Wyatt, 2026-11-08) |
 | RT-04 | Low | T05 | 1, 1 | Concurrent tips are told "no address" while free addresses remain | open; left for release 1 (Wyatt, 2026-11-08): not reproduced live on the Node runner |
-| RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | **fixed** 2026-11-13 (spec change 52: the bucket is the /64); test host only, no live path |
 | RT-06 | Low | F01 | 1, 1 | The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature | open; left for release 1 (Wyatt, 2026-11-08): needs the bridge key; pass 2 |
 | RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | **fixed** 2026-11-13 (spec change 50), live `c6` 3 of 3 |
 | RT-08 | Accepted limit (Wyatt, 2026-11-08); was High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open; spec change 46 built 2026-11-01 (plugin and bridge); live 2026-11-02: forged rows reported bad within one sync and never handed out; **accepted limit (Wyatt, 2026-11-08)**: spec change 44's final wording |
@@ -99,7 +99,12 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **What the spec says:** Security model, address-pool exhaustion: per-visitor hashed buckets apply when `requestMeta.ip` is set; "Without client IPs, one spammer can fill the cap". T18: a visitor "can neither dodge nor poison the per-client cap".
 - **Reach:** on a site that does pass client IPs, one IPv6 visitor can still fill the site-wide cap (40 open tips per 30 minutes) and block tips until those windows close: the outage the spec states only for sites without client IPs. No money moves and no invoice is marked paid. Also checked, no finding: headers a visitor sets (`X-Forwarded-For`, `CF-Connecting-IP`, `X-Real-IP`, `True-Client-IP`, `Forwarded` and others) never became the client IP in the test host, so no bucket was made from them, and the buckets hold only salted hashes (no IPv4 or IPv6 text in KV, invoices or pool). The dev site's real header handling is in the live L2 run.
 - **Evidence:** vitest output, round 1.
-- **Status:** open.
+- **Fixed 2026-11-13 (spec change 52; Wyatt chose /64).**
+  - `plugin/src/clientip.ts`, `clientKeyText`: the bucket's key is hashed from the first 64 bits of an IPv6 address, from the IPv4 address for an IPv4-mapped one, and from the text as given for IPv4 and for anything that isn't an address. `clientBucket` in `checkout.ts` is otherwise unchanged.
+  - Tests: the `[RT-05]` test above flipped from `it.fails` to `it`; three more in the same file (another /64 and five spellings of one address; IPv4-mapped; text that isn't an address); `plugin/tests/core/clientip.test.ts`, 36 parser cases.
+  - **Accepted limit:** a visitor whose ISP gives a /56 or /48 can still move between /64s and fill the site-wide cap.
+  - **Not covered:** a live run. The dev site never sets `requestMeta.ip`, so only the test host reaches this code.
+- **Status:** fixed.
 
 ## RT-06 — The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature
 

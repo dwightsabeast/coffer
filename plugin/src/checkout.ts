@@ -5,6 +5,7 @@
  */
 import type { PluginContext } from "emdash/plugin";
 
+import { clientKeyText } from "./clientip";
 import { type MoneroNetwork, subaddressNetwork } from "./core/address";
 import { ATOMIC_PER_XMR, DUST_ATOMIC, GOODS_ENABLED, type Speed, PRESETS, SILENT_MS } from "./core/constants";
 import { type Invoice, newInvoice } from "./core/invoice";
@@ -151,14 +152,14 @@ const base64url = (bytes: Uint8Array) => btoa(String.fromCharCode(...bytes)).rep
 /** A new invoice's id and its status token (the buyer's only handle on it). */
 export const newIds = () => ({ id: `inv_${hex(crypto.getRandomValues(new Uint8Array(8)))}`, token: base64url(crypto.getRandomValues(new Uint8Array(16))) });
 
-/** Short-lived hashed buckets: a per-site salt in KV, never a raw IP. */
+/** Short-lived hashed buckets: a per-site salt in KV, never a raw IP. One client is an IPv4 address or an IPv6 /64 (spec change 52). */
 async function clientBucket(ctx: PluginContext, ip: string, now: number) {
 	let salt = await ctx.kv.get<string>(KV.salt);
 	if (!salt) {
 		salt = hex(crypto.getRandomValues(new Uint8Array(16)));
 		await ctx.kv.set(KV.salt, salt);
 	}
-	const key = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${salt}|${ip}`)))).slice(0, 16);
+	const key = hex(new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${salt}|${clientKeyText(ip)}`)))).slice(0, 16);
 	const all = (await ctx.kv.get<Record<string, number[]>>(KV.buckets)) ?? {};
 	for (const k of Object.keys(all)) {
 		all[k] = all[k].filter((t) => now - t < BUCKET_WINDOW_MS);

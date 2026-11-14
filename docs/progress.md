@@ -5406,3 +5406,29 @@ Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
 **What's left before phase 09:** RT-05, the six Lows (RT-02, RT-03, RT-10, RT-14, RT-22, RT-23), the EmDash 1.4.0 check (a dependency upgrade: Wyatt approves first; it now includes the flood-seed timing run), and the RT-08 re-check question.
 
 **Next step:** RT-05 (an IPv6 /64 counted as one client), plan first.
+
+## 2026-11-13 · Phase 07b fix sessions · RT-05 fixed: an IPv6 visitor's bucket is their /64
+
+**CI:** run 43523536718 passed on `52574d8` (RT-15's close).
+
+**Before RT-05:** `plugin/src/store.ts`'s `MAX_SCAN_PAGES` comment now gives the measured cost (spec change 51) instead of the 0.2 s estimate (`d40aa91`, comment only).
+
+**Wyatt approved the plan with /64** (decisions row; spec change 52).
+
+**Done, tests first:**
+- Red: the `[RT-05]` test with `it.fails` removed and two of three new behaviour tests failed with `expected 'ok' to be 'TOO_MANY_OPEN'`; the parser's test file failed on the missing module. The third new test (text that isn't an address) passed before the fix, as it should: that behaviour is unchanged.
+- `plugin/src/clientip.ts`, `clientKeyText`: IPv6 gives its /64, an IPv4-mapped address its IPv4 address, everything else the text as given. `clientBucket` in `checkout.ts` hashes that. Nothing else in the bucket changed.
+- `plugin/tests/redteam/ipcap.test.ts`: the RT-05 test flipped to `it`, three new `[T18][T05] [RT-05]` tests, and the `[P03][T18]` test also looks for the IPv6 prefix in two more spellings. `plugin/tests/core/clientip.test.ts`: 36 parser cases.
+- Docs: spec change 52, RT-05's finding (fixed), matrix T18 from Gap to Covered (22 Covered, 6 Partial, 3 Planned, no Gap, across 31 rows).
+
+**Test results:**
+- Plugin, default config: 522 passed, 10 expected fail, 1 skipped (was 482, 11 and 1: 36 parser cases, 3 new tests and the flipped one). Goods config: 101 passed, 1 skipped.
+- Typecheck clean, manifest valid, bundle check passed at 74.6 KB (was 73.5 KB).
+
+**Not covered:** a live run. The dev site never sets `requestMeta.ip` (round 1, L2), so only the test host reaches this code. The dev site wasn't started; `data.db` wasn't touched.
+
+**Accepted limit (spec change 52):** a visitor given a /56 or /48 can still move between /64s.
+
+**What's left before phase 09:** the six Lows (RT-02, RT-03, RT-10, RT-14, RT-22, RT-23), the EmDash 1.4.0 check (a dependency upgrade: Wyatt approves first; it includes the flood-seed timing run), and the RT-08 re-check question.
+
+**Next step:** the Lows, plan first; Wyatt picks the order or whether they go in one session.

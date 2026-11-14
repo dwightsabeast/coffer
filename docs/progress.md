@@ -5452,7 +5452,7 @@ Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
 - The test tip in Setup has no action of its own (checked in `admin.ts`); it settles through the review queue like any tip.
 
 **Test results:**
-- Plugin, default config: 529 passed, 7 expected fail, 1 skipped (was 522, 10, 1: three flipped, four new). Goods config: 101 passed, 1 skipped.
+- Plugin, default config: 529 passed, 7 expected fail, 1 skipped (was 522, 10, 1: three flipped, four new). Goods config: 102 passed, 1 skipped (was 101: the new RT-14 test runs there too). Commit `8127934`'s message says 101 for the goods config; 102 is the real count.
 - Theme: 80 passed, 1 skipped; typecheck clean.
 - Plugin typecheck clean, manifest valid, bundle check passed at 74.6 KB.
 - No live run: none of the four changes a path the dev site exercises differently from the test host. The dev site wasn't started; `data.db` wasn't touched.

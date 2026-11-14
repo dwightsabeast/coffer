@@ -53,7 +53,7 @@ func cmdInstall(ctx context.Context, args []string, stdout, stderr io.Writer) in
 		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
 		return 1
 	}
-	tty, closeTTY, err := installer.OpenTTY()
+	tty, closeTTY, err := installer.OpenTTY(ctx)
 	if err != nil {
 		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
 		return 1
@@ -63,6 +63,9 @@ func cmdInstall(ctx context.Context, args []string, stdout, stderr io.Writer) in
 	opts := installer.Options{Paths: installer.Paths{Root: "/"}, Site: *site, Code: pairCode, Node: *node, RestoreHeight: *restore,
 		NoAutoUpdate: *noUpdate, AllowSameMachine: *sameMachine, Exe: exe}
 	if err := installer.Install(ctx, opts, sys, tty, installSteps(log)); err != nil {
+		if errors.Is(err, installer.ErrCancelled) { // the installer has said so on the terminal
+			return 1
+		}
 		fmt.Fprintf(stderr, "xmr-bridge: install stopped: %v\n", err)
 		return 1
 	}

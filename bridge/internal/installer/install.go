@@ -94,10 +94,16 @@ const installLogPath = dataDir + "/log/install.log"
 // it has started changing the machine, it appends what it said to /var/lib/xmr-bridge/log/install.log, also when a
 // later step fails; an early refusal leaves nothing behind.
 func Install(ctx context.Context, o Options, sys System, tty Prompter, st Steps) error {
-	rec := &recorder{Prompter: tty, started: time.Now().UTC()}
+	rec := &recorder{Prompter: tty, ctx: ctx, started: time.Now().UTC()}
 	changing := false
 	err := install(ctx, o, sys, rec, st, &changing)
 	if !changing {
+		// RT-22: Ctrl-C before the first change (every prompt comes before it) stops the installer and says so,
+		// whatever the step in progress made of its cancelled context.
+		if err != nil && ctx.Err() != nil {
+			tty.Say("Cancelled. Nothing was changed on this machine.")
+			return ErrCancelled
+		}
 		var gave errGaveUp
 		if errors.As(err, &gave) {
 			err = fmt.Errorf("%w. Nothing was changed on this machine, and the pairing code still works: paste the install command again.", err)
@@ -118,6 +124,7 @@ func Install(ctx context.Context, o Options, sys System, tty Prompter, st Steps)
 // recorder keeps what the installer says and asks; answers are never recorded.
 type recorder struct {
 	Prompter
+	ctx     context.Context
 	started time.Time
 	lines   []string
 }
@@ -128,13 +135,25 @@ func (r *recorder) Say(format string, a ...any) {
 }
 
 func (r *recorder) Ask(prompt string) (string, error) {
+	if r.ctx.Err() != nil {
+		return "", ErrCancelled
+	}
 	a, err := r.Prompter.Ask(prompt)
+	if r.ctx.Err() != nil { // an answer that came with or after the Ctrl-C isn't used
+		return "", ErrCancelled
+	}
 	r.lines = append(r.lines, prompt+answered(err))
 	return a, err
 }
 
 func (r *recorder) AskSecret(prompt string) (secret.String, error) {
+	if r.ctx.Err() != nil {
+		return secret.String{}, ErrCancelled
+	}
 	a, err := r.Prompter.AskSecret(prompt)
+	if r.ctx.Err() != nil {
+		return secret.String{}, ErrCancelled
+	}
 	r.lines = append(r.lines, prompt+answered(err))
 	return a, err
 }

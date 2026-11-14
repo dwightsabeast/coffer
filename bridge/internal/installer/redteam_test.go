@@ -64,7 +64,6 @@ func (p *ctrlCTTY) AskSecret(prompt string) (secret.String, error) {
 // F4c on coffer-test, 2026-10-30 (the machine stayed unchanged).
 func TestRedteamCtrlCAtAPromptStopsTheInstaller(t *testing.T) {
 	t.Run("[T15] [RT-22] Ctrl-C at the view-key prompt stops the installer, says so, and asks nothing more", func(t *testing.T) {
-		t.Skip("RT-22 open")
 		opts, sys, fake, st := harness(t)
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
@@ -78,6 +77,9 @@ func TestRedteamCtrlCAtAPromptStopsTheInstaller(t *testing.T) {
 		}
 		if len(sys.calls) != 0 {
 			t.Fatal("changed the machine after Ctrl-C")
+		}
+		if !strings.Contains(fake.said.String(), "Cancelled. Nothing was changed on this machine.") {
+			t.Fatalf("didn't say it was cancelled: %q", fake.said.String())
 		}
 	})
 }

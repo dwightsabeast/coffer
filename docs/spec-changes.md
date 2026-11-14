@@ -1949,3 +1949,15 @@ A visitor whose ISP gives more than a /64 (a /56 is 256 of them, a /48 is 65,536
 ### Not covered
 
 No live run: on the dev site `requestMeta.ip` is never set (07b round 1, L2), so the code is reached only through the test host's `requestMeta`.
+
+## 53. Wording from the Lows: lone surrogates in a tip note, and admin actions only as the page offers them (RT-03, RT-14)  (status: accepted, 2026-11-13, Wyatt; RT-23's status lines to be added when it is built)
+Found in: 07b pass 1, RT-03 and RT-14.
+Spec says:
+- Tips: "an optional short note, plain text only, length-limited"; T08: "control and format characters out". Nothing about a lone surrogate (half of a two-part character, which isn't valid text).
+- F04: row actions on unknown invoices, or with out-of-range values, are refused. Nothing about an action that is well-formed but that the page doesn't offer for that invoice.
+
+### Accepted
+
+1. **A lone surrogate is removed from a tip's note and the tip is kept** (Wyatt: a visitor's broken character shouldn't fail their tip). It goes with the format characters, before the length is counted. A complete pair, such as an emoji, is kept whole.
+2. **A note is never cut.** Over 140 characters (code points) after cleaning it is refused, so there is no cut that could leave half a character behind.
+3. **The admin handler takes an invoice action only if the page offers it for that invoice as it is now,** and both come from the same lists in the code (Wyatt: no second list to drift). In release 1 that is a review item's buttons; in the goods build also a product's Actions menu. A tip outside "Needs a decision" has no action. A tip in review takes only the action or actions its item shows.

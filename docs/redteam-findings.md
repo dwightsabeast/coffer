@@ -9,19 +9,19 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | ID | Severity | Rows | Pass, round | Title | Status |
 | --- | --- | --- | --- | --- | --- |
 | RT-01 | Low | T21 | 1, 1 | Product-only link and order wording on the admin page for a product invoice already in storage | open; left for release 1 (Wyatt, 2026-11-08): only a database already holding product invoices |
-| RT-02 | Low | T06 | 1, 1 | A Kraken reply for a different pair is taken as the price | open; **fix before release 1** (Wyatt, 2026-11-08) |
-| RT-03 | Low | T08, F02 | 1, 1 | A tip note with a lone surrogate is stored as is | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-02 | Low | T06 | 1, 1 | A Kraken reply for a different pair is taken as the price | **fixed** 2026-11-13 (`parseKraken` reads only the pair asked for) |
+| RT-03 | Low | T08, F02 | 1, 1 | A tip note with a lone surrogate is stored as is | **fixed** 2026-11-13 (spec change 53: the lone surrogate is removed, the tip kept) |
 | RT-04 | Low | T05 | 1, 1 | Concurrent tips are told "no address" while free addresses remain | open; left for release 1 (Wyatt, 2026-11-08): not reproduced live on the Node runner |
 | RT-05 | Medium | T18, T05 | 1, 1 | An IPv6 visitor dodges the per-client cap by changing address inside their /64 | **fixed** 2026-11-13 (spec change 52: the bucket is the /64); test host only, no live path |
 | RT-06 | Low | F01 | 1, 1 | The sync parser accepts unknown fields, duplicate keys and out-of-range numbers behind the signature | open; left for release 1 (Wyatt, 2026-11-08): needs the bridge key; pass 2 |
 | RT-07 | Medium | T13 | 1, 1 | Two pair requests with one code at the same moment both succeed; the loser is told it paired | **fixed** 2026-11-13 (spec change 50), live `c6` 3 of 3 |
 | RT-08 | Accepted limit (Wyatt, 2026-11-08); was High | T03, P02 | 1, 1 | A forged sync adds a pool address a tipper then pays, widening the stated "free goods / fake tip" limit | open; spec change 46 built 2026-11-01 (plugin and bridge); live 2026-11-02: forged rows reported bad within one sync and never handed out; **accepted limit (Wyatt, 2026-11-08)**: spec change 44's final wording |
 | RT-09 | Low | P02 | 1, 1 | A forged sync adds a pool row duplicating an address already held | open; left for release 1 (Wyatt, 2026-11-08): needs the bridge key; the unique index holds |
-| RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-10 | Low | T22 | 1, 1 | The way-back validator matches its refused prefixes case-sensitively | **fixed** 2026-11-13 (prefixes matched in any casing) |
 | RT-11 | High | T20, P02 | 1, 1 | A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding) | fixed 2026-10-31 (spec change 45) |
 | RT-12 | Accepted limit (Wyatt, 2026-11-08); was Medium | T01, R11 | 1, 1 | One expensive plugin request blocks all others on the Node runner for the full 30 s wall | open; **accepted limit (Wyatt, 2026-11-08)**: a line in phase 09's install docs and the report; re-checked at the EmDash 1.4.0 check |
 | RT-13 | Low | F01 | 1, 1 | A slow request body isn't bounded by the 30 s wall; a connection can be held open past it | open; left for release 1 (Wyatt, 2026-11-08): the proxy's job; an install-docs line in phase 09 |
-| RT-14 | Low | F04 | 1, 1 | The admin handler settles or expires an open tip the release-1 page offers no action for | open; **fix before release 1** (Wyatt, 2026-11-08) |
+| RT-14 | Low | F04 | 1, 1 | The admin handler settles or expires an open tip the release-1 page offers no action for | **fixed** 2026-11-13 (spec change 53: the handler takes only what the page offers) |
 | RT-15 | Low (Wyatt, 2026-11-13); was Medium | R11, R13 | 1, 1 | At a spam-cap-sized backlog a sync takes about 0.9 s, not the spec's 0.2 s, and a capped tips scan drops newer rows (first filed as ~28 s a sync, which was the test seed's doing) | **closed** 2026-11-13 with a wording change (spec change 51), no plugin code; three items on the after-release-1 backlog |
 | RT-16 | Low | F04 | 1, 1 | Coffer's sidebar link and dashboard widget show to roles that can't use them | open; on Wyatt's upstream list (Wyatt, 2026-11-08) |
 | RT-17 | Low | F04 | 1, 1 | A non-admin's refusal shows raw JSON in the "Plugin Error" banner | open; on Wyatt's upstream list (Wyatt, 2026-11-08) |
@@ -68,7 +68,8 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **Reach:** only Kraken itself (a fixed, allowed host) can send this; a tip's amount only fills the payment link and a tip settles at the floor (spec change 33), so for tips the cost is a wrong suggested amount. It matters more for orders in release 2. Every other poisoned reply tried (zero, negative, `NaN`, `Infinity`, `1e308`, hex, 30 digits, `0.0000001`, HTML, empty, 500, an error list, no result) became an open tip, and CoinGecko's fallback refused the same set.
 - **Evidence:** vitest output, round 1 ("wrong pair" was the only case of 21 that converted).
 - **Root cause (round 2, white box):** `parseKraken` takes the result's only entry, whatever its key (`plugin/src/rates.ts:42–43`). The fix is to read the entry for the pair asked for (`XXMRZUSD`/`XXMRZEUR`, or the request's `XMRUSD`/`XMREUR` spelling) and refuse anything else.
-- **Status:** open.
+- **Fixed 2026-11-13.** `parseKraken` takes the currency and reads only that pair's entry, under Kraken's name for it (`XXMRZUSD`, `XXMRZEUR`) or the request's spelling (`XMRUSD`, `XMREUR`). A reply without it, another pair alone included, is no price, so the fiat tip becomes an open tip. A reply holding the right pair beside another is read from the right one. The `[RT-02]` test is flipped; one test added.
+- **Status:** fixed.
 
 ## RT-03 — A tip note with a lone surrogate is stored as is
 
@@ -78,7 +79,8 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **What the spec says:** "an optional short note, plain text only, length-limited"; T08: "control and format characters out". A lone surrogate isn't text: it can't be encoded as UTF-8, so what any later reader (the database, a log, an export, the admin page's renderer) does with it is undefined, usually a replacement character, sometimes an error.
 - **Reach:** anyone who can tip. No markup or script results (Block Kit escapes; A3's markup payloads were stored literally). Also seen, and **not** filed: private-use characters (U+E000) and noncharacters (U+FFFE, U+FFFF) are kept; the spec promises nothing about them, and they render as boxes at worst. Every control, format, bidi, zero-width, tag and separator character tried was removed.
 - **Evidence:** vitest output, round 1.
-- **Status:** open.
+- **Fixed 2026-11-13 (spec change 53; Wyatt: remove it, keep the tip).** `cleanNote` removes lone surrogates with the format characters, before the length is counted. A real pair (an emoji) stays whole. A note is never cut: over 140 code points it is refused, so no cut can leave half a pair. Tests: the `[RT-03]` test flipped; two added (six lone, swapped, doubled and paired cases; an emoji at the limit kept whole, lone surrogates not counted, one character over refused).
+- **Status:** fixed.
 
 ## RT-04 — Concurrent tips are told "no address" while free addresses remain
 
@@ -190,7 +192,8 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
 - **What the spec says:** spec change 39 and decisions: the validator refuses "no `/pay/coffer/` or `/_emdash/`". T22: "refuses … the pay pages and the admin".
 - **Reach:** not currently exploitable. Astro and EmDash route paths case-sensitively, so `/PAY/coffer/tok` and `/_EMDASH/admin` resolve to 404, not to the pay page or the admin. A redirect or a back-link to them lands a visitor on a 404 on the same origin, not in a loop and not on the admin. It is an incomplete promised check: the validator means to refuse those areas and does so only for one casing. The fix is a case-insensitive prefix match. Every genuinely dangerous vector held: off-site (`//evil`, `https://evil`, backslashes, `javascript:`, `data:`), CRLF and control characters, over-length, and encoded slashes stay a single same-origin path segment (spec change 39's intended behaviour).
 - **Evidence:** vitest output, round 1.
-- **Status:** open.
+- **Fixed 2026-11-13.** `refusedPath` in `theme/src/back.ts` compares in lower case. The `[RT-10]` test is flipped; one added: 15 mixed-case forms (plain, percent-encoded, behind dot segments, with a query) are all refused, and five paths that only share the letters (`/Payments`, `/_emdashboard`) are still a way back.
+- **Status:** fixed.
 
 ## RT-11 — A sync adds a wrong-network subaddress to the pool (the pre-agreed mixed-network finding)
 
@@ -253,7 +256,10 @@ Runner for every Host-layer finding: `createPluginRuntimeTestHost()` from `@emda
   - Pressing Get a test address 30 times claims at most one address.
   - Text after `|` in an action value acts only on the named invoice: it's the goods build's page position, not a second ID.
   - Observation (T30): when an admin marks a reversed tip settled, the tip totals stay at 0 XMR, because its payment is no longer reported.
-- **Status:** open.
+- **Fixed 2026-11-13 (spec change 53).** As Wyatt asked, the handler has no list of its own: `rowVerbs` (the All invoices menu: products, goods build) and `reviewVerbs` (a review item's buttons, by reason) build the page, and `offeredVerbs`, their union, is what `invoiceAction` checks. An open tip has neither, so a forged action is refused and nothing changes.
+  - **A narrowing to know about:** a tip in review now takes only the action its item shows. For example a late tip short of its amount shows Expire only, so a forged Mark settled on it is refused; before, the handler took either. A product in review in the goods build keeps both through its row menu, as the page says.
+  - Tests: the `[RT-14]` test flipped. The existing review-queue and goods-menu tests pass unchanged (full suite below).
+- **Status:** fixed.
 
 ## RT-15 — At a spam-cap-sized backlog each sync's watch scan takes ~28 s, within ~2 s of the 30 s wall (corrected 2026-11-13: about 0.9 s; closed as Low)
 

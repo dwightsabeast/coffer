@@ -5432,3 +5432,35 @@ Docs only: no live runs, no sudo. About 45 minutes, by Wyatt's limit.
 **What's left before phase 09:** the six Lows (RT-02, RT-03, RT-10, RT-14, RT-22, RT-23), the EmDash 1.4.0 check (a dependency upgrade: Wyatt approves first; it includes the flood-seed timing run), and the RT-08 re-check question.
 
 **Next step:** the Lows, plan first; Wyatt picks the order or whether they go in one session.
+
+## 2026-11-13 · Phase 07b fix sessions · The Lows, session 1: RT-02, RT-03, RT-10, RT-14 fixed (plugin and theme)
+
+**CI:** run 43534025888 passed on `2346103` (RT-05).
+
+**Wyatt approved the plan for the six Lows** with these answers (decisions row; spec change 53):
+- RT-03: remove the lone surrogate, keep the tip; no cut may leave half a character; a test with an emoji at the limit.
+- RT-23: the wire state stays `ok` with a different detail. The admin page is fixed in session 2 only if it can tell "nothing was checked" from data it has or a field already on the wire, never from the bridge's detail text.
+- RT-14: the handler gets its allowed actions from the code that builds the page's menu.
+- RT-22: a line on what Ctrl-C does once the machine has started changing (below).
+- Order: this session now; session 2 (RT-22, RT-23, the bridge) when he's at the terminal.
+
+**Done, each test red first:**
+- **RT-02:** `parseKraken(text, currency)` reads only the pair asked for (`XXMRZ<cur>` or `XMR<cur>`). The supported currencies are USD and EUR, both with replies already in the tests.
+- **RT-03:** `cleanNote` removes lone surrogates with the format characters, before the count. A note is never cut (over 140 code points it is refused), so the "clean after cutting" case can't arise; the tests show an emoji at the limit kept whole and one character over refused.
+- **RT-10:** `refusedPath` in `theme/src/back.ts` compares in lower case.
+- **RT-14:** `rowVerbs` and `reviewVerbs` build the page's menu and review buttons, and `invoiceAction` checks against their union (`offeredVerbs`). **A narrowing:** a tip in review now takes only the action its item shows (before, either). New test: for all seven review cases, on a tip, the handler takes exactly what the item shows; it failed without the fix on "late, paid in full: expire".
+- The test tip in Setup has no action of its own (checked in `admin.ts`); it settles through the review queue like any tip.
+
+**Test results:**
+- Plugin, default config: 529 passed, 7 expected fail, 1 skipped (was 522, 10, 1: three flipped, four new). Goods config: 101 passed, 1 skipped.
+- Theme: 80 passed, 1 skipped; typecheck clean.
+- Plugin typecheck clean, manifest valid, bundle check passed at 74.6 KB.
+- No live run: none of the four changes a path the dev site exercises differently from the test host. The dev site wasn't started; `data.db` wasn't touched.
+
+**RT-22, for the install docs (read from `bridge/internal/installer/install.go`, not tried live):** once the installer has started changing the machine, Ctrl-C stops it at the step in progress and nothing is rolled back: the folders, the binary and whatever was finished stay, and what it did is in `/var/lib/xmr-bridge/log/install.log`. Running the installer again finishes the job and keeps an existing wallet program and wallet; if the Ctrl-C came after "Pairing with…", the code is used, so press the button for a new one first. Session 2's live step can confirm this.
+
+**Commits:** RT-02 and RT-03 share one commit (both change `plugin/tests/redteam/checkout.test.ts`), then RT-10, RT-14, and the docs. Local; not pushed.
+
+**What's left before phase 09:** session 2 of the Lows (RT-22, RT-23; a dev release and Wyatt's sudo step), the EmDash 1.4.0 check (Wyatt approves the upgrade first; it includes the flood-seed timing run), and the RT-08 re-check question.
+
+**Next step:** session 2, when Wyatt is at the terminal: un-skip the three Go tests, RT-23 then RT-22, then the script for his step.

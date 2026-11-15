@@ -12,7 +12,10 @@ export const PURGE_BATCH = 25;
 export const CRON_TASK = "housekeeping";
 export const CRON_SCHEDULE = "0 * * * *"; // hourly: the cron is only a backup
 
-/** Purges buyer contact data from up to PURGE_BATCH invoices final for 30 days, resuming where the last batch stopped. */
+/**
+ * Purges buyer contact data from up to PURGE_BATCH invoices final for 30 days, or never final and 30 days past their
+ * window, resuming where the last batch stopped.
+ */
 export async function purgeBatch(ctx: PluginContext, now: number): Promise<number> {
 	const col = invoices(ctx);
 	const cursor = (await ctx.kv.get<string>(KV.purgeCursor)) ?? undefined;
@@ -25,7 +28,9 @@ export async function purgeBatch(ctx: PluginContext, now: number): Promise<numbe
 	});
 	let purged = 0;
 	for (const { id, data } of page.items) {
-		if (data.buyer && data.finalAt !== undefined && now >= data.finalAt + PURGE_MS) {
+		// RT-41: an invoice that never became final (no sync ever covered it again, or it's held at confirming) has no
+		// finalAt. Its window closed more than 30 days ago (the query above), so its buyer data goes too; its status stays.
+		if (data.buyer && (data.finalAt === undefined || now >= data.finalAt + PURGE_MS)) {
 			const { buyer: _removed, ...rest } = data;
 			await col.put(id, rest);
 			purged++;

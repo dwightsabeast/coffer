@@ -134,6 +134,25 @@ describe("housekeeping and the backup cron", () => {
 		expect(((await h.inspect.storage.get("invoices", "inv_9")) as Invoice).buyer).toEqual({ email: "b@example.invalid" });
 	});
 
+	it("[P04] [RT-41] an invoice that never became final loses its buyer data 30 days after its window, whatever its status", async () => {
+		const h = await paired();
+		const old = Date.now() - PURGE_MS - 3_600_000;
+		// Never covered by a sync again (the wallet host was removed), and held at confirming: neither has a finalAt.
+		await claimedInvoice(h, 8, { status: "new", expiresAt: old, pendingExpiry: true, buyer: { note: "left open" } });
+		await claimedInvoice(h, 9, { status: "confirming", expiresAt: old, buyer: { note: "held" } });
+		// Final, but not for 30 days yet: kept, as before.
+		await claimedInvoice(h, 10, { status: "review", expiresAt: old, finalAt: Date.now() - 1000, buyer: { note: "in review" } });
+		// An open invoice inside its 30 days: kept.
+		await claimedInvoice(h, 11, { status: "new", expiresAt: Date.now() - PURGE_MS + 3_600_000, buyer: { note: "recent" } });
+		await sync({});
+		const buyer = async (n: number) => ((await h.inspect.storage.get("invoices", `inv_${n}`)) as Invoice).buyer;
+		expect(await buyer(8)).toBeUndefined();
+		expect(await buyer(9)).toBeUndefined();
+		expect(await buyer(10)).toEqual({ note: "in review" });
+		expect(await buyer(11)).toEqual({ note: "recent" });
+		expect(((await h.inspect.storage.get("invoices", "inv_8")) as Invoice).status).toBe("new");
+	});
+
 	it("[P04] activation and the first admin page load schedule the backup cron; it purges too", async ({ task }) => {
 		host = await createPluginRuntimeTestHost();
 		expect(await host.inspect.scheduledTasks()).toEqual([]);

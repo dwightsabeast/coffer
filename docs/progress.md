@@ -5815,3 +5815,5 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **Database:** backed up first with `VACUUM INTO` (`~/xmr-pay-dev-data/redteam/09-e2e-before.db`), restored after with the site stopped, and verified: 64 invoices, 366 pool rows, the bridge key present with the same fingerprint as before. Dev site stopped; port 4321 free.
 
 **Next step:** T28's CI steps (`govulncheck` on `bridge/`, `pnpm audit --prod`), pins shown to Wyatt first.
+
+**CI on `42a5369`** (Wyatt's pull request from `release-1` to `main`): run 43726973474, success; plugin, bridge (race-detector tests included) and theme all passed. That is the first CI run covering the six fixes and step 3.

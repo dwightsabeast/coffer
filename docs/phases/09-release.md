@@ -95,11 +95,12 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
   - **How it pages:** like All invoices' `invoices_page` and `invoices_newest`, with a storage cursor over the query the Tips view already runs (`where: { kind: "tip" }, orderBy: { createdAt: "desc" }`). That's the declared `["kind", "createdAt"]` index.
   - **No contract change:** no new route, collection, index, capability, page or widget.
   - **What a page shows:** the rows with items 1–3 above.
-    - Test tips (no `via`) are filtered out after the query, so a page can hold fewer than 10.
+    - Test tips (no `via`) are filtered out after the query, so a page can hold fewer than 10, the first included (accepted for 1.0.0, Wyatt 2026-11-15; on the after-release list in `docs/decisions.md`).
     - Tips past the 30-day purge show without notes.
     - The totals don't change: they still cover the newest 1,000.
   - **Tests, written first:**
-    - **[F04] A malformed or forged cursor is refused with an error toast, changes nothing, and never crashes.** Wrong type, empty, oversized, look-alike, another list's cursor, and one built by hand.
+    - **[F04] A malformed cursor, or one EmDash can't decode, is refused with an error toast, changes nothing, and never crashes.** Wrong type, empty, oversized, look-alike, cut short, and one built by hand.
+      - **A well-formed cursor from another list isn't always refused** (RT-42, Low, accepted by Wyatt 2026-11-15): to EmDash it is a position, so one that decodes shows a page of visitor tips from the same query. Admin-only, read-only, data the admin can already see. The test records that it shows nothing else and writes nothing.
     - **[F04] A non-admin request is refused:** an anonymous user, a signed-in user who isn't an admin, and a request without `X-EmDash-Request`.
     - **[T30] Test tips are filtered:** they never appear on any page and never count.
     - **[T09] No page shows a pay token.**

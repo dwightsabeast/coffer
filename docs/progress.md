@@ -5781,3 +5781,22 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **State of the box:** dev site and built copy stopped; `data.db` as restored on 2026-11-15; working tree clean after this commit; `release-1` is ahead of `origin/release-1` (at `271447f`) by step 3's commits. A session-end bundle follows.
 
 **Next step:** Wyatt's answers (a pull request or merge so CI runs; the three "EmDash's address for this site" lines); then T28's CI steps (REV-4), and step 2 when the install host and the release key exist.
+
+## 2026-11-15 · Phase 09, step 3 · Wyatt's answers: RT-42, the phase file's wording, the listing trimmed
+
+**Wyatt's rulings (2026-11-15), recorded in `docs/decisions.md`:**
+- Step 3's commits pushed: `origin/release-1` was at `b87db3d` before this commit (the first try failed on a DNS lookup for github.com; the retry went through).
+- **CI:** Wyatt opened a pull request from `release-1` to `main` and leaves it open until 1.0.0, so every push runs CI. **Claude never merges to `main`.**
+- "EmDash's address for this site" stays on the three lines.
+- The first tips page holding fewer than 10: accepted for 1.0.0; on the new "After release 1 (backlog, not planned)" list in `docs/decisions.md`. There was no single list before, so that section also points at the items already left for after release 1 (spec change 51's three, RT-23's admin field, REV-9 as a recommendation not yet ruled on, C07).
+- **RT-42, Low, accepted, no code change:** a well-formed cursor from another list isn't always refused by `tips_page` (admin-only, read-only, data the admin can already see). Filed in `docs/redteam-findings.md`; the phase file's F04 test line and "fewer than 10" line now match; matrix row F04 and the step 3 delta review name it.
+
+**Done, test first:** the listing's installation text (`plugin/docs/installation.md`) is 1,841 graphemes, down from 1,985, so the real install address fits later. A new test in `plugin/tests/manifest.test.ts` caps it at 1,850 and checks that "never the spend key", the `/_emdash/api/plugins/coffer/*` line and the install guide's link are still there (red at 1,985 first). What was shortened is listed in the delta review.
+
+**Test results** (`~/xmr-pay-dev-data/09-step3b-plugin-tests.txt`, exit 0): typecheck; validate; bundle check 76.7 KB; the full plugin suite, 47 files, 543 passed, 7 expected fail, 1 skipped (default); 6 files, 102 passed, 1 skipped (switch on). Theme and bridge untouched, not re-run.
+
+**The bundle for `b87db3d`** (made before this entry): `~/xmr-pay-dev-data/bundles/coffer-release-1-20261115-b87db3d.bundle`, SHA-256 `ff560d283987157a0fb079c1d3102aeda0e40d606cd87afffcb529127c975e47`.
+
+**Not covered:** `scripts/dev-e2e.mjs` (non-admin refusals); the admin page by eye (Wyatt, with `inv_f7ea94de1471f114`); `docs/install.md` against a real release; the listing's trimmed text hasn't been seen rendered on a registry page.
+
+**Next step (Wyatt, 2026-11-15):** run `scripts/dev-e2e.mjs` for the non-admin refusals (back up `data.db` first, fresh plugin build, dev site running), then T28's CI steps: `govulncheck` on `bridge/` and `pnpm audit --prod` (REV-4; a new GitHub Action or tool in CI is a dependency, so show Wyatt the exact pin first). Step 2 waits on the install host and the release key.

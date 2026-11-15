@@ -5,6 +5,7 @@ import { afterEach, expect, it } from "vitest";
 import { createPluginTestHost, type PluginTestHost } from "@emdash-cms/plugin-test";
 
 import descriptionSection from "../docs/description.md?raw";
+import installationSection from "../docs/installation.md?raw";
 import manifestSource from "../emdash-plugin.jsonc?raw";
 import packageSource from "../package.json?raw";
 
@@ -84,4 +85,12 @@ it("the listing says what setup needs before the Install click (spec change 41 i
 	expect(descriptionSection).toContain("EmDash 1.4.0 or later");
 	expect(graphemes(descriptionSection)).toBeLessThanOrEqual(2000);
 	expect(new TextEncoder().encode(descriptionSection).length).toBeLessThanOrEqual(20_000);
+});
+
+// Wyatt, 2026-11-15: about 1,850 of the registry's 2,000 graphemes, so the real install address fits later.
+it("the listing's installation text leaves room under the registry's 2,000 graphemes and links the install guide", () => {
+	expect(graphemes(installationSection)).toBeLessThanOrEqual(1850);
+	expect(installationSection).toContain("https://github.com/dwightsabeast/coffer/blob/coffer%401.0.0/docs/install.md");
+	expect(installationSection).toContain("/_emdash/api/plugins/coffer/*");
+	expect(installationSection).toContain("never the spend key");
 });

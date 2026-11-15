@@ -49,6 +49,7 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-39 | Low (Wyatt, 2026-11-15) | T28 | phase 09 security review | go1.27.3 carries GO-2026-6859 (net/http server); govulncheck reports it as called | **fixed in the repo** 2026-11-15: go1.27.4 in both `go.mod` files; govulncheck reports nothing. The dev box's own Go waits on Wyatt's sudo step |
 | RT-40 | Low (Wyatt, 2026-11-15) | T07 | phase 09 security review (the independent reviewer) | Checkout reads the speed setting with `in`, so an inherited name would give no confirmation target | **fixed** 2026-11-15: checkout uses the form's own check. Reproduced before the fix: `required` was undefined |
 | RT-41 | Low (Wyatt, 2026-11-15) | P04, T02 | phase 09 security review | An invoice that never becomes final keeps its note for good | **fixed** 2026-11-15: the purge also clears a never-final invoice 30 days past its window |
+| RT-42 | Low (Wyatt, 2026-11-15) | F04 | phase 09 step 3 (the `tips_page` delta review) | A well-formed cursor from another list isn't always refused by `tips_page`; one that decodes shows a page of visitor tips | **accepted** 2026-11-15: admin-only, read-only, data the admin can already see. No code change |
 
 ---
 
@@ -1102,3 +1103,11 @@ Found by reading the code against the spec, not by an attacker session. The full
 - **RT-40, Low, fixed.** The test showed it before the fix: with `speed` stored as `toString`, a tip's `required` was undefined. `isSpeed` now lives in `core/constants.ts` and checkout uses it.
 - **RT-41, Low, fixed** (it was small). `purgeBatch` clears buyer data when `finalAt` is missing; the query already limits it to invoices more than 30 days past their window. The status doesn't change.
 
+## RT-42 — A well-formed cursor from another list isn't always refused by `tips_page`
+
+- **Rows:** F04. **Low, accepted** (Wyatt, 2026-11-15). No code change.
+- **Found in:** phase 09 step 3, the delta review of `tips_page`. The phase file asked for another list's cursor to be refused.
+- **What happens:** a cursor that is the wrong type, empty, oversized, not base64, cut short, or one EmDash can't decode gets the toast "That page of tips isn't available. Showing the newest." and the newest page. A well-formed cursor is a position to EmDash, not a reference to a list. The hand-built ones tried were refused; one that did decode would be read as a position in the tips query.
+- **Reach:** the private `admin` route only, so an admin. The query is fixed (`kind: "tip"`, newest first), so such a cursor can only show a page of visitor tips, 10 at a time, which the admin can already page to. It can't show another kind of invoice, and nothing is written.
+- **Why accepted:** admin-only, read-only, data the admin can already see.
+- **Tested:** `plugin/tests/routes/admin-tips-page.test.ts`, the two "[F04] …" tests record what is refused and that a cursor that decodes shows only visitor tips.

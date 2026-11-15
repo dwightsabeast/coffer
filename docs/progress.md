@@ -5739,7 +5739,7 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 
 ## 2026-11-15 · Phase 09, step 3 · Handoff after items 1 and 2: tip rows and "Show older tips"
 
-**CI:** see the next entry; the run on `271447f` was still going when this was written.
+**CI:** see the next entry.
 **Wyatt (2026-11-15):** spec change 56 accepted; the fix commits pushed (`release-1` at `271447f`); go1.27.4 installed on the dev box (`go1274-install-output.txt`: PASS; the bridge tests pass on the system Go). RT-38 confirmed: a remote node given by a public IP is still cross-checked (`TestIsOwnNode`: 8.8.8.8, 203.0.113.7 and 2001:db8::1 are remote); only `localhost` and loopback, private or link-local addresses keep the check off.
 
 **Done (items 1 and 2), tests first:**
@@ -5751,3 +5751,13 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 - **Differs from the phase file's wording:** it says a cursor from another list is refused. A well-formed cursor is a position to EmDash, so one that decodes shows a page of visitor tips; it can't show another kind or change anything. The test records that.
 
 **Next step:** item 3 (spec change 42's banner and toast text), then `docs/install.md`, then the delta review for step 3.
+
+## 2026-11-15 · Phase 09, step 3 · Handoff after item 3: spec change 42's banner and toast text
+
+**CI on the six fixes: not run.** `ci.yml` runs on pushes to `main` and on pull requests; `release-1` has neither, so the push of `271447f` started nothing (the watcher found no runs). `redteam-1`'s runs came from its pull request. The merge on `main` (`0e7dab2`) did run: 43671545805 passed. **For Wyatt:** open a pull request from `release-1` to `main`, or say to merge `release-1` into `main` and push.
+
+**Done (item 3), tests first:** the two red address banners and the toast carry Wyatt's exact text of 2026-11-06 (`PROXY_AND_SIGN_IN` in `plugin/src/admin.ts`); the titles are unchanged. The toast is "This site has no public https address".
+- **Also changed, for Wyatt to confirm:** the three other lines that said "EmDash's saved address" now say "EmDash's address for this site" (the grey line under the command, in both forms, and the "Two addresses for this site" warning). That was item 3's original wording change; the 2026-11-06 text didn't cover those lines.
+- **Tests:** `admin-site.test.ts` and `admin-route.test.ts` changed first (five red), then green. Route and red-team admin tests: 207 passed, 1 skipped. Typecheck; bundle check 76.7 KB.
+
+**Next step:** `docs/install.md`, then step 3's delta review, the full suites and a push if Wyatt says so.

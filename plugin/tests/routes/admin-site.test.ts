@@ -53,13 +53,15 @@ describe("walletHostSite: which address the install command uses", () => {
 	});
 });
 
+const PROXY_AND_SIGN_IN = " If this site is behind a proxy that ends https, visitors' tips are also refused until EmDash knows its public address. See EmDash's guide for sites behind a proxy: https://docs.emdashcms.com/reference/configuration/#reverse-proxy-setup. Before changing anything, make sure you'll still be able to sign in afterward: a passkey only works at the address where it was made. If you can already sign in at your public https address, open this page there and Coffer uses it.";
+
 describe("the admin page with EmDash's saved address on localhost", () => {
 	it("[T25] Origin reaches the admin route: the command uses the browser's https address and says why", async () => {
 		host = await createPluginRuntimeTestHost({ site: { url: "http://localhost:4321" } });
 		const r = await connect(host, { origin: "https://dev.example.com" });
 		expect(r.toast).toMatchObject({ type: "success" });
 		expect(command(r.blocks)).toMatch(/--site https:\/\/dev\.example\.com --pair [A-Za-z0-9_-]{22}$/);
-		expect(texts(r.blocks)).toContain("The wallet host will connect to https://dev.example.com (from your browser, because EmDash's saved address for this site is http://localhost:4321).");
+		expect(texts(r.blocks)).toContain("The wallet host will connect to https://dev.example.com (from your browser, because EmDash's address for this site is http://localhost:4321).");
 	});
 
 	it("[T25] without an https Origin: a red line, no command and no code", async () => {
@@ -68,7 +70,9 @@ describe("the admin page with EmDash's saved address on localhost", () => {
 			const r = await connect(host, headers);
 			expect(r.toast, JSON.stringify(headers)).toMatchObject({ type: "error" });
 			expect(command(r.blocks)).toBeUndefined();
-			expect(r.blocks.find((b) => b.type === "banner" && b.variant === "error" && String(b.description).includes("http://localhost:4321"))).toBeDefined();
+			// Spec change 42, Wyatt's exact text of 2026-11-06: no advice to change EmDash's address settings (lockout risk).
+			expect(r.toast, JSON.stringify(headers)).toEqual({ type: "error", message: "This site has no public https address" });
+			expect(r.blocks.find((b) => b.type === "banner" && b.title === "Your site's address can't be used for the wallet host")).toMatchObject({ variant: "error", description: `EmDash's address for this site is http://localhost:4321, not a public https address, so a wallet host on another machine can't use it.${PROXY_AND_SIGN_IN}` });
 		}
 		expect(await host.inspect.kv.get("state:pairing")).toBeNull();
 	});
@@ -80,7 +84,7 @@ describe("the admin page with EmDash's saved address on localhost", () => {
 		const warn = r.blocks.find((b) => b.type === "banner" && b.variant === "alert") as B;
 		expect(String(warn.description)).toContain("https://shop.example");
 		expect(String(warn.description)).toContain("https://www.shop.example");
-		expect(texts(r.blocks)).toContain("The wallet host will connect to https://shop.example (EmDash's saved address for this site).");
+		expect(texts(r.blocks)).toContain("The wallet host will connect to https://shop.example (EmDash's address for this site).");
 	});
 
 	it("[T25] the page load (not only the button) uses the same rule", async () => {

@@ -170,15 +170,19 @@ describe("pairing codes and the site URL", () => {
 		const blocks = (await host.admin.act("/payments", "connect_wallet_host")).blocks as B[];
 		const cmd = (find(blocks, (x) => x.type === "code" && String(x.code).includes("/install.sh")) as B).code as string;
 		expect(cmd).toContain("--site https://shop.example --pair ");
-		expect(texts(blocks)).toContain("The wallet host will connect to https://shop.example (EmDash's saved address for this site).");
+		expect(texts(blocks)).toContain("The wallet host will connect to https://shop.example (EmDash's address for this site).");
 	});
 
 	it("[T25] with no site URL, no command is shown and no code is created", async () => {
 		host = await createPluginRuntimeTestHost({ site: { url: "" } });
 		const r = await host.admin.act("/payments", "connect_wallet_host");
-		expect(r.toast).toMatchObject({ type: "error" });
+		expect(r.toast).toEqual({ type: "error", message: "This site has no public https address" });
 		expect(codeFrom(r.blocks as B[])).toBeUndefined();
-		expect(find(r.blocks as B[], (x) => x.type === "banner" && x.title === "Your site's address isn't known")).toMatchObject({ variant: "error" });
+		// Spec change 42, Wyatt's exact text of 2026-11-06.
+		expect(find(r.blocks as B[], (x) => x.type === "banner" && x.title === "Your site's address isn't known")).toMatchObject({
+			variant: "error",
+			description: "EmDash has no address for this site, so a wallet host on another machine can't connect to it. If this site is behind a proxy that ends https, visitors' tips are also refused until EmDash knows its public address. See EmDash's guide for sites behind a proxy: https://docs.emdashcms.com/reference/configuration/#reverse-proxy-setup. Before changing anything, make sure you'll still be able to sign in afterward: a passkey only works at the address where it was made. If you can already sign in at your public https address, open this page there and Coffer uses it.",
+		});
 		expect(await host.inspect.kv.get("state:pairing")).toBeNull();
 	});
 });

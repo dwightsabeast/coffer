@@ -487,18 +487,18 @@ export function walletHostSite(savedUrl: string, browserOrigin: string | undefin
 function siteBlocks(site: WalletHostSite): Block[] {
 	if (site.url === null) {
 		const description = site.saved
-			? `EmDash's saved address for this site is ${site.saved}, which a wallet host on another machine can't use: it needs your site's public https address. Open this page at that address (the one visitors use), and Coffer uses it instead.`
-			: "EmDash has no saved address for this site. Open this page at your site's public https address (the one visitors use), and Coffer uses it.";
+			? `EmDash's address for this site is ${site.saved}, not a public https address, so a wallet host on another machine can't use it.${PROXY_AND_SIGN_IN}`
+			: `EmDash has no address for this site, so a wallet host on another machine can't connect to it.${PROXY_AND_SIGN_IN}`;
 		return [{ type: "banner", variant: "error", title: site.saved ? "Your site's address can't be used for the wallet host" : "Your site's address isn't known", description }];
 	}
 	const line: Block = {
 		type: "context",
-		text: site.source === "browser" ? `The wallet host will connect to ${site.url} (from your browser, because EmDash's saved address for this site is ${site.saved || "empty"}).` : `The wallet host will connect to ${site.url} (EmDash's saved address for this site).`,
+		text: site.source === "browser" ? `The wallet host will connect to ${site.url} (from your browser, because EmDash's address for this site is ${site.saved || "empty"}).` : `The wallet host will connect to ${site.url} (EmDash's address for this site).`,
 	};
 	if (!site.browser) return [line];
 	return [
 		line,
-		{ type: "banner", variant: "alert", title: "Two addresses for this site", description: `EmDash's saved address is ${site.url}, but you opened this page at ${site.browser}. The command uses ${site.url}. If the site has moved, the wallet host won't reach it there: open this page at ${site.url} to check it still answers.` },
+		{ type: "banner", variant: "alert", title: "Two addresses for this site", description: `EmDash's address for this site is ${site.url}, but you opened this page at ${site.browser}. The command uses ${site.url}. If the site has moved, the wallet host won't reach it there: open this page at ${site.url} to check it still answers.` },
 	];
 }
 
@@ -1059,6 +1059,13 @@ interface PageOptions {
 	tipsCursor?: string;
 }
 
+/**
+ * Spec change 42 (Wyatt's exact text, 2026-11-06, RT-20's known limit): the red address banners say what a proxied site
+ * needs and warn about sign-in, and never tell the admin to change EmDash's address settings (a passkey made at the old
+ * address stops working, so a sole admin could be locked out).
+ */
+const PROXY_AND_SIGN_IN = " If this site is behind a proxy that ends https, visitors' tips are also refused until EmDash knows its public address. See EmDash's guide for sites behind a proxy: https://docs.emdashcms.com/reference/configuration/#reverse-proxy-setup. Before changing anything, make sure you'll still be able to sign in afterward: a passkey only works at the address where it was made. If you can already sign in at your public https address, open this page there and Coffer uses it.";
+
 const PAIRED_WARNING = "A wallet host is already paired. Pairing a new one replaces it, and the current one stops syncing.";
 const CONNECT_HINT = "Use this to move, rebuild or replace your wallet host. It creates a one-time code (15 minutes) and the install command.";
 
@@ -1160,7 +1167,7 @@ export async function handleAdmin(ctx: PluginContext, input: unknown, now: numbe
 		return { blocks: await view(), toast: { message: "Settings saved. They apply to new invoices.", type: "success" } };
 	}
 	if (i.type === "block_action" && i.action_id === "connect_wallet_host") {
-		if (walletHostSite(ctx.site.url, origin).url === null) return { blocks: await view(), toast: { message: "Open this page at your site's public https address first.", type: "error" } };
+		if (walletHostSite(ctx.site.url, origin).url === null) return { blocks: await view(), toast: { message: "This site has no public https address", type: "error" } };
 		// A new code replaces the stored hash, so any earlier code stops working at once.
 		const { code, state } = await newPairingCode(now);
 		await ctx.kv.set(KV.pairing, state);

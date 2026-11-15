@@ -75,36 +75,25 @@ func DefaultNodes(network string) []string {
 	return append([]string{}, l...)
 }
 
-// IsOwnNode reports whether nodeURL points at the shop's own node: a loopback, private or link-local address, or
-// a host name that resolves only to such addresses.
-func IsOwnNode(ctx context.Context, nodeURL string) (bool, error) {
+// IsOwnNode reports whether nodeURL points at the shop's own node: "localhost", or a loopback, private or link-local
+// address written as an address. A node given by any other name is remote, whatever the name resolves to (RT-38): the
+// answer to a lookup belongs to whoever runs the name's DNS, which for a remote node is the party the cross-check
+// exists to check, and wallet-rpc resolves the name separately. So no lookup is made here, and a remote node is never
+// left unchecked: when no second node answers, its mined payments are held and Health warns (Unavailable).
+func IsOwnNode(_ context.Context, nodeURL string) (bool, error) {
 	u, err := url.Parse(nodeURL)
 	if err != nil || u.Hostname() == "" {
 		return false, fmt.Errorf("crosscheck: not a node URL")
 	}
 	host := u.Hostname()
-	var ips []net.IP
-	if ip := net.ParseIP(host); ip != nil {
-		ips = []net.IP{ip}
-	} else if host == "localhost" {
+	if host == "localhost" {
 		return true, nil
-	} else {
-		rctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		defer cancel()
-		addrs, err := net.DefaultResolver.LookupIPAddr(rctx, host)
-		if err != nil || len(addrs) == 0 {
-			return false, fmt.Errorf("crosscheck: can't resolve %s", host)
-		}
-		for _, a := range addrs {
-			ips = append(ips, a.IP)
-		}
 	}
-	for _, ip := range ips {
-		if !(ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast()) {
-			return false, nil
-		}
+	ip := net.ParseIP(host)
+	if ip == nil {
+		return false, nil
 	}
-	return true, nil
+	return ip.IsLoopback() || ip.IsPrivate() || ip.IsLinkLocalUnicast(), nil
 }
 
 // Checker cross-checks against a list of second nodes. Safe for one caller at a time per sync.

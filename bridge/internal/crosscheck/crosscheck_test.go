@@ -259,6 +259,26 @@ func TestIsOwnNode(t *testing.T) {
 	}
 }
 
+// RT-38: "own node" must never rest on a DNS answer, which the node's operator controls: an operator who answered the
+// bridge's lookup with a private address switched the cross-check off for good. A node given by name is remote,
+// whatever the name resolves to, and deciding it takes no lookup (so a name that doesn't resolve is no error either).
+func TestRedteamOwnNodeNeverByName(t *testing.T) {
+	t.Run("[T14] [RT-38] a node given by name is cross-checked, whatever its name resolves to", func(t *testing.T) {
+		for _, u := range []string{
+			"https://node.example.invalid:18089", // doesn't resolve: no lookup is made
+			"http://ip6-localhost:18081",         // in /etc/hosts as ::1 on Debian and Ubuntu
+			"http://localhost.localdomain:18081",
+			"http://monerod.lan:18081",
+			"http://LOCALHOST.example:18081",
+		} {
+			got, err := IsOwnNode(context.Background(), u)
+			if err != nil || got {
+				t.Errorf("%s: own=%v err=%v, want a remote node and no error", u, got, err)
+			}
+		}
+	})
+}
+
 func TestDefaultNodes(t *testing.T) {
 	st := DefaultNodes("stagenet")
 	if len(st) < 3 {

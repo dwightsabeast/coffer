@@ -5831,3 +5831,14 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **Not covered:** the steps haven't run on a GitHub runner; the workflow file wasn't parsed locally (no YAML parser on the box); exit 3 wasn't reproduced through the new step (it was seen on go1.27.3, RT-39). Matrix T28 stays Planned until a CI run passes.
 
 **Next step:** with Wyatt's go-ahead, push this commit and read the pull request's CI run; if it passes, mark T28 Covered and close REV-4 and section 8's item 3. Then step 2 when the install host and the release key exist.
+
+## 2026-11-15 · Phase 09 · T28's CI steps passed in CI; T28 Covered, REV-4 closed
+
+**Pushed** (Wyatt): `6a723c6`. **CI run 43729208960 on `6a723c6`: success.** Read from the run's step list: "Audit runtime dependencies" succeeded in the plugin and theme jobs; "Install govulncheck v1.9.0" (with the module-hash check) and "govulncheck on the bridge" succeeded in the bridge job.
+**Wyatt's ruling:** keep the stricter exit rule (any govulncheck failure fails the job). Recorded in `docs/decisions.md`.
+**Docs:** matrix T28 is Covered; REV-4 and section 8's item 3 in `docs/security-review.md` are closed. Threat rows now: 26 Covered, 5 Partial (T01, T02, T08, T15, T23), none Planned.
+**Not covered:** a failing scan has not been seen in CI (exit 3 was seen on the dev box on go1.27.3, RT-39).
+
+**Still open before publishing** (`docs/security-review.md`, section 8): the release key and install address (step 2: needs the install host and the offline key); EmDash 1.5.0's check after 2026-11-18, about 18:20 UTC; the public report and `docs/security.md`; binary-mode govulncheck and `pnpm audit` on the release artifacts; the admin page by eye (Wyatt, `inv_f7ea94de1471f114`); `docs/install.md` against a real release.
+
+**Next step:** step 2 (build and sign) when Wyatt has the install host and the release key's public half.

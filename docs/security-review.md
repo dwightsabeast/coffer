@@ -221,7 +221,7 @@ New findings are filed in `docs/redteam-findings.md` with the next RT numbers. T
 
 **REV-3 (Low; row T30). A tip's `contentRef` gives back the title of any published entry in any collection,** in the `monero:` URI's description. A miss answers before any limit applies, so it's also an unmetered check of whether an entry ID is published; the title stays on the invoice after the entry is unpublished. Recommended: accept (published means public), with a line in the report.
 
-**REV-4 (process; row T28). The dependency checks decided on 2026-10-31 aren't in CI:** `govulncheck@v1.9.0` on `bridge/` failing on exit 3, and `pnpm audit --prod --audit-level high` in `plugin/` and `theme/`. Recommended: build both before the first release, with RT-39 fixed first or the new step fails.
+**REV-4 (process; row T28). The dependency checks decided on 2026-10-31 aren't in CI:** `govulncheck@v1.9.0` on `bridge/` failing on exit 3, and `pnpm audit --prod --audit-level high` in `plugin/` and `theme/`. Recommended: build both before the first release, with RT-39 fixed first or the new step fails. **Built 2026-11-15** in `.github/workflows/ci.yml` (see the delta reviews); not yet run in CI.
 
 **REV-5 (wording, for a ruling; row T16). The spec says the install command checks "the bridge's signature"; it checks a SHA-256 written into the same script.** That is the decision of 2026-10-04, so the build is as decided. But a changed `install.sh` passes its own check, and the installer then runs as root: a first install trusts the install host and its TLS. The independent reviewer reads this half of row 16 as "does not hold as the spec states it", and I agree the label matters. Recommended: change the spec's sentence to "checks the download against this release's checksum", say so in the report, and give the by-hand check of `release.json`'s signature in the install docs.
 
@@ -241,7 +241,7 @@ New findings are filed in `docs/redteam-findings.md` with the next RT numbers. T
 
 1. **Rulings on RT-36 to RT-41** and on spec changes 55 and 56. Each fix is a code change with a delta review. I recommend fixing RT-36, RT-37 (spec change 55, item 1), RT-38, RT-39 and RT-40 before release 1.
 2. **`tips_page` and spec change 49 items 1 to 3** (step 3): build, then review the action the way 07b's B2 reviewed row actions. Rows F04, T30, T09. Tip rows will then show transfers, which is RT-36's code path.
-3. **T28's CI steps** (REV-4).
+3. **T28's CI steps** (REV-4). Built 2026-11-15; open until a CI run with them passes.
 4. **The release key and addresses** (steps 2 and 3): the real public key pinned, `releaseBase()` and the plugin's install URL replaced, and the tests that prove a release build holds no placeholder, dev key, dev option or test key.
 5. **The install docs' lines:** RT-12, RT-13, RT-19, the dedicated wallet, the proxy's public address (RT-20), the rate-limit rule for checkout, the by-hand signature check (REV-5).
 6. **EmDash 1.5.0** (after 2026-11-18, about 18:20 UTC): the upgrade checklist, and a re-check of every row in section 9. Until then `release.requires` admits 1.5.0 untested; either the check is done before the first publish or the range is capped below 1.5.0.
@@ -340,3 +340,15 @@ Commits `62855dd` (tip rows and `tips_page`), `7c4e2d4` (spec change 42's text) 
 **Run after step 3** (2026-11-15, at `af306e2`'s code): the full plugin suite, 47 files, 542 passed, 7 expected fail, 1 skipped (default) and 102 passed, 1 skipped (switch on); typecheck; bundle check 76.7 KB; theme 79 passed, 1 skipped, and its typecheck; bridge on the system go1.27.4, gofmt, vet, 21 packages ok. **Not run:** CI (it runs on `main` and on pull requests only, and `release-1` has neither); `scripts/dev-e2e.mjs`; nothing live.
 
 **The listing's installation text, trimmed** (2026-11-15, Wyatt): 1,985 to 1,841 graphemes, wording only, no code. Shortened: the pay page's list of privacy headers, the line before the tip button's example, the install guide's line, and two phrases ("walks you through the rest", "buyers' pay pages"). Kept: "never the spend key", the `/_emdash/api/plugins/coffer/*` line and the guide's link at the `coffer@1.0.0` tag. A new test in `manifest.test.ts` caps the text at 1,850 graphemes and checks those three (red at 1,985 first). Run after: typecheck; validate; bundle check 76.7 KB; the full plugin suite, 47 files, 543 passed, 7 expected fail, 1 skipped (default) and 102 passed, 1 skipped (switch on).
+
+### T28's CI steps (2026-11-15)
+
+`.github/workflows/ci.yml` only; no shipped code.
+
+| Change | Checked | Result |
+| --- | --- | --- |
+| **`pnpm audit --prod --audit-level high`** in the plugin and theme jobs, after the frozen install | As decided on 2026-10-31. Run on the dev box in both packages: "No known vulnerabilities found", exit 0. It audits only what `--prod` covers, which today is no shipped package, so it fires when a runtime dependency appears. The dev trees aren't gated | Holds |
+| **govulncheck v1.9.0** installed in the bridge job with `go install golang.org/x/vuln/cmd/govulncheck@v1.9.0` into the runner's temp folder | A CI-only tool, never in the bridge's module or build. Go fetches it through sum.golang.org; the step then checks the built binary's module line against the hash recorded in the workflow (`h1:12Vaqn…KY/sc=`, the same as the dev box's verified copy). Rehearsed on the dev box with CI's settings (`GOTOOLCHAIN=local`, `GOFLAGS=-mod=readonly`, `CGO_ENABLED=0`): installed, hash matched | Holds. The four `golang.org/x` modules it depends on are checked by sum.golang.org only, not pinned in the workflow |
+| **The scan step:** `govulncheck ./...` in `bridge/`, source mode | Exit 3 fails with "found a vulnerability that the bridge calls". **Any other non-zero exit also fails,** as "could not finish": the 2026-10-31 decision named exit 3 only, and a scan that didn't run shouldn't read as a pass. The cost: an outage at vuln.go.dev fails CI until a re-run. On the dev box at go1.27.4: "No vulnerabilities found", exit 0. Exit 3 was seen on go1.27.3 (RT-39) | Holds; the stricter exit rule is for Wyatt to confirm |
+| **Not scanned in CI** | `bridge/oracle/` (test-only, never shipped; the decision names `bridge/`). The release binaries in binary mode stay a step just before publishing (section 8, item 8) | As decided |
+

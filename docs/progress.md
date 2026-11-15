@@ -5817,3 +5817,17 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **Next step:** T28's CI steps (`govulncheck` on `bridge/`, `pnpm audit --prod`), pins shown to Wyatt first.
 
 **CI on `42a5369`** (Wyatt's pull request from `release-1` to `main`): run 43726973474, success; plugin, bridge (race-detector tests included) and theme all passed. That is the first CI run covering the six fixes and step 3.
+
+## 2026-11-15 · Phase 09 · T28's CI steps built (REV-4); not yet run in CI
+
+**Pushed first** (Wyatt): `fc9607f` and `e9c4286`; `origin/release-1` at `e9c4286`.
+
+**Built in `.github/workflows/ci.yml`,** as decided on 2026-10-31:
+- **Plugin and theme jobs:** `pnpm audit --prod --audit-level high` after the frozen install.
+- **Bridge job:** govulncheck v1.9.0 installed with `go install` into the runner's temp folder, its module hash checked against the one in the workflow, then `govulncheck ./...` in `bridge/` (source mode).
+- **One thing stricter than the decision, for Wyatt to confirm:** the decision said "failing on exit 3". The step also fails on any other non-zero exit ("could not finish"), so a scan that didn't run can't pass. An outage at vuln.go.dev would then fail CI until a re-run.
+
+**Run on the dev box** (system go1.27.4): `govulncheck ./...` in `bridge/`, "No vulnerabilities found", exit 0; `pnpm audit --prod --audit-level high` in `plugin/` and `theme/`, "No known vulnerabilities found", exit 0 each; the CI install rehearsed with CI's settings into the scratchpad, hash matched.
+**Not covered:** the steps haven't run on a GitHub runner; the workflow file wasn't parsed locally (no YAML parser on the box); exit 3 wasn't reproduced through the new step (it was seen on go1.27.3, RT-39). Matrix T28 stays Planned until a CI run passes.
+
+**Next step:** with Wyatt's go-ahead, push this commit and read the pull request's CI run; if it passes, mark T28 Covered and close REV-4 and section 8's item 3. Then step 2 when the install host and the release key exist.

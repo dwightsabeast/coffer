@@ -3,6 +3,8 @@
 # GOTOOLCHAIN=local so Go never fetches another toolchain.
 # Theme checks (2026-10-16, phase 06): typecheck and tests, including the QR round trip through ZBar's zbarimg (zbar-tools
 # from the runner's signed Ubuntu archive; never shipped, CI only). COFFER_REQUIRE_ZBAR=1 makes a missing zbarimg fail.
+# Dependency scans (T28; Wyatt, 2026-10-31): govulncheck v1.9.0 on bridge/ in source mode, and
+# pnpm audit --prod --audit-level high in plugin/ and theme/. The dev trees are not gated.
 # Hardening (Wyatt, 2026-10-03): read-only token, no pull_request_target, no persisted git credentials, frozen
 # lockfile, no dependency cache. Actions are GitHub's own, pinned to commit SHAs; pnpm comes from Node's corepack
 # at the exact version in plugin/package.json ("packageManager"), so there is no third-party setup action.
@@ -37,6 +39,8 @@ jobs:
         run: corepack enable pnpm && pnpm --version
       - name: Install (frozen lockfile; pnpm-workspace.yaml's install-script allowlist and release-age rule apply)
         run: pnpm install --frozen-lockfile
+      - name: Audit runtime dependencies (T28; fails on a high or critical advisory. There are none shipped today, so this fires when a runtime dependency appears)
+        run: pnpm audit --prod --audit-level high
       - name: Typecheck
         run: pnpm run typecheck
       - name: Validate manifest
@@ -71,6 +75,8 @@ jobs:
         run: corepack enable pnpm && pnpm --version
       - name: Install (frozen lockfile; pnpm-workspace.yaml's install-script allowlist and release-age rule apply)
         run: pnpm install --frozen-lockfile
+      - name: Audit runtime dependencies (T28; fails on a high or critical advisory. There are none shipped today, so this fires when a runtime dependency appears)
+        run: pnpm audit --prod --audit-level high
       - name: Typecheck
         run: pnpm run typecheck
       - name: Tests
@@ -107,6 +113,21 @@ jobs:
         run: go test -race -count=1 ./...
       - name: Static build
         run: go build -trimpath -o "$RUNNER_TEMP/xmr-bridge" ./cmd/xmr-bridge && file "$RUNNER_TEMP/xmr-bridge" | grep -q 'statically linked'
+      - name: Install govulncheck v1.9.0 (T28; the Go team's scanner, fetched through sum.golang.org, then checked against the module hash recorded here)
+        env:
+          GOBIN: ${{ runner.temp }}/gobin
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          go version -m "$GOBIN/govulncheck" | grep -F "$(printf 'golang.org/x/vuln\tv1.9.0\th1:12VaqnI9kJfqwRoPptxoqsUhQtdfrSbdksT7X/KY/sc=')"
+      - name: govulncheck on the bridge (source mode; exit 3 means a vulnerability the code calls; any other failure means the scan didn't finish, which isn't a pass)
+        run: |
+          status=0
+          "$RUNNER_TEMP/gobin/govulncheck" ./... || status=$?
+          case "$status" in
+            0) ;;
+            3) echo "::error::govulncheck found a vulnerability that the bridge calls"; exit 1 ;;
+            *) echo "::error::govulncheck could not finish (exit $status)"; exit 1 ;;
+          esac
       - name: Hash-list verifier against gpgv and go-crypto (bridge/oracle, a separate test-only module)
         working-directory: bridge/oracle
         run: gpgv --version | head -1 && test -z "$(gofmt -l .)" && go vet ./... && go test -count=1 -v ./...

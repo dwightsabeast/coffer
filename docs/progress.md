@@ -5800,3 +5800,18 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **Not covered:** `scripts/dev-e2e.mjs` (non-admin refusals); the admin page by eye (Wyatt, with `inv_f7ea94de1471f114`); `docs/install.md` against a real release; the listing's trimmed text hasn't been seen rendered on a registry page.
 
 **Next step (Wyatt, 2026-11-15):** run `scripts/dev-e2e.mjs` for the non-admin refusals (back up `data.db` first, fresh plugin build, dev site running), then T28's CI steps: `govulncheck` on `bridge/` and `pnpm audit --prod` (REV-4; a new GitHub Action or tool in CI is a dependency, so show Wyatt the exact pin first). Step 2 waits on the install host and the release key.
+
+## 2026-11-15 · Phase 09, step 3 · `scripts/dev-e2e.mjs` run for the non-admin refusals
+
+**Run** on the dev site in `astro dev`, with a fresh plugin build of `42a5369` (output: `~/xmr-pay-dev-data/09-e2e-output.txt`): `--cleanup-only` first (it removed the dev data: 430 pool and invoice rows, 9 KV rows, the bridge key), then the full run. **32 checks, all PASS, exit 0.**
+- **`admin` with an invalid Bearer token:** 401 `INVALID_TOKEN`.
+- **`admin` with no session** (anonymous, and no `X-EmDash-Request` header in the same request): 401 `UNAUTHORIZED`.
+- The rest passed too: the cross-origin 403s, the 256 KiB limit, pairing, the signature and timestamp refusals, a tip from checkout to settled, product checkout refused.
+
+**Not covered by this run:**
+- Both admin requests send `page_load`, not `tips_page`. The refusal is EmDash's, before the plugin sees the action, so it is the same for every action; `tips_page` itself wasn't sent.
+- A signed-in session without `X-EmDash-Request`, and a signed-in non-admin: the script has no session. The Subscriber case is Wyatt's manual check of 2026-10-29.
+
+**Database:** backed up first with `VACUUM INTO` (`~/xmr-pay-dev-data/redteam/09-e2e-before.db`), restored after with the site stopped, and verified: 64 invoices, 366 pool rows, the bridge key present with the same fingerprint as before. Dev site stopped; port 4321 free.
+
+**Next step:** T28's CI steps (`govulncheck` on `bridge/`, `pnpm audit --prod`), pins shown to Wyatt first.

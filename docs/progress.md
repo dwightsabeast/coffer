@@ -5842,3 +5842,34 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **Still open before publishing** (`docs/security-review.md`, section 8): the release key and install address (step 2: needs the install host and the offline key); EmDash 1.5.0's check after 2026-11-18, about 18:20 UTC; the public report and `docs/security.md`; binary-mode govulncheck and `pnpm audit` on the release artifacts; the admin page by eye (Wyatt, `inv_f7ea94de1471f114`); `docs/install.md` against a real release.
 
 **Next step:** step 2 (build and sign) when Wyatt has the install host and the release key's public half.
+
+## 2026-11-15 · Phase 09 · Stopped here: the CI check confirmed, two security drafts waiting on Wyatt
+
+**Pushed** (Wyatt): `ee4d760`; `origin/release-1` was at `ee4d760` when this entry was written. This entry's commit is local.
+
+**The workflow check Wyatt asked for:** a `govulncheck` or `pnpm audit` finding fails the job. `ci.yml` has no `continue-on-error`, `|| true`, `set +e` or `if:`; the audit and scan steps have no pipe; the install step's one pipe ends in the `grep` that must match. Run on the dev box with the steps' own commands:
+- the scan step on a copy of `bridge/` under go1.27.3: "found a vulnerability that the bridge calls", exit 1;
+- the scan step when the scan can't run (go1.27.3 against `go.mod`'s 1.27.4): "could not finish (exit 1)", exit 1;
+- as committed on go1.27.4: exit 0;
+- the audit command on a scratch project with `lodash@4.17.15` as a runtime dependency: 3 high, exit 1; as a dev dependency: exit 0.
+A failing result hasn't been seen on a GitHub runner. No throwaway pull request was needed.
+
+**Two drafts, written and NOT committed** (Wyatt: show both before committing). They are untracked files in the working tree, with copies in `~/xmr-pay-dev-data/09-drafts/`:
+- `plugin/docs/security.md`: the listing's Security section, 1,994 of 2,000 graphemes.
+- `docs/security-report.md`: the public report, hand-written from `docs/security-review.md` and the matrix. RT-08 in Wyatt's final wording of 2026-11-08; RT-12; every Partial row (T01, T02, T08, T15, T23, P05, R05, F01, F04) with what was and wasn't tested; the eleven open Lows by number.
+
+**Waiting on Wyatt:**
+1. Approve both drafts, or say what to change.
+2. The listing says "No finding rated Critical or High is open", which counts RT-08 as accepted, not open. Keep it or name the accepted High.
+
+**To know about the drafts:**
+- "Later updates are signature-checked" and "checked against Coffer's release key" are true only once step 2 pins the release key. Both links point at the `coffer@1.0.0` tag, which doesn't exist yet.
+- The matrix says the report is generated from tagged CI output by a script; that script doesn't exist. The commit, CI run, totals and per-ID appendix are marked "[at the tag]".
+- T15's limit (RT-21) is in the report only, not the listing.
+- Not wired in: the manifest has no `sections.security` entry and there's no length test for it. Both come after approval, test first. There is no `SECURITY.md` yet either (the matrix's report rules name one).
+
+**State of the box:** dev site and built copy stopped; `data.db` as restored on 2026-11-15 (64 invoices, 366 pool rows, bridge key present); nothing running.
+
+**Still open before publishing** (`docs/security-review.md`, section 8): step 2 (the release key and install address; needs the install host and the offline key's public half); EmDash 1.5.0's check after 2026-11-18, about 18:20 UTC; the report and listing section (drafted, above); binary-mode govulncheck and `pnpm audit` on the release artifacts; the admin page by eye (Wyatt, `inv_f7ea94de1471f114`); `docs/install.md` against a real release.
+
+**Next step:** Wyatt's answers on the two drafts. Then, test first: a length test and `sections.security` in the manifest, commit both files, a delta-review line, and a push with Wyatt's go-ahead.

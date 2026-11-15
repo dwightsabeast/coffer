@@ -10,7 +10,7 @@ import type { PluginContext } from "emdash/plugin";
 
 import { MAX_OPEN_TOTAL, checkoutHeight, claimAndStore, newIds } from "./checkout";
 import type { MoneroNetwork } from "./core/address";
-import { DUST_ATOMIC, GAP_ALERT, GOODS_ENABLED, LATE_WINDOW_MS, MAX_REQUIRED, PRESETS, RECONFIRM_BLOCKS, SILENT_MS, type Speed, TEST_TIP_REQUIRED, UNPAID_RUN_ALERT } from "./core/constants";
+import { DUST_ATOMIC, GAP_ALERT, GOODS_ENABLED, LATE_WINDOW_MS, MAX_REQUIRED, PRESETS, RECONFIRM_BLOCKS, SILENT_MS, type Speed, TEST_TIP_REQUIRED, UNPAID_RUN_ALERT, isSpeed } from "./core/constants";
 import { type Invoice, counted, isOpen, newInvoice, totals, ignoredOld, storeSettledFloor } from "./core/invoice";
 import { atomicToXmr } from "./core/money";
 import { ownIndex, walletOf, walletRange } from "./core/walletindex";
@@ -40,7 +40,6 @@ const SPEED_LABELS: Record<Speed, string> = {
 	standard: "Standard (2 / 5 / 10 confirmations)",
 	strict: "Strict (10 confirmations)",
 };
-const isSpeed = (v: unknown): v is Speed => typeof v === "string" && Object.hasOwn(PRESETS, v);
 
 function ago(ms: number): string {
 	const min = Math.floor(ms / 60_000);
@@ -567,12 +566,19 @@ function lastChecked(inv: Invoice, now: number): string {
 	return at > 0 ? ` when last checked (${shortDate(at)})` : "";
 }
 
+/** The last second a JavaScript Date can hold (8.64e15 ms). */
+const MAX_DATE_S = 8_640_000_000_000n;
+
 /** Why a transfer doesn't count; empty when it does. unlock_time below 500000000 is a block height, otherwise a Unix time. */
 function notCountedReasons(t: Invoice["transfers"][number]): string[] {
 	const why: string[] = [];
 	if (t.unlockTime !== "0") {
 		const u = BigInt(t.unlockTime);
-		why.push(`time-locked until ${u < 500_000_000n ? `block ${u}` : new Date(Number(u) * 1000).toISOString()}`);
+		// RT-36: unlock_time can be any 64-bit number, and past 8,640,000,000,000 s a Date is invalid and toISOString()
+		// throws, which took the whole page down. Out of range, it's just locked.
+		if (u < 500_000_000n) why.push(`time-locked until block ${u}`);
+		else if (u <= MAX_DATE_S) why.push(`time-locked until ${new Date(Number(u) * 1000).toISOString()}`);
+		else why.push("time-locked");
 	}
 	if (t.doubleSpendSeen) why.push("flagged as a possible double spend");
 	return why;

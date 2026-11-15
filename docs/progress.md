@@ -5761,3 +5761,15 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 - **Tests:** `admin-site.test.ts` and `admin-route.test.ts` changed first (five red), then green. Route and red-team admin tests: 207 passed, 1 skipped. Typecheck; bundle check 76.7 KB.
 
 **Next step:** `docs/install.md`, then step 3's delta review, the full suites and a push if Wyatt says so.
+
+## 2026-11-15 · Phase 09, step 3 · Handoff: items 1 to 5 written; the session stopped at the usage limit
+
+**Done and committed (local, not pushed):** `62855dd` tip rows and `tips_page`; `7c4e2d4` spec change 42's text; `af306e2` `docs/install.md` and the listing's link at the `coffer@1.0.0` tag (the listing's installation text is 1,985 of 2,000 characters); this commit: step 3's delta review in `docs/security-review.md` and the matrix's F04, T09 and T30 rows.
+
+**Test results:** plugin route and red-team admin tests 207 passed, 1 skipped; typecheck; bundle check 76.7 KB. Theme 79 passed, 1 skipped; typecheck. Bridge on the system go1.27.4: gofmt, vet, 21 packages ok.
+**Not finished:** the full plugin suite after step 3 was still running when the session stopped. Its output is `~/xmr-pay-dev-data/09-step3-plugin-tests.txt`; read its totals first next session (expected: 542 passed, 7 expected fail, 1 skipped; 102 passed, 1 skipped) and correct the delta review's "Run after step 3" line.
+**Not covered:** CI on `release-1` (it runs on `main` and pull requests only); `scripts/dev-e2e.mjs` for the non-admin refusals; the admin page by eye (Wyatt, with `inv_f7ea94de1471f114`); `docs/install.md` against a real release; no session-end bundle was made for these commits.
+
+**For Wyatt:** a pull request from `release-1` to `main` (or a merge) so CI runs; confirm "EmDash's address for this site" on the three lines the 2026-11-06 text didn't cover; the by-hand signature check needs `coffer-release.pub.pem` on the release page (step 2); the first tips page can now hold fewer than 10 when test tips are among the newest.
+
+**Next step:** read the full suite's result, make the bundle, then step 2 (build and sign) when the install host and the release key exist; T28's CI steps (REV-4) are still to build.

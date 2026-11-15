@@ -1992,3 +1992,34 @@ Effect on the trust contract: none. The same `check` field and cap, the same KV 
 Built (2026-11-14): `checkList` in `plugin/src/sync/handle.ts`, `CHECK_ROTATION_RESERVE = 25`; three tests in `plugin/tests/sync/poolcheck.test.ts` tagged `[T03] [RT-35]`, red first.
 For the live spec (Wyatt applies): spec change 46's order gains "the rotation always has room for at least 25 rows, and never passes a row it didn't send".
 
+
+## 55. `isPaid` says yes to any settled invoice, so in release 1 a dust tip opens any gated page  (status: proposed, 2026-11-14; found in phase 09's security review)
+Found in: phase 09, step 1 (`docs/security-review.md`, REV-8), reading `theme/src/isPaid.ts` and `theme/README.md`, "Gated content".
+Spec says: Theme integration, piece 3: "**Gating:** for gated content, the page or route checks `status` server-side and treats only `settled` as paid."
+Evidence:
+- `isPaid(astro, token)` returns `r.ok && r.status.status === "settled"`. It doesn't look at the invoice's kind, what it was for, or how much arrived.
+- The package exports it (`"./isPaid"`) and the README shows it as the whole gate: `if (!(await isPaid(Astro, Astro.url.searchParams.get("token")))) return Astro.redirect("/");`
+- Release 1 makes only tips. A tip settles at the dust floor, 0.0001 XMR, whatever was asked (spec change 33). So on a site that gates a page the README's way, one settled tip of 0.0001 XMR opens that page.
+- The same token opens every page gated this way, for as long as the invoice's row exists, and for anyone it's shared with.
+- The plugin's own claim holds (the status is read on the server and only `settled` counts). What's missing is any tie between the invoice and the thing being unlocked. Release 2 has the same gap between products: a cheap product's token opens a dear product's page.
+- Not tested: read from the code. `theme/tests/ispaid.test.ts` checks only settled against not settled.
+Proposal:
+1. **Release 1:** take `isPaid` out of the theme package's exports and its "Gated content" section out of the README. Release 1 sells nothing, so it has nothing to gate. The listing's installation text doesn't mention gated content; the manifest's comment says release 2 adds it.
+2. **Release 2 (phase 08):** `isPaid` takes what the page is selling and checks the invoice against it: the kind (`product` or `order`, never `tip`), the product or order reference, and that it settled in full. The status route then has to return the reference, which is a change to a public route's response; Wyatt decides its shape with spec change 36's contract.
+3. **The spec's Gating line** gains: "and checks that the invoice is for the thing being unlocked; a settled tip never unlocks anything."
+Effect on the admin budget: none.
+Effect on the trust contract: none for item 1 (the theme package only). Item 2 adds fields to `status`'s response, with no new route, collection, index, capability or host.
+
+## 56. The txid lookup is a bounded scan; 1.0.0's storage contract doesn't change  (status: proposed, 2026-11-15; phase 09's security review, for spec change 49 item 4)
+Found in: phase 09, step 1 (`docs/security-review.md`, section 6).
+Spec says: spec change 49: "A txid has no index: it's inside `transfers[]`, so it needs either a bounded scan or a new index. A new index changes the storage trust contract, so Wyatt decides." And: "Before 1.0.0's storage contract is frozen, phase 09 decides whether item 4's txid lookup needs a new index."
+Evidence:
+- **EmDash can't index inside an array.** Its storage docs give index fields as plain names, and the installed `emdash` 1.4.0 builds each index as `json_extract(data, '$.<field>')` on a validated identifier. An index would need a new top-level field holding one txid, and an invoice can have up to 32.
+- **A bounded scan is quick enough.** On the built copy (EmDash 1.4.0, Node, the dev box) with 20,165 invoices, 200 pages of 100 took 574 to 628 ms in storage's own order, and 6,909 to 7,056 ms as tips newest first (twelve readings each).
+- **Limits:** the seeded rows had no transfers; one machine; nothing past 20,000 rows.
+Proposal:
+1. Item 4's lookup by txid is a scan in storage's own order (no filter, no `orderBy`), at most 200 pages, on the private admin route.
+2. When the scan stops at the cap without a match, the page says it looked through 20,000 invoices and found none, never a plain "not found".
+3. 1.0.0 declares no new index and writes no new field. Phase 08 builds the lookup.
+Effect on the admin budget: none.
+Effect on the trust contract: none.

@@ -69,7 +69,7 @@ describe("Tips view", () => {
 		expect(text(s)).not.toContain("0.0005");
 	});
 
-	it("totals: settled visitor tips only, counted payments only, grouped by entry with the title stored at tip time", async () => {
+	it("[T30] totals: settled visitor tips only, counted payments only, grouped by entry with the title stored at tip time", async () => {
 		await setup([
 			settled(1, "1000000000", { entry: HELLO }), // 0.001
 			settled(2, "2500000000", { entry: HELLO }), // 0.0025

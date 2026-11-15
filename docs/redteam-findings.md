@@ -43,6 +43,12 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-33 | Low, doesn't block release 1 (Wyatt, 2026-11-06) | R10, T14 | 1, fix sessions (combined live, step 2) | The height floor moves a tip settled before the floor existed to review as "reversed", with an alert | fixed in code 2026-11-06 with RT-34 (spec change 48); unit-tested, its live window has ended. 2026-11-08 (Wyatt): Mark settled stores the floor, so 1.0.0 can't create the state; the fallback and its test are gone |
 | RT-34 | Medium, fix in release 1 (Wyatt, 2026-11-06) | R10, T14 | 1, fix sessions (found tracing RT-33, 2026-11-06) | After a height heal, the floor of an invoice with an inflated `createdHeight` follows the site's height, so an honest settled payment turns "reversed" 31 blocks after it's mined | fixed in code 2026-11-06 (spec change 48); unit-tested, not live (Wyatt) |
 | RT-35 | Low (Wyatt, 2026-11-14) | T03, R08 | 1, fix sessions (found answering RT-08's re-check question, 2026-11-14) | On a busy site the check list's 150-row cap crowds out the rotation, so claimed rows older than 24 hours are never re-checked | fixed in code 2026-11-14 (spec change 54); unit-tested, not live |
+| RT-36 | proposed Medium (Wyatt to rule) | F04, T11, T03 | phase 09 security review | A transfer's time lock too large to be a date makes the admin page fail | open; reproduced on the test host, `it.fails` committed |
+| RT-37 | proposed Medium (Wyatt to rule) | none yet (gating) | phase 09 security review | `isPaid` says yes to any settled invoice, so a dust tip opens a gated page | open; read in the code; spec change 55 proposed |
+| RT-38 | proposed Medium (Wyatt to rule) | T14 | phase 09 security review (the independent reviewer) | The remote node's operator can switch the cross-check off with a DNS answer at the bridge's start | open; read in the code, not run |
+| RT-39 | proposed Low (Wyatt to rule) | T28 | phase 09 security review | go1.27.3 carries GO-2026-6859 (net/http server); govulncheck reports it as called | open; go1.27.4 fixes it |
+| RT-40 | proposed Low, hardening (Wyatt to rule) | T07 | phase 09 security review (the independent reviewer) | Checkout reads the speed setting with `in`, so an inherited name would give no confirmation target | open; not reachable through Coffer's settings form; not run |
+| RT-41 | proposed Low (Wyatt to rule) | P04, T02 | phase 09 security review | An invoice that never becomes final keeps its note for good | open; read in the code |
 
 ---
 
@@ -1035,3 +1041,54 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 - **Ruling (Wyatt, 2026-11-14):** Low; fix now; the rotation keeps 25 of the 150 rows.
 - **Status:** **fixed (2026-11-14, spec change 54).** The rotation keeps 25 of the list's 150 rows when a turn starts, its chunk is no longer than the room left, and the chunk keeps its room for the rest of the turn; the pointer moves only past rows that were sent. Three tests in `plugin/tests/sync/poolcheck.test.ts`, red first: every older row is listed on a busy day; every sync in a turn lists the whole chunk; a month-old thief row found by the rotation turns bad and its tip goes to review. Unit-tested, not live. A full pass on a busy site takes (claimed rows ÷ 25) × 30 s.
 
+---
+
+# Phase 09, step 1: the security review (2026-11-14 and 15 UTC)
+
+Found by reading the code against the spec, not by an attacker session. The full write-up, the options and the recommendations are in `docs/security-review.md`, section 7. Severities are proposals until Wyatt rules.
+
+## RT-36 — A transfer's time lock too large to be a date makes the admin page fail
+
+- **Rows:** F04 (the admin route never crashes), T11, T03. **Proposed:** Medium.
+- **What I did:** on the test host, settled a tip, then sent a signed snapshot reporting the same payment with `unlockTime` `18446744073709551615` (2^64 − 1, the largest Monero carries).
+- **What happened:** the tip went to review (reversed), as it should. Every load of the payments page then failed: `Plugin admin request failed (400): {"success":false,"error":{"code":"ROUTE_ERROR","message":"Invalid time value"}}`.
+- **Why:** `plugin/src/admin.ts:575` formats an unlock time of 500,000,000 or more with `new Date(Number(u) * 1000).toISOString()`, which throws above 8,640,000,000,000. The sync parser accepts 20 digits.
+- **Reach:** the bridge key's holder; or a miner-included transfer to a tip address whose counted payment later stops counting. The failing page is the one with "Connect a new wallet host" (that action renders the page too: read, not run). The widget still loads. Release 2's invoice rows, and phase 09's tip rows with transfers, reach the same line through `transferNote`.
+- **Test:** `plugin/tests/redteam/admin.test.ts`, "[F04][T11] [RT-36] the admin page still loads when a reversed tip holds a transfer time-locked past the year 275760", `it.fails`. Run once as a plain test first: it failed with the error above.
+
+## RT-37 — `isPaid` says yes to any settled invoice, so a dust tip opens a gated page
+
+- **Rows:** none yet; a gating row is proposed with spec change 55. **Proposed:** Medium.
+- **Read in the code:** `theme/src/isPaid.ts` returns `r.ok && r.status.status === "settled"`; `theme/README.md`, "Gated content", shows that as the whole gate; the package exports it.
+- **Reach:** release 1 makes only tips, which settle at 0.0001 XMR. One such tip's token opens every page gated this way, for as long as the invoice exists, for anyone holding the token.
+- **No test:** a test of security behavior needs its matrix row first.
+
+## RT-38 — The remote node's operator can switch the cross-check off with a DNS answer
+
+- **Row:** T14. **Proposed:** Medium. Found by the independent reviewer; I read the code and agree.
+- **Read in the code:** `bridge/cmd/xmr-bridge/bridge.go:84` calls `crosscheck.IsOwnNode` once at start. A name that resolves only to loopback, private or link-local addresses is "the shop's own node", and no cross-checker exists for the life of the process. wallet-rpc resolves the name separately.
+- **Reach:** an operator who answers that one lookup with a private address. The admin page then shows the node check as off (own node), and confirmations the node makes up pass unchecked. Any node on a private-range address also counts as "own", whoever runs it.
+- **Not run.**
+
+## RT-39 — go1.27.3 carries GO-2026-6859; govulncheck reports it as called
+
+- **Row:** T28. **Proposed:** Low.
+- **What I did:** govulncheck v1.9.0 (commit `e672cbe8fbc8c76e28fcb6db0efd9ce354e0dac5`, checked against sum.golang.org and `go.googlesource.com/vuln`'s tag; built with go1.27.3 into `~/work/govulncheck/bin`, `go env -changed` empty but for `GOTOOLCHAIN=local`).
+- **Results, by exit code** (0 none, 3 found; no run failed): `bridge/` source mode 3; fresh static amd64 and arm64 builds (`-trimpath`, `CGO_ENABLED=0`, go1.27.3) in binary mode 3 and 3; `bridge/oracle/` source mode with `-test` 0. Every 3 is the one entry: GO-2026-6859, "HTTP/1 server crash due to MaxBytesReader header race in net/http", found in go1.27.3, fixed in go1.27.4.
+- **Reach:** none found. The entry is about an HTTP server; the shipped bridge has none, and the only one in the module is the test-only `internal/hostile`. The traces are the package's shared symbols.
+- **Manifests:** `bridge/go.mod` (no `require`) and `bridge/oracle/go.mod`. The npm side is in the review, "Dependency audits".
+- **Evidence:** `~/xmr-pay-dev-data/09-review-govulncheck/`.
+
+## RT-40 — Checkout reads the speed setting with `in`
+
+- **Row:** T07. **Proposed:** Low, hardening. Found by the independent reviewer; I checked the line.
+- **Read in the code:** `plugin/src/checkout.ts`, `speedSetting !== null && speedSetting in PRESETS`. For a stored value such as `toString`, `requiredConfirmations` returns undefined and `classify`'s `depth < required` is false, so the invoice would settle at any depth.
+- **Reach:** not through Coffer's own form, which accepts only the three speeds. Whether EmDash offers another way to write a plugin's setting wasn't determined.
+- **Not run.**
+
+## RT-41 — An invoice that never becomes final keeps its note for good
+
+- **Rows:** P04, T02. **Proposed:** Low.
+- **Read in the code:** `plugin/src/housekeeping.ts` purges at `finalAt + 30 days`; `finalAt` is set only when an invoice leaves the open states, which takes a sync.
+- **Cases:** a wallet host removed and never replaced; a tip held at `confirming`; a site waiting for a probe answer; rows past the scan cap.
+- **Not tested.**

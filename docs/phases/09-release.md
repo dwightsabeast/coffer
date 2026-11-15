@@ -12,7 +12,7 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
 
 **Before the session** (from the plan change's waiting list):
 
-- [ ] Phase 07b is done: no Critical or High finding open, every Medium fixed or accepted in `docs/decisions.md`.
+- [x] Phase 07b is done: no Critical or High finding open, every Medium fixed or accepted in `docs/decisions.md` (checked in `docs/security-review.md`, section 1, 2026-11-14).
 - [x] The mainnet second-node list for the cross-check (spec change 13): decided 2026-11-02, https only (`node.monerodevs.org:18089`, `xmr-node.cakewallet.com:18081`, `ravfx.its-a-node.org:18081`), built in `1162b8f`.
 - [ ] Grow the HTTPS second-node list (Wyatt, 2026-11-02). Today it's three mainnet nodes, one per operator, and stagenet still uses http because only one of its nodes has a certificate that verifies.
   - **Why it matters:** with a remote node and no second node answering, every payment is held and no height is reported.
@@ -21,7 +21,7 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
 - [ ] An install host that serves the bridge files without redirects (spec change 21).
 - [x] The Atmosphere account to publish under (below; done 2026-10-23).
 - [x] Your hand-made registry icon (Claude doesn't generate or draw one): `plugin/images/coffer-icon.png`, delivered 2026-10-23.
-- [ ] Session 7g (EmDash 1.3 check) is done: `release.requires` and the listing text are in the manifest, and they name versions actually tested (spec change 41, items 3, 4, 9).
+- [x] Session 7g (EmDash 1.3 check) is done, and the floor is 1.4.0 since the check of 2026-11-14: `release.requires` and the listing text are in the manifest, and they name versions actually tested (spec change 41, items 3, 4, 9).
 - [ ] A browser with passkey support, for approving each release (spec change 41 A).
 - [ ] The repository is still public: the release service trusts only public GitHub provenance.
 - [ ] Spec change 49 item 4's txid lookup: a new index or a bounded scan, decided before 1.0.0's storage contract is frozen (step 1 below; Wyatt, 2026-11-08).

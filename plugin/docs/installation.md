@@ -44,3 +44,6 @@
 
 If your site is behind a login or access rules, let `/_emdash/api/plugins/coffer/*` through without one, and don't
 add an `Origin` or `Authorization` header to those requests: the wallet host and buyers' pay pages call them.
+
+The full install guide covers what the wallet host needs, sites behind a proxy, limits to set, and installing by hand:
+https://github.com/dwightsabeast/coffer/blob/coffer%401.0.0/docs/install.md

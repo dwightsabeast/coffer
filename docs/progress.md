@@ -5773,3 +5773,11 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **For Wyatt:** a pull request from `release-1` to `main` (or a merge) so CI runs; confirm "EmDash's address for this site" on the three lines the 2026-11-06 text didn't cover; the by-hand signature check needs `coffer-release.pub.pem` on the release page (step 2); the first tips page can now hold fewer than 10 when test tips are among the newest.
 
 **Next step:** read the full suite's result, make the bundle, then step 2 (build and sign) when the install host and the release key exist; T28's CI steps (REV-4) are still to build.
+
+## 2026-11-15 · Phase 09, step 3 · The full plugin suite after step 3 passed
+
+**The suite the entry above left running:** 47 files, 542 passed, 7 expected fail, 1 skipped (default); 6 files, 102 passed, 1 skipped (switch on); exit 0. The delta review's "Run after step 3" line in `docs/security-review.md` now says so. Everything else in the entry above stands, including what isn't covered and what waits on Wyatt.
+
+**State of the box:** dev site and built copy stopped; `data.db` as restored on 2026-11-15; working tree clean after this commit; `release-1` is ahead of `origin/release-1` (at `271447f`) by step 3's commits. A session-end bundle follows.
+
+**Next step:** Wyatt's answers (a pull request or merge so CI runs; the three "EmDash's address for this site" lines); then T28's CI steps (REV-4), and step 2 when the install host and the release key exist.

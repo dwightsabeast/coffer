@@ -5668,3 +5668,36 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **Left before phase 09:** nothing from the 07b fix list. EmDash 1.5.0's check comes after 2026-11-18, about 18:20 UTC.
 
 **Next step:** phase 09, plan first, when Wyatt names it; or the EmDash 1.5.0 check once it's of age.
+
+## 2026-11-15 · Phase 09, step 1 · The security review gate: written, not passed yet (six findings to rule on)
+
+**The bundle from the entry above:** `coffer-redteam-1-20261114-f2ab8ef.bundle`, SHA-256 `f0d06f38f5d49414c9c3e9ff9a5d6dbd846e7a57cdda0a36a43547c367999dbd`.
+
+**Branches (Wyatt, 2026-11-14):** `f2ab8ef` pushed to `origin/redteam-1`; CI run 43643905081 passed (plugin, theme, bridge). `redteam-1` merged into `main` locally as `0e7dab2` (the merged tree is `f2ab8ef`'s), and `release-1` starts there. **`main` and `release-1` are not pushed.**
+
+**Done:** `docs/security-review.md`, covering commit `d83b273d43f66c4a44eb64a3f737d47fb8a515ab`. It walks the spec's 16 threat rows, the privacy list, every pass-1 matrix row not marked Covered, and the areas the phase file lists.
+- **No threat row is uncovered; nothing Critical or High.**
+- **Six findings for Wyatt's ruling** (`docs/redteam-findings.md`): RT-36 (the admin page fails on a time lock too large to be a date; reproduced, `it.fails`), RT-37 (`isPaid` accepts any settled invoice; spec change 55), RT-38 (a DNS answer can switch the cross-check off), all proposed Medium; RT-39 (go1.27.3 and GO-2026-6859; go1.27.4 fixes it), RT-40 (the speed setting read with `in`), RT-41 (notes on invoices that never become final), proposed Low.
+- **Nine observations and wording items** (REV-2 to REV-10), among them: T28's CI steps, decided on 2026-10-31, were never built; the spec says the install command checks a signature and it checks a hash.
+- **The txid lookup (spec change 49 item 4):** EmDash can't index inside an array. A bounded scan of 20,000 rows took 574 to 628 ms in storage order and 6,909 to 7,056 ms as tips newest first, on the built copy. Proposed as spec change 56: a scan, no new index in 1.0.0.
+- **The independent reading** (a fresh subagent: spec, code and the draft only): agreed on 11 of 16 rows, disagreed on rows 2, 10, 14, 16 and P03, all taken into the review; it found RT-36 on its own, and RT-38 and RT-40 are its.
+- **Matrix:** T21, T30, T31, F03, F08 and R11 are Covered (stale rows; their tests existed). Threat rows: 25 Covered, 5 Partial, 1 Planned (T28).
+- **Secrets sweep** of the tree and all 421 commits: nothing to rotate. The dev box's LAN address is in this file (three lines, 2026-10-14) and three commits; the first commit carries Wyatt's personal email as author; the public test hostname appears throughout.
+
+**Test results:**
+- Plugin, `pnpm test`: 532 passed, 7 expected fail, 1 skipped (default); 102 passed, 1 skipped (switch on). Run before the two test edits; after them only the two files touched were run: 22 passed, 1 expected fail. Typecheck, validate, bundle check (74.7 KB).
+- Theme: 80 passed, 1 skipped, zbar required; typecheck.
+- Bridge (go1.27.3): gofmt, vet, 21 packages ok.
+- `pnpm audit`: production 0 in both packages; with dev dependencies, plugin 69 (0 critical, 21 high) and theme 31 (0 critical, 6 high), all dev tooling and EmDash's tree.
+- govulncheck v1.9.0: exit 3 on `bridge/` and on both fresh binaries (GO-2026-6859 only), exit 0 on `bridge/oracle/`.
+- **Not covered:** the full plugin suite with RT-36's test in it; nothing live on stagenet; RT-37, RT-38, RT-40 and RT-41 are read from the code, not run; the timing run's rows had no transfers.
+
+**New on the box:** `~/work/govulncheck/bin/govulncheck` (v1.9.0, Wyatt approved 2026-11-14). Evidence in `~/xmr-pay-dev-data/`: `09-review-*`, `09-review-govulncheck/`, `redteam/h1-2026-11-15T0231…`, `…0232…`, `…0233…`.
+
+**State of the box:** dev site, built copy and watcher stopped. `data.db` restored from this session's backup `redteam/09-txid-before.db` and checked: 64 invoices, 366 pool rows, bridge key present. The throwaway branch is deleted; `plugin/dist/` and the dev site's `dist/` are rebuilt from `release-1`. Commits are local. A session-end bundle follows.
+
+**For Wyatt:** rule on RT-36 to RT-41, spec changes 55 and 56, and REV-5, REV-8 and REV-10's wording; approve go1.27.4 (a sudo step on the dev box); say whether to push `main` and `release-1`; say whether to replace the LAN address in this file.
+
+**Left before publishing:** `docs/security-review.md`, section 8. EmDash 1.5.0's check comes after 2026-11-18, about 18:20 UTC.
+
+**Next step:** Wyatt's rulings; then a fix session for what he accepts (tests first, each fix with a delta review in `docs/security-review.md`), then step 3's admin-page work.

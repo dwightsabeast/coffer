@@ -8,7 +8,9 @@ Phase 09, step 1: the gate before anything is published. Written 2026-11-14 and 
 
 ## Verdict
 
-**Not ready to publish yet.** No threat row is uncovered, and nothing found is Critical or High. The review and the independent reading found six things to rule on, three of them proposed Medium, and the phase's own remaining work stands in front of a release as well.
+**Update, 2026-11-15:** Wyatt ruled on all six findings and all six are fixed; see "Delta reviews" at the end. Still not ready to publish: section 8's items 2 to 9 remain.
+
+**As written on 2026-11-14: not ready to publish yet.** No threat row is uncovered, and nothing found is Critical or High. The review and the independent reading found six things to rule on, three of them proposed Medium, and the phase's own remaining work stands in front of a release as well.
 
 | | Count |
 | --- | --- |
@@ -304,4 +306,19 @@ A fresh subagent that hadn't seen this session read only `docs/spec.md`, the cod
 
 ## Delta reviews
 
-None yet.
+Each change after the reviewed commit, against the same checklist: the threat rows it touches, the listed areas, the trust contract, the bundle caps and the release-1 switch, and its tests. Wyatt's rulings of 2026-11-15 are in `docs/decisions.md`.
+
+**What was run after all six** (2026-11-15 UTC, at `7aff94e`): the full plugin suite, 536 passed, 7 expected fail, 1 skipped (default) and 102 passed, 1 skipped (switch on); plugin typecheck, validate and bundle check (74.8 KB; the built manifest unchanged); theme, 79 passed, 1 skipped with zbar required, and its typecheck; bridge on go1.27.4, gofmt, vet and 21 packages ok, `bridge/oracle` ok; govulncheck v1.9.0, exit 0 in source mode and on fresh amd64 and arm64 builds. **Not run:** CI (the commits aren't pushed yet); nothing live.
+
+| Fix | Commit | What changed | Checked | Result |
+| --- | --- | --- | --- | --- |
+| RT-39 | `a310d2c` | `go 1.27.4` in `bridge/go.mod` and `bridge/oracle/go.mod`; the floor test asks for 1.27.4 | Rows 16 (T16, T27) and T28: a toolchain change only, no source line. Reproducible-build inputs: the version comes from `go.mod`, which CI reads. The floor test was red on go1.27.3 first | Holds. govulncheck reports nothing. **Open:** the dev box's own Go is still 1.27.3 until Wyatt's sudo step, so with `GOTOOLCHAIN=local` the bridge doesn't build with the system Go until then; this session used a private copy under `~/work/go1.27.4/` |
+| RT-38 | `66805cd` | `crosscheck.IsOwnNode`: no DNS lookup; own node is `localhost` or a literal loopback, private or link-local address | Row 14 (T14): both callers read (`bridge.go:84`, the cross-checker; `BoundedHeight`, the pairing height). A name now always gets the checker and the bounded height. P05: a node on the shop's network given by name is now shown to the second nodes (block heights only). No new outbound host beyond the built-in list; no listener; no secret handled. `ctx` is unused but kept, so no caller changed | Holds. Test red first (`ip6-localhost` had counted as the shop's own). **Not live.** The install docs should say: give your own node by address |
+| RT-37 | `554ab0c` | `theme/src/isPaid.ts`, its export, tests and README section removed | Rows 9 (T09) and T21: nothing else imported it (`page.ts` uses `fetchStatus` directly). The package's exports are pinned by a new test. No runtime dependency; the pack list loses one file | Holds. F03 keeps its other four tests |
+| RT-41 | `9a6af0e` | `purgeBatch` also clears buyer data when `finalAt` is missing | Row 2 and P04: the query is unchanged (`expiresAt` more than 30 days past, by the declared index), so an invoice inside 30 days is never touched (tested). A final invoice still waits for `finalAt + 30 days` (tested: a review entered yesterday keeps its note), so RT-25's ruling for release 2 isn't made worse. The write is still an unconditional `put` of the row as read, as before (R05's note). Status, transfers and amounts are copied unchanged | Holds. One more write per never-final old invoice, once |
+| RT-36 | `7aff94e` | `notCountedReasons`: three cases, the last without a `Date` | Rows 3, 8 and F04: the text is still a plain string built from digits the parser already limited to 20; `Number(u)` is used only at or below 8.64e12, which is exact. Edges tested: 499,999,999 (a block), 500,000,000 and 8,640,000,000,000 (dates), one more and 20 nines (locked). Other date conversions on the page take the plugin's own clock values or `seq`, which is bounded to 300 s from a fresh timestamp; `shortDate` doesn't throw on a bad value | Holds. The page loads with the reversed tip on it |
+| RT-40 | `7aff94e` | `isSpeed` moved to `core/constants.ts`; checkout uses it | Row 7 (T07): the only two readers of the stored speed (checkout, and the admin's test tip) now use the same own-name check, and the form already did. `currency` is read with `isCurrency`, an array `includes` | Holds. Before the fix the test showed `required` undefined for `toString` |
+
+**Trust contract after the six:** unchanged. The built manifest still matches the spec (`manifest.test.ts` in the full run); no route, collection, index, capability, host, page, widget or setting was added.
+
+**Still open from section 8:** items 2 to 9. Item 1 is done except Wyatt's ruling on spec change 56, which now says the lookup is on the private admin route and uses the 0.6 s scan.

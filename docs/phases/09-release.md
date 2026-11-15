@@ -65,7 +65,7 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
 
 **2. Build and sign**
 
-- Reproducible bridge builds for linux amd64 and arm64: `CGO_ENABLED=0`, `-trimpath`, the Go version pinned in `bridge/go.mod` (go1.27.3 or later, RT-28), version stamped from the tag. **CI builds them** from a clean checkout with provenance (CLAUDE.md tier 3; Wyatt, 2026-10-31): the binaries, a checksum file and the unsigned release manifest.
+- Reproducible bridge builds for linux amd64 and arm64: `CGO_ENABLED=0`, `-trimpath`, the Go version pinned in `bridge/go.mod` (go1.27.4 or later, RT-28 and RT-39), version stamped from the tag. **CI builds them** from a clean checkout with provenance (CLAUDE.md tier 3; Wyatt, 2026-10-31): the binaries, a checksum file and the unsigned release manifest.
 - **Before signing, Wyatt rebuilds on the dev box** with the same Go and the same flags and confirms the hashes match CI's. The signing key never goes to CI.
 - Just before publishing, rerun `govulncheck -mode binary` on the release binaries and `pnpm audit` on the release packages (07b F5; nothing called is the bar).
 - Wyatt signs the release manifest offline with the real key and hands back only the signature. Pin the real public key in the bridge (replacing the placeholder), with tests proving that release builds contain neither the placeholder, the dev release key, the `--release-url` dev option, nor the RFC 8032 test keys.

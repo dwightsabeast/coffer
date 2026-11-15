@@ -1777,9 +1777,9 @@ Section B of the organizer sheet, done:
   - Run once and checked with `stat` and a pattern count, never displayed. It works once and expires in 7 days.
   - The `CLAUDE.md` command row is added.
   - **Note:** EmDash's dev console email provider writes the first 200 characters of each email to astro's dev log, which likely includes the token. Don't read that log until the invite is used.
-- **Release:** `0.0.202610140046-dev.55207d3` for amd64 and arm64, base `http://192.168.8.249:8099`. Wyatt signed it, and `check-dev-signature.sh` verifies it.
+- **Release:** `0.0.202610140046-dev.55207d3` for amd64 and arm64, base `http://<dev box LAN address>:8099`. Wyatt signed it, and `check-dev-signature.sh` verifies it.
 - **Release server:** tmux `release`, bound to the LAN address on 8099. The served `install.sh` matches the built file.
-- **Plugin:** `setup-test-plugin.sh --base http://192.168.8.249:8099`, with the bundle check inside it. The built site's server bundle carries the LAN URL.
+- **Plugin:** `setup-test-plugin.sh --base http://<dev box LAN address>:8099`, with the bundle check inside it. The built site's server bundle carries the LAN URL.
 - **Built copy:** tmux `built` on 4322 with `EMDASH_SITE_URL=https://dev.wyattdilley.com`. Its status route answers 200.
 
 Tests:
@@ -1908,7 +1908,7 @@ Next steps:
 1. **Push** these commits and wait for CI (Wyatt's rule: CI passes before the release rebuild).
 2. **Rebuild:**
    - stop `built`
-   - `build-dev-release.sh --base http://192.168.8.249:8099`; Wyatt signs it
+   - `build-dev-release.sh --base http://<dev box LAN address>:8099`; Wyatt signs it
    - `setup-test-plugin.sh`, then the site build
    - reset (it clears the stale code; the tester account stays)
    - start `built`
@@ -5701,3 +5701,38 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **Left before publishing:** `docs/security-review.md`, section 8. EmDash 1.5.0's check comes after 2026-11-18, about 18:20 UTC.
 
 **Next step:** Wyatt's rulings; then a fix session for what he accepts (tests first, each fix with a delta review in `docs/security-review.md`), then step 3's admin-page work.
+
+## 2026-11-15 · Phase 09, step 1 · The review's six findings ruled on and fixed; delta reviews written
+
+**The bundle from the entry above:** `coffer-release-1-20261115-7ce1127.bundle`, SHA-256 `d569a452273ded802544fed0a75c5d8eb8f9cf554c2f56ac78c6fb18c4bcd47e`.
+
+**Pushed (Wyatt, 2026-11-15):** `main` at `0e7dab2` and `release-1` at `7ce1127`. This entry's commits are local.
+
+**Wyatt's rulings** (`docs/decisions.md`): RT-36, RT-37 and RT-38 Medium, RT-39, RT-40 and RT-41 Low, all to fix; spec changes 55 and 57 accepted; the LAN address replaced going forward, no history rewrite. Spec change 56 waits on his ruling: it now says the lookup is on the private admin route and uses the 0.6 s unordered scan, not the 7 s ordered one.
+
+**Fixed, tests first, each with a delta review in `docs/security-review.md`:**
+- `a310d2c` RT-39: go1.27.4 in both `go.mod` files and the floor test.
+- `66805cd` RT-38: a node given by name is always cross-checked; no DNS lookup decides it.
+- `554ab0c` RT-37: `isPaid` and the README's gating section are out of the theme package.
+- `9a6af0e` RT-41: the purge also clears a never-final invoice 30 days past its window.
+- `7aff94e` RT-36 and RT-40: an over-range unlock time reads "time-locked"; checkout checks the speed by its own name.
+
+**Test results (all after the last fix):**
+- Plugin, full `pnpm test`: 536 passed, 7 expected fail, 1 skipped (default); 102 passed, 1 skipped (switch on). Typecheck, validate, bundle check (74.8 KB).
+- Theme: 79 passed, 1 skipped, zbar required; typecheck.
+- Bridge on go1.27.4 (a private copy in `~/work/go1.27.4/`): gofmt, vet, 21 packages ok; `bridge/oracle` ok.
+- govulncheck v1.9.0 on go1.27.4: exit 0 in source mode and on fresh amd64 and arm64 builds.
+- **Not covered:** CI on these commits (not pushed); nothing live; RT-38's fix on a real wallet host with a named node.
+
+**Waiting on Wyatt:**
+- **go1.27.4 on the dev box:** `sudo sh /home/dev/xmr-pay-dev-data/go1274-install.sh 2>&1 | tee /home/dev/xmr-pay-dev-data/go1274-install-output.txt` (the tarball's SHA-256 matches go.dev's list and dl.google.com's `.sha256`; the old Go is kept at `/usr/local/go1.27.3-old`). **Until then the system Go refuses to build the bridge** (`go.mod` asks for 1.27.4 and `GOTOOLCHAIN=local`).
+- Spec change 56's ruling.
+- Whether to push these commits.
+
+**For admins, from RT-38:** a node on the shop's own network given by name is now cross-checked with the built-in second nodes; giving its address keeps the check off. The install docs (step 3) should say so.
+
+**Also changed:** the dev box's LAN address is gone from this file and from `plugin/tests/routes/admin-site.test.ts` (history keeps it). The matrix's T07, T14, T21, T28, P04 and F04 rows carry the fixes.
+
+**State of the box:** dev site and built copy stopped; `data.db` as restored in the entry above; `plugin/dist/` built from `7aff94e` (the dev site's `dist/` still holds the build from before these fixes). A session-end bundle follows.
+
+**Next step:** step 3, plan first: `tips_page`, spec change 49 items 1 to 3, spec change 42's banner text, the install docs. The install host and the real install URL are still Wyatt's to provide.

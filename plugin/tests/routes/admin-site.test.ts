@@ -40,7 +40,7 @@ describe("walletHostSite: which address the install command uses", () => {
 	});
 
 	it("[T25] a loopback, plain-http or missing saved address falls back to an https browser origin", () => {
-		for (const saved of ["http://localhost:4321", "http://127.0.0.1:4321/", "http://[::1]:4321", "https://localhost", "http://shop.example", "http://192.168.8.249:4322", ""]) {
+		for (const saved of ["http://localhost:4321", "http://127.0.0.1:4321/", "http://[::1]:4321", "https://localhost", "http://shop.example", "http://192.168.1.9:4322", ""]) {
 			expect(walletHostSite(saved, "https://dev.example.com"), saved).toEqual({ url: "https://dev.example.com", source: "browser", saved: saved.replace(/\/$/, "") });
 		}
 	});

@@ -43,12 +43,12 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-33 | Low, doesn't block release 1 (Wyatt, 2026-11-06) | R10, T14 | 1, fix sessions (combined live, step 2) | The height floor moves a tip settled before the floor existed to review as "reversed", with an alert | fixed in code 2026-11-06 with RT-34 (spec change 48); unit-tested, its live window has ended. 2026-11-08 (Wyatt): Mark settled stores the floor, so 1.0.0 can't create the state; the fallback and its test are gone |
 | RT-34 | Medium, fix in release 1 (Wyatt, 2026-11-06) | R10, T14 | 1, fix sessions (found tracing RT-33, 2026-11-06) | After a height heal, the floor of an invoice with an inflated `createdHeight` follows the site's height, so an honest settled payment turns "reversed" 31 blocks after it's mined | fixed in code 2026-11-06 (spec change 48); unit-tested, not live (Wyatt) |
 | RT-35 | Low (Wyatt, 2026-11-14) | T03, R08 | 1, fix sessions (found answering RT-08's re-check question, 2026-11-14) | On a busy site the check list's 150-row cap crowds out the rotation, so claimed rows older than 24 hours are never re-checked | fixed in code 2026-11-14 (spec change 54); unit-tested, not live |
-| RT-36 | proposed Medium (Wyatt to rule) | F04, T11, T03 | phase 09 security review | A transfer's time lock too large to be a date makes the admin page fail | open; reproduced on the test host, `it.fails` committed |
-| RT-37 | proposed Medium (Wyatt to rule) | none yet (gating) | phase 09 security review | `isPaid` says yes to any settled invoice, so a dust tip opens a gated page | open; read in the code; spec change 55 proposed |
-| RT-38 | proposed Medium (Wyatt to rule) | T14 | phase 09 security review (the independent reviewer) | The remote node's operator can switch the cross-check off with a DNS answer at the bridge's start | open; read in the code, not run |
-| RT-39 | proposed Low (Wyatt to rule) | T28 | phase 09 security review | go1.27.3 carries GO-2026-6859 (net/http server); govulncheck reports it as called | open; go1.27.4 fixes it |
-| RT-40 | proposed Low, hardening (Wyatt to rule) | T07 | phase 09 security review (the independent reviewer) | Checkout reads the speed setting with `in`, so an inherited name would give no confirmation target | open; not reachable through Coffer's settings form; not run |
-| RT-41 | proposed Low (Wyatt to rule) | P04, T02 | phase 09 security review | An invoice that never becomes final keeps its note for good | open; read in the code |
+| RT-36 | Medium (Wyatt, 2026-11-15) | F04, T11, T03 | phase 09 security review | A transfer's time lock too large to be a date makes the admin page fail | **fixed** 2026-11-15: an over-range unlock time shows as "time-locked", never an error |
+| RT-37 | Medium (Wyatt, 2026-11-15) | none yet (gating) | phase 09 security review | `isPaid` says yes to any settled invoice, so a dust tip opens a gated page | **fixed** 2026-11-15 (spec change 55 accepted): `isPaid` and the README's gating example are out of release 1 |
+| RT-38 | Medium (Wyatt, 2026-11-15) | T14 | phase 09 security review (the independent reviewer) | The remote node's operator can switch the cross-check off with a DNS answer at the bridge's start | **fixed** 2026-11-15: a node given by name is always cross-checked; no lookup decides it. Unit-tested, not live |
+| RT-39 | Low (Wyatt, 2026-11-15) | T28 | phase 09 security review | go1.27.3 carries GO-2026-6859 (net/http server); govulncheck reports it as called | **fixed in the repo** 2026-11-15: go1.27.4 in both `go.mod` files; govulncheck reports nothing. The dev box's own Go waits on Wyatt's sudo step |
+| RT-40 | Low (Wyatt, 2026-11-15) | T07 | phase 09 security review (the independent reviewer) | Checkout reads the speed setting with `in`, so an inherited name would give no confirmation target | **fixed** 2026-11-15: checkout uses the form's own check. Reproduced before the fix: `required` was undefined |
+| RT-41 | Low (Wyatt, 2026-11-15) | P04, T02 | phase 09 security review | An invoice that never becomes final keeps its note for good | **fixed** 2026-11-15: the purge also clears a never-final invoice 30 days past its window |
 
 ---
 
@@ -1092,3 +1092,13 @@ Found by reading the code against the spec, not by an attacker session. The full
 - **Read in the code:** `plugin/src/housekeeping.ts` purges at `finalAt + 30 days`; `finalAt` is set only when an invoice leaves the open states, which takes a sync.
 - **Cases:** a wallet host removed and never replaced; a tip held at `confirming`; a site waiting for a probe answer; rows past the scan cap.
 - **Not tested.**
+
+## Rulings and fixes (2026-11-15, Wyatt)
+
+- **RT-36, Medium, fixed.** `notCountedReasons` in `plugin/src/admin.ts`: a block height below 500,000,000 as before; a time up to 8,640,000,000,000 s as a date; anything above as "time-locked". The `it.fails` is a plain test now, with a second one for the edges.
+- **RT-37, Medium, fixed.** Spec change 55 accepted. `theme/src/isPaid.ts`, its export, its tests and the README's "Gated content" section are gone; `theme/tests/release1.test.ts` pins the package's exports.
+- **RT-38, Medium, fixed.** Wyatt: never off; a check that can't be made is handled like a mismatch (hold and a Health warning). `crosscheck.IsOwnNode` no longer looks a name up: `localhost` or a literal loopback, private or link-local address is the shop's own node, and any other name is remote. A remote node with no second node answering was already held at 0 confirmations with the "cross-check unavailable" warning. **A change admins can meet:** a node on the shop's own network given by name is now cross-checked with the built-in second nodes (which see block heights only); giving its address instead keeps the check off.
+- **RT-39, Low, fixed in the repo.** go1.27.4. govulncheck v1.9.0 afterwards: exit 0 in source mode on `bridge/` and in binary mode on fresh amd64 and arm64 builds (`~/xmr-pay-dev-data/09-fix-govulncheck/`). Run with a private copy of go1.27.4 under `~/work/go1.27.4/`; the system Go changes with Wyatt's `go1274-install.sh`.
+- **RT-40, Low, fixed.** The test showed it before the fix: with `speed` stored as `toString`, a tip's `required` was undefined. `isSpeed` now lives in `core/constants.ts` and checkout uses it.
+- **RT-41, Low, fixed** (it was small). `purgeBatch` clears buyer data when `finalAt` is missing; the query already limits it to invoices more than 30 days past their window. The status doesn't change.
+

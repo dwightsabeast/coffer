@@ -1993,7 +1993,7 @@ Built (2026-11-14): `checkList` in `plugin/src/sync/handle.ts`, `CHECK_ROTATION_
 For the live spec (Wyatt applies): spec change 46's order gains "the rotation always has room for at least 25 rows, and never passes a row it didn't send".
 
 
-## 55. `isPaid` says yes to any settled invoice, so in release 1 a dust tip opens any gated page  (status: proposed, 2026-11-14; found in phase 09's security review)
+## 55. `isPaid` says yes to any settled invoice, so in release 1 a dust tip opens any gated page  (status: accepted, 2026-11-15, Wyatt: item 1 built the same day; items 2 and 3 for phase 08)
 Found in: phase 09, step 1 (`docs/security-review.md`, REV-8), reading `theme/src/isPaid.ts` and `theme/README.md`, "Gated content".
 Spec says: Theme integration, piece 3: "**Gating:** for gated content, the page or route checks `status` server-side and treats only `settled` as paid."
 Evidence:
@@ -2019,7 +2019,24 @@ Evidence:
 - **Limits:** the seeded rows had no transfers; one machine; nothing past 20,000 rows.
 Proposal:
 1. Item 4's lookup by txid is a scan in storage's own order (no filter, no `orderBy`), at most 200 pages, on the private admin route.
+   - **Not public (Wyatt's question, 2026-11-15).** It's an action on `admin`, the one private route (`permission: "plugins:manage"`; EmDash refuses anonymous users, non-admins and requests without `X-EmDash-Request` before the plugin runs). No public route gains a scan: `checkout`, `status` and `bridge/sync` are unchanged, and `status` still reads one row by its unique token.
+   - **The 7 s figure isn't what's proposed.** That was the same scan ordered newest first, measured for comparison. The proposal is the unordered scan: about 0.6 s at the 20,000-row cap, and only when an admin presses the button.
 2. When the scan stops at the cap without a match, the page says it looked through 20,000 invoices and found none, never a plain "not found".
 3. 1.0.0 declares no new index and writes no new field. Phase 08 builds the lookup.
 Effect on the admin budget: none.
 Effect on the trust contract: none.
+
+## 57. Three sentences in the Security model say more than the build does  (status: accepted, 2026-11-15, Wyatt; wording only, no code)
+Found in: phase 09's security review (`docs/security-review.md`, REV-5, REV-8, REV-10) and its independent reading.
+Spec says, and what is true:
+1. **Tampered installer or downloads:** "The install command checks the bridge's signature". It checks the download against a SHA-256 written into `install.sh` for that release (decision of 2026-10-04). The Ed25519 signature is on `release.json`, which the bridge checks for updates. A first install therefore trusts the install host and its TLS.
+2. **Database leak:** "Invoice tokens (random 128-bit, short-lived)". A token works for as long as its invoice row exists; `status` has no age check.
+3. **Wallet host exposure:** "The bridge makes outbound HTTPS calls only." The site's address must be https. A node's address may be http (the shop's own node on loopback always is), and the built-in stagenet second nodes are http.
+Proposal (for the live spec; Wyatt applies):
+1. "The install command checks the download against the release's checksum, carried in the install script; the bridge checks its own updates against the release-signing key. Admins who want more can check the release's signature by hand before running anything."
+2. "Invoice tokens (random 128-bit)": drop "short-lived".
+3. "The bridge listens on no port. It calls the site over https only, and its node at the address the admin gave."
+Also accepted: the install docs gain an optional "check the signature by hand" step (phase 09, step 3).
+Effect on the admin budget: none (the by-hand check is optional).
+Effect on the trust contract: none.
+

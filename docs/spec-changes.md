@@ -2010,7 +2010,7 @@ Proposal:
 Effect on the admin budget: none.
 Effect on the trust contract: none for item 1 (the theme package only). Item 2 adds fields to `status`'s response, with no new route, collection, index, capability or host.
 
-## 56. The txid lookup is a bounded scan; 1.0.0's storage contract doesn't change  (status: proposed, 2026-11-15; phase 09's security review, for spec change 49 item 4)
+## 56. The txid lookup is a bounded scan; 1.0.0's storage contract doesn't change  (status: accepted, 2026-11-15, Wyatt; phase 09's security review, for spec change 49 item 4)
 Found in: phase 09, step 1 (`docs/security-review.md`, section 6).
 Spec says: spec change 49: "A txid has no index: it's inside `transfers[]`, so it needs either a bounded scan or a new index. A new index changes the storage trust contract, so Wyatt decides." And: "Before 1.0.0's storage contract is frozen, phase 09 decides whether item 4's txid lookup needs a new index."
 Evidence:

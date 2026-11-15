@@ -723,6 +723,22 @@ const TIPS_LISTED = 10;
 const TIP_ENTRIES_LISTED = 10;
 const thousands = (n: number) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
 
+/** An address in short form: enough to match one in a wallet app, never the whole of it. */
+const shortAddress = (address: string) => `${address.slice(0, 6)}…${address.slice(-6)}`;
+
+/** A tip's payments (spec change 49, item 2): amount, block, depth and whether it counts, each with its Transaction ID. */
+function tipTransfersCode(inv: Invoice, now: number): string {
+	const n = inv.transfers.length;
+	const checked = lastChecked(inv, now);
+	const listed = inv.transfers.slice(0, TRANSFERS_LISTED).map((t, i) => {
+		const why = notCountedReasons(t);
+		const where = t.height > 0 ? `block ${t.height}` : "not in a block yet";
+		return `Payment ${i + 1} of ${n}: ${atomicToXmr(BigInt(t.amountAtomic))} XMR, ${where}, ${t.confirmations} confirmations${checked}, ${why.length === 0 ? "counted" : `not counted: ${why.join("; ")}`}\nTransaction ID: ${t.txid}`;
+	});
+	if (n > TRANSFERS_LISTED) listed.push(`…and ${n - TRANSFERS_LISTED} more payments.`);
+	return listed.join("\n\n");
+}
+
 /** A tip's entry name, from the title stored at tip time ("Tip: <title>"), so no content lookups are needed. */
 const tipEntryName = (inv: Invoice) => (inv.contentRef && inv.uriDescription?.startsWith("Tip: ") ? inv.uriDescription.slice(5) : inv.contentRef ? "an entry" : "the whole site");
 
@@ -767,7 +783,7 @@ function tipLine(inv: Invoice, siteHeight: number): string {
  * visitor tips and their counted payments only; admin test tips (no `via`) never count. Notes are shown as given: EmDash
  * 1.1.0's Block Kit renders every text as plain text (React children, no HTML or markdown; docs/emdash-upgrade-checklist.md).
  */
-async function tipsBlocks(ctx: PluginContext): Promise<Block[]> {
+async function tipsBlocks(ctx: PluginContext, now: number, listCursor?: string): Promise<Block[]> {
 	const siteHeight = (await ctx.kv.get<BridgeState>(KV.bridge))?.height ?? 0;
 	const tips: Invoice[] = [];
 	let cursor: string | undefined;
@@ -809,16 +825,49 @@ async function tipsBlocks(ctx: PluginContext): Promise<Block[]> {
 		blocks.push({ type: "context", text: "By entry" }, { type: "fields", block_id: "tips_by_entry", fields });
 	}
 
-	blocks.push({ type: "context", text: "Newest tips" });
-	for (const t of tips.slice(0, TIPS_LISTED)) {
+	// The list is its own query, 10 rows a page on a storage cursor (the `tips_page` action), so "Show older tips" picks up
+	// exactly where a page ended. Test tips are left out after the query, so a page can hold fewer than 10.
+	const list = await invoices(ctx).query({ where: { kind: "tip" }, orderBy: { createdAt: "desc" }, limit: TIPS_LISTED, ...(listCursor ? { cursor: listCursor } : {}) });
+	blocks.push({ type: "context", text: listCursor ? "Older tips" : "Newest tips" });
+	for (const { data: t } of list.items) {
+		if (t.via !== "checkout") continue;
 		const open = t.contentRef ? { accessory: { type: "link", label: "Open entry", target: { kind: "content", collection: t.contentRef.collection, id: t.contentRef.id } } } : {};
 		blocks.push({ type: "section", text: tipLine(t, siteHeight), ...open });
 		const ignored = ignoredText(t, siteHeight);
 		if (ignored) blocks.push({ type: "context", text: ignored });
 		// The visitor's note as they wrote it: plain text, never interpreted.
 		if (t.buyer?.note) blocks.push({ type: "context", text: `Note: ${t.buyer.note}` });
+		// Spec change 49, items 1 to 3: what ties a tip to a person who writes in. The ID alone in its box, so it copies
+		// clean; the address in short form; each payment with its Transaction ID. Never the pay token (T09).
+		blocks.push({ type: "code", code: t.id }, { type: "context", text: `Address ${shortAddress(t.subaddress)}` });
+		if (t.transfers.length > 0) blocks.push({ type: "code", code: tipTransfersCode(t, now) });
 	}
+	const nav: Block[] = [];
+	if (listCursor) nav.push({ type: "button", action_id: "tips_page", label: "Newest tips", value: { newest: true } });
+	if (list.hasMore && list.cursor) nav.push({ type: "button", action_id: "tips_page", label: "Show older tips", value: { cursor: list.cursor } });
+	if (nav.length > 0) blocks.push({ type: "actions", block_id: "tips_nav", elements: nav });
 	return blocks;
+}
+
+/** A tip's `tips_page` cursor from the browser: a string of sensible length, or nothing. */
+const TIPS_CURSOR_MAX = 1000;
+
+/**
+ * "Show older tips": the cursor is checked for shape, then tried against the list's own query. EmDash refuses one it
+ * can't decode; that, and any other failure, shows the newest page with an error. Read-only either way.
+ */
+async function tipsCursor(ctx: PluginContext, value: unknown): Promise<{ cursor?: string; refused: boolean }> {
+	if (value === undefined) return { refused: false };
+	if (!isObject(value)) return { refused: true };
+	if (value.newest === true && value.cursor === undefined) return { refused: false };
+	const c = value.cursor;
+	if (typeof c !== "string" || c.length === 0 || c.length > TIPS_CURSOR_MAX || !/^[A-Za-z0-9+/_=-]+$/.test(c)) return { refused: true };
+	try {
+		await invoices(ctx).query({ where: { kind: "tip" }, orderBy: { createdAt: "desc" }, limit: 1, cursor: c });
+		return { cursor: c, refused: false };
+	} catch {
+		return { refused: true };
+	}
 }
 
 async function invoiceBlocks(ctx: PluginContext, now: number, opts: PageOptions): Promise<Block[]> {
@@ -1006,6 +1055,8 @@ interface PageOptions {
 	acted?: string;
 	/** The first review item shown (0, 12, 24, 36 or 48). */
 	reviewStart?: number;
+	/** The tips list's page (a storage cursor, already tried); the newest page when absent. */
+	tipsCursor?: string;
 }
 
 const PAIRED_WARNING = "A wallet host is already paired. Pairing a new one replaces it, and the current one stops syncing.";
@@ -1050,7 +1101,7 @@ async function page(ctx: PluginContext, now: number, opts: PageOptions = {}): Pr
 	const blocks: Block[] = [{ type: "header", text: "Monero payments" }, ...bannerBlocks(h), ...setup.recentTip];
 	if (!setup.done) blocks.push(setup.toggle, { type: "divider" }, { type: "header", text: "Connect wallet host" }, ...connect);
 	// All invoices (products) only with goods on: the release-1 switch, spec change 22.
-	blocks.push(...healthBlocks(h), ...(await reviewBlocks(ctx, h.review, opts.reviewStart ?? 0, now)), ...(await tipsBlocks(ctx)), ...(GOODS_ENABLED ? await invoiceBlocks(ctx, now, opts) : []));
+	blocks.push(...healthBlocks(h), ...(await reviewBlocks(ctx, h.review, opts.reviewStart ?? 0, now)), ...(await tipsBlocks(ctx, now, opts.tipsCursor)), ...(GOODS_ENABLED ? await invoiceBlocks(ctx, now, opts) : []));
 
 	const currency = await ctx.settings.get<string>(SETTING.currency);
 	const speed = await ctx.settings.get<string>(SETTING.speed);
@@ -1130,6 +1181,11 @@ export async function handleAdmin(ctx: PluginContext, input: unknown, now: numbe
 		const v = isObject(i.value) ? i.value : {};
 		const n = typeof v.start === "number" && Number.isFinite(v.start) ? Math.floor(v.start / REVIEW_STEP) * REVIEW_STEP : 0;
 		return { blocks: await view({ reviewStart: Math.min(REVIEW_MAX - REVIEW_STEP, Math.max(0, n)) }) };
+	}
+	if (i.type === "block_action" && i.action_id === "tips_page") {
+		const t = await tipsCursor(ctx, i.value);
+		if (t.refused) return { blocks: await view(), toast: { message: "That page of tips isn't available. Showing the newest.", type: "error" } };
+		return { blocks: await view(t.cursor ? { tipsCursor: t.cursor } : {}) };
 	}
 	if (i.type === "block_action" && i.action_id === "invoice_action") {
 		const r = await invoiceAction(ctx, i.value, now);

@@ -5736,3 +5736,18 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **State of the box:** dev site and built copy stopped; `data.db` as restored in the entry above; `plugin/dist/` built from `7aff94e` (the dev site's `dist/` still holds the build from before these fixes). A session-end bundle follows.
 
 **Next step:** step 3, plan first: `tips_page`, spec change 49 items 1 to 3, spec change 42's banner text, the install docs. The install host and the real install URL are still Wyatt's to provide.
+
+## 2026-11-15 · Phase 09, step 3 · Handoff after items 1 and 2: tip rows and "Show older tips"
+
+**CI:** see the next entry; the run on `271447f` was still going when this was written.
+**Wyatt (2026-11-15):** spec change 56 accepted; the fix commits pushed (`release-1` at `271447f`); go1.27.4 installed on the dev box (`go1274-install-output.txt`: PASS; the bridge tests pass on the system Go). RT-38 confirmed: a remote node given by a public IP is still cross-checked (`TestIsOwnNode`: 8.8.8.8, 203.0.113.7 and 2001:db8::1 are remote); only `localhost` and loopback, private or link-local addresses keep the check off.
+
+**Done (items 1 and 2), tests first:**
+- **Tip rows (spec change 49, items 1 to 3):** each listed tip has its invoice ID alone in a code box, "Address" in short form (first and last six characters), and a box of its payments: amount, block or "not in a block yet", confirmations, counted or why not, and the Transaction ID.
+- **`tips_page`:** the list is now its own query, 10 rows a page on a storage cursor, with "Show older tips" and "Newest tips". Test tips are filtered after the query, so any page, the first included, can hold fewer than 10. The totals still come from the newest 1,000.
+- **A refused cursor** (wrong type, empty, oversized, not base64, cut short, or one EmDash can't decode, hand-built ones included) shows the newest page with "That page of tips isn't available. Showing the newest." Nothing is written.
+- **Tests:** `plugin/tests/routes/admin-tips-page.test.ts`, six tests tagged T09, F04, T30 and P04, red first. All route tests and the red-team admin tests: 207 passed, 1 skipped. Typecheck; bundle check 76.4 KB.
+- **Not covered:** the anonymous, non-admin and no-header refusals are EmDash's, before the plugin runs, so the test host can't make them; `scripts/dev-e2e.mjs` checks them for the `admin` route on a dev site and wasn't run this session. The page hasn't been looked at in a browser (Wyatt, with `inv_f7ea94de1471f114`).
+- **Differs from the phase file's wording:** it says a cursor from another list is refused. A well-formed cursor is a position to EmDash, so one that decodes shows a page of visitor tips; it can't show another kind or change anything. The test records that.
+
+**Next step:** item 3 (spec change 42's banner and toast text), then `docs/install.md`, then the delta review for step 3.

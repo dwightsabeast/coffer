@@ -21,7 +21,7 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
 - [x] An install host that serves the bridge files without redirects (spec change 21): `get.coffer.party` (spec change 58); the probe upload passed the check on 2026-11-20.
 - [x] The Atmosphere account to publish under (below; done 2026-10-23).
 - [x] Your hand-made registry icon (Claude doesn't generate or draw one): `plugin/images/coffer-icon.png`, delivered 2026-10-23.
-- [x] Session 7g (EmDash 1.3 check) is done, and the floor is 1.4.0 since the check of 2026-11-14: `release.requires` and the listing text are in the manifest, and they name versions actually tested (spec change 41, items 3, 4, 9).
+- [x] Session 7g (EmDash 1.3 check) is done, and the floor is 1.5.0 since the check of 2026-11-20 (1.4.0 from 2026-11-14): `release.requires` and the listing text are in the manifest, and they name versions actually tested (spec change 41, items 3, 4, 9).
 - [ ] A browser with passkey support, for approving each release (spec change 41 A).
 - [ ] The repository is still public: the release service trusts only public GitHub provenance.
 - [ ] Spec change 49 item 4's txid lookup: a new index or a bounded scan, decided before 1.0.0's storage contract is frozen (step 1 below; Wyatt, 2026-11-08).

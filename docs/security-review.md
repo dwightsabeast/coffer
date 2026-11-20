@@ -141,7 +141,7 @@ Each row: the spec's threat, its matrix ID, where the code is, the tests, and th
 | --- | --- |
 | The manifest's trust contract against the spec | Matches, in the source and in the built `dist/manifest.json`: the two capabilities, the two hosts, `pool` and `invoices` with the spec's indexes, the four routes with their methods and access, one page (`/payments`, spec change 6's accepted path) and one widget. `manifest.test.ts` pins it |
 | Bundle caps (`backend.js` at most 128 KB, tarball at most 256 KB) | 74.7 KB across 3 files; `plugin.mjs` is 73.25 KB |
-| `release.requires` names only tested versions | `env:emdash >=1.4.0 <2.0.0`, `env:astro >=7.3.5 <8.0.0`. 1.4.0 is the floor and the only EmDash version checked (2026-11-14). 1.5.0 is untested: see "Open before publishing", item 6 |
+| `release.requires` names only tested versions | `env:emdash >=1.5.0 <2.0.0`, `env:astro >=7.3.5 <8.0.0`. 1.5.0 is the floor since 2026-11-20 (Wyatt), checked that day: `docs/emdash-upgrade-checklist.md`, "EmDash 1.5.0" |
 | The release-1 switch is off, in the source and in the built bundle | Source: `GOODS_ENABLED = false` (`core/constants.ts`), pinned by `release1.test.ts`. Built `dist/plugin.mjs` (SHA-256 starts `e0b4be2a4e868387`): the checkout validator compiles to "an object whose kind is `tip`, else refused", and the text "All invoices" isn't in the bundle. The product-invoice function is still in the file as unreachable code |
 | The theme exports no PayButton, in the source and in the package | `npm pack --dry-run`: 18 files, no PayButton file, and the word doesn't occur in `theme/src`, `package.json` or the README. `exports` lists PayPage, page, TipButton, tip, isPaid, messages and qr |
 | No third-party runtime code is shipped | `plugin/package.json` and `theme/package.json` have no `dependencies`; `bridge/go.mod` has no `require`; the QR encoder is vendored and hash-checked (T24) |
@@ -227,7 +227,7 @@ New findings are filed in `docs/redteam-findings.md` with the next RT numbers. T
 
 **REV-6 (row T27). The bridge's updater follows redirects, including to plain http,** and nothing requires its base address to be https. Integrity doesn't depend on either (signed manifest, hashed files). Recommended: refuse both when step 2 touches the updater.
 
-**REV-7. Astro's floor.** The theme's peer range starts at 7.3.5; two Astro advisories cover versions up to 7.4.6. They affect a site's own pages. Decide with the EmDash 1.5.0 check.
+**REV-7. Astro's floor.** The theme's peer range starts at 7.3.5; two Astro advisories cover versions up to 7.4.6. They affect a site's own pages. Decide with the EmDash 1.5.0 check. **At the 1.5.0 check (2026-11-20):** EmDash 1.5.0 still asks for `astro >=6.0.0-beta.0`, so it doesn't settle this. The dev site's `npm audit` lists the Astro and `@astrojs/node` advisories as moderate. Still Wyatt's ruling: keep 7.3.5, or raise the theme's Astro floor and `env:astro` (a dependency change in `theme/`).
 
 **REV-8 (wording; row T02). The spec calls invoice tokens "short-lived"; they work for as long as the invoice row exists.** `status` has no age check and invoices are deleted only on uninstall. In release 1 a token shows only that tip's own status. Recommended: drop "short-lived" from the spec's row, or decide an age after which `status` answers not found.
 
@@ -244,7 +244,7 @@ New findings are filed in `docs/redteam-findings.md` with the next RT numbers. T
 3. **T28's CI steps** (REV-4). **Done 2026-11-15:** CI run 43729208960 on `6a723c6` passed with them.
 4. **The release key and addresses** (steps 2 and 3): the real public key pinned, `releaseBase()` and the plugin's install URL replaced, and the tests that prove a release build holds no placeholder, dev key, dev option or test key. **Addresses done 2026-11-20** (spec change 58: `https://get.coffer.party/install.sh` and `/latest`, with tests that the release binary holds the address and no placeholder). The key waits on step 2.
 5. **The install docs' lines:** RT-12, RT-13, RT-19, the dedicated wallet, the proxy's public address (RT-20), the rate-limit rule for checkout, the by-hand signature check (REV-5).
-6. **EmDash 1.5.0** (after 2026-11-18, about 18:20 UTC): the upgrade checklist, and a re-check of every row in section 9. Until then `release.requires` admits 1.5.0 untested; either the check is done before the first publish or the range is capped below 1.5.0.
+6. **EmDash 1.5.0** (after 2026-11-18, about 18:20 UTC): the upgrade checklist, and a re-check of every row in section 9. Until then `release.requires` admits 1.5.0 untested; either the check is done before the first publish or the range is capped below 1.5.0. **Done 2026-11-20:** every checklist row holds or is rewritten with evidence, section 9 is re-checked (below), and the floor is 1.5.0 (spec change 59).
 7. **The public report and `docs/security.md`** (step 4), from tagged CI output, with T03 in spec change 44's wording and rows 2, 3, 10, 12 and 16 worded as above. **Text approved 2026-11-20** (ASD-STE100 wording) and committed; `sections.security` declared with a length test. The **[at the tag]** marks (commit, CI run, totals, per-ID appendix) are still to fill when the release is tagged.
 8. **`govulncheck -mode binary` on the release binaries and `pnpm audit` on the release packages**, just before publishing.
 9. **A delta review** for every code change after the reviewed commit.
@@ -253,7 +253,7 @@ New findings are filed in `docs/redteam-findings.md` with the next RT numbers. T
 
 ## 9. Rows that rely on EmDash internals
 
-Re-check each on EmDash 1.5.0 before the first publish (Wyatt, 2026-11-14). `docs/emdash-upgrade-checklist.md` has the check for each.
+Re-check each on EmDash 1.5.0 before the first publish (Wyatt, 2026-11-14). `docs/emdash-upgrade-checklist.md` has the check for each. **Re-checked on 1.5.0 (2026-11-20):** each row's code is byte-identical or its change is recorded in the checklist. The sandbox's host gating (`isHostAllowed`, `createHttpAccess`, `validateExternalUrl`) and storage access are identical; the private route's `plugins:manage` default, the `X-EmDash-Request` check and `cacheControl` on a public GET are unchanged in the route dispatcher; `ctx.kv`'s `getVersioned` and `compareAndSet` now run on the `options` table (#4277), still one conditional write. The `isPaid` row is out of release 1 (RT-37).
 
 | Review row | Relies on |
 | --- | --- |
@@ -364,3 +364,15 @@ From `a2fddcf` (reviewed through T28's CI steps) to this commit.
 | **`scripts/check-install-host.mjs`** | Dev tooling, never shipped. GET requests only, to the given base. Node standard library; no new dependency | As intended. Live on the probe upload: 47 PASS, 0 FAIL |
 | **Matrix T32** (a compromised or misconfigured install host) | Added as Partial, with the check script as its detection (see the row) | Partial, as stated |
 
+### EmDash 1.5.0 (2026-11-20)
+
+From `d747a58` (the security drafts) to this commit.
+
+| Change | Checked | Result |
+| --- | --- | --- |
+| **`emdash` 1.5.0, `plugin-cli` 0.13.6, `plugin-test` 0.2.12** in `plugin/`, `emdash` 1.5.0 in `theme/` (dev dependencies; Wyatt approved) | Every row of `docs/emdash-upgrade-checklist.md` and section 9, from the two versions' packages; the suites; the dev site live. Lockfile changes are listed in the commits | As intended. The bundle is 76.7 KB, unchanged: no EmDash code is in it |
+| **The floor:** `release.requires` `env:emdash >=1.5.0 <2.0.0` and both peer ranges | Listing text and metadata only; the manifest test, red first | As intended. Admins on 1.4.0 follow EmDash's upgrade guide (spec change 59; its install.md sentence deferred by Wyatt) |
+| **KV in `options`** (EmDash #4277, migration 092) | The runner's KV calls and `OptionsRepository`; the migration on the dev site; `c6` live | The same keys and values under the same plugin scope; RT-07 holds (one winner per round). Not a change to the trust contract |
+| **`plugin/src/admin.ts`**: one comment | Comment only | No behavior change |
+| **`[P04]`** (`sync-route.test.ts`) | Rewritten for activation at host start; mutation check | Still fails without the admin-load fallback |
+| **Dev scripts** (`scripts/redteam/lib.mjs`, `setup-test-reset.mjs`, `dev-e2e.mjs`, `round1-live.mjs`, `backlog-live.mjs`) | Never shipped. Loopback only, as before; KV read and written in `options`; the restore flushes and re-hashes its copy | As intended; script tests 69 passed |

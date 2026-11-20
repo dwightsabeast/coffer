@@ -5998,3 +5998,49 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 - Still from section 8: the release key (step 2), the EmDash 1.5.0 check, and binary-mode govulncheck and `pnpm audit` on the release artifacts.
 
 **Next step:** step 2 (build and sign), once the release key's public half exists. The EmDash 1.5.0 check can be done before that.
+
+## 2026-11-20 · Phase 09 · The EmDash 1.5.0 check: upgraded, every row holds; the floor is 1.5.0; the live tip settled
+
+**The bundle from the entry above:** `coffer-release-1-20261120-d747a58.bundle` (made at 12:00, verified again after the reboot).
+
+**The dev box went down mid-session.** It booted again at 12:42:30; I can't read the system log, so the cause isn't known to me. The step-1 restore at 12:23 (`setup-test-reset.mjs --restore`) never reached the disk: `data.db` was 2,093,056 zero bytes. Everything else was intact: the backup it restored from, the lockfile copies, the repo (`git fsck`), the bundle. `data.db` was copied again from `redteam/emdash150-before.db`, then `sync`, the hash compared, `PRAGMA integrity_check` ok, and the counts matched. **Fix, test first (`de12b35`):** the restore now fsyncs the copy and its folder, re-hashes it against the backup and prints the hash. Setup-friction row added.
+
+**Wyatt:** approved the four bumps; raised the floor to 1.5.0; deferred spec change 59's install.md sentence ("skip the install.md sentence for now"); paid the live tip.
+
+**Done:**
+- **Code reading, 1.4.0 against 1.5.0** (notes: `~/xmr-pay-dev-data/emdash150-reading.md`). Every function a checklist row names is byte-identical. The exceptions:
+  - `readSiteInfo`: only the title source changed; the URL order is the same.
+  - KV: it moved to `options`, through `createKVAccess` (#4277).
+  - New behavior around it: the 503 while indexes sync (#4095), install and activate on every boot (#4358), partial unique indexes (#4715), Cloudflare's default of 30 calls (#4712).
+  - 1.5.0's uninstall with "delete data" also deletes `plugin:coffer:` options.
+- **`plugin/`** (`a9a5d6f`): `emdash` 1.5.0, `plugin-cli` 0.13.6 and `plugin-test` 0.2.12. The floor to `>=1.5.0 <2.0.0` (manifest test red first). `[P04]` rewritten: the cron exists at host start; clearing `cronScheduled` shows the admin-load fallback; a mutation check makes it fail without the fallback. `admin.ts`'s stale comment fixed.
+- **Dev scripts** (`c2d664d`, tests first): `lib.mjs` gains `kvName`, `kvGet` and `kvSet`; the pairing shortcut and the cleanup use `options`; `dev-e2e`, `round1-live` and `backlog-live` read through `kvGet`. **Found and fixed:** on 1.5.0, `setup-test-reset.mjs` would have left Coffer's pairing state behind, since it deleted only `plugin:coffer:settings:%`.
+- **`theme/`** (`4d077aa`): `emdash` 1.5.0, peer `>=1.5.0 <2`.
+- **The dev site** (outside the repo): `emdash` 1.5.0 and `sandbox-workerd` 0.9.7 with `--before=2026-11-13T20:11:30Z`. 76 entries changed, 9 added, 4 removed; the newest was published 2026-11-13 08:00 UTC. 3,480 signatures verified. Built, then `emdash migrate --status` and the apply with the target's fingerprint (092 to 097), before the site started. 16 KV keys copied with the same value and revision, no conflicts. Old files: `~/xmr-pay-dev-data/baseline/*before-emdash150`.
+- **Docs:** the checklist's 1.5.0 section and three new rows (KV in `options`, the 503, lifecycle at boot); spec change 59 (proposed; item 1 deferred); the decisions rows; `docs/security-review.md` section 8 item 6 done, section 9 re-checked, REV-7's note, and a delta review; the phase file's floor line.
+
+**Test results:**
+- Plugin: typecheck; validate; bundle 76.7 KB; default 47 files, 545 passed, 7 expected fail, 1 skipped; switch on 6 files, 102 passed, 1 skipped (`~/xmr-pay-dev-data/150-plugin-tests.txt`). The same counts as on 1.4.0. The first run had one failure, `[P04]`, fixed as above.
+- Theme: 79 passed, 1 skipped with zbar required; typecheck (the count since RT-37).
+- Script tests: 69 passed (66 at the start of the day, plus three new).
+- Dev site, `astro dev`: the installed bridge synced on 1.5.0 (200, under 100 ms) and wrote `options` only; `dev-e2e.mjs` 32 of 32; `round2-live.mjs c6` one winner in each of three rounds; `round1-live.mjs` all PASS but C5's known RT-13. Admin page: the red banner on localhost, an https `Origin` used. The toolbar is off `e150`'s pay page, signed in or out.
+- Built copy, flood of 20,100: before (1.4.0) run medians 1121, 1089 and 1092 ms, all nine 1102; after (1.5.0) 1138, 1128 and 1094 ms, all nine 1107; slowest 1162; limit 5000. Headers as before.
+- RT-12: unchanged (spin stopped at 30,037 ms; `status` waited 30,024 ms). The canary's 15 probes: the same two "allowed".
+- **Live tip `e150`** (0.002 XMR, index 362): created 20:44:41 UTC, paid by Wyatt. Stagenet was slow (13 blocks in 34 minutes). `expired` at 21:15:00 on the first sync after the deadline. The transfer was in block 2,254,700, inside `expiresHeight` 2,254,705, so it reopened and settled at 2 confirmations by 21:20:06 (spec: a payment made in time reopens and settles). So the reopen path ran live on 1.5.0.
+- Bridge: not run; nothing of its changed.
+
+**Not covered:** the Cloudflare runner's limits (read only); uninstall with "delete data" (read only); the tip button through the tunnel on the built copy; the matrix needed no change (no row's conditions or coverage moved).
+
+**Open:**
+- **REV-7 (Wyatt):** Astro's floor. EmDash 1.5.0 doesn't settle it (it still asks for `astro >=6.0.0-beta.0`). The dev site's audit lists Astro's advisories as moderate.
+- Spec change 59 item 2: measure Cloudflare's new limit on a test site, for release 1.x.
+- Why the box went down, if Wyatt knows (for the setup-friction row).
+
+**State of the box:**
+- Dev site, built copy, watcher, release server and canary all off.
+- `data.db` is the migrated state plus the bridge's syncs and `e150`: 65 invoices, 367 pool rows, the bridge key `sha256:5f8d0659a624`. The 16 stale `__kv` rows are still there, as EmDash leaves them.
+- Backups: `redteam/emdash150-{before,preupgrade,migrated,before-e2e,before-flood}.db`.
+
+**Commits (local, not pushed):** `de12b35`, `a9a5d6f`, `c2d664d`, `4d077aa` and this docs commit.
+
+**Next step:** step 2 (build and sign), once Wyatt has the release key's public half. Before the first publish: REV-7's ruling, the report's **[at the tag]** generator script, and `SECURITY.md`.

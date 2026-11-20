@@ -1,7 +1,7 @@
 1. **Install Coffer** from the plugin registry, then open **Monero payments** in your admin. The Setup checklist covers
    the rest: press **Connect wallet host** and run the one command it shows on a separate Linux machine
    (it asks for your shop wallet's address and view key; never the spend key). Setup ends with a test tip to your own
-   wallet.
+   wallet. The command downloads from https://get.coffer.party.
 
 2. **Add the pay page** to your theme:
 

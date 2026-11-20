@@ -87,9 +87,11 @@ it("the listing says what setup needs before the Install click (spec change 41 i
 	expect(new TextEncoder().encode(descriptionSection).length).toBeLessThanOrEqual(20_000);
 });
 
-// Wyatt, 2026-11-15: about 1,850 of the registry's 2,000 graphemes, so the real install address fits later.
+// Wyatt, 2026-11-15: about 1,850 of the registry's 2,000 graphemes, so the real install address fits later; raised to
+// 1,950 with that address in it (Wyatt, 2026-11-20, spec change 58).
 it("the listing's installation text leaves room under the registry's 2,000 graphemes and links the install guide", () => {
-	expect(graphemes(installationSection)).toBeLessThanOrEqual(1850);
+	expect(graphemes(installationSection)).toBeLessThanOrEqual(1950);
+	expect(installationSection).toContain("The command downloads from https://get.coffer.party.");
 	expect(installationSection).toContain("https://github.com/dwightsabeast/coffer/blob/coffer%401.0.0/docs/install.md");
 	expect(installationSection).toContain("/_emdash/api/plugins/coffer/*");
 	expect(installationSection).toContain("never the spend key");

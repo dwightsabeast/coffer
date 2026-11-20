@@ -17,7 +17,9 @@ func releaseKeys() []ed25519.PublicKey { return nil }
 // devBreakMode is always "" in release builds (see release_dev.go).
 func devBreakMode() string { return "" }
 
-func releaseBase() string { return "https://REPLACE-RELEASE-HOST.invalid/xmr-bridge/latest" }
+// releaseBase is the folder installed bridges poll for updates (spec change 58, docs/install-host.md): plain copies of
+// the newest version's release.json, release.json.sig and binaries.
+func releaseBase() string { return "https://get.coffer.party/latest" }
 
 const (
 	updateDelay     = 48 * time.Hour // after a bridge release's signed date

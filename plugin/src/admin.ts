@@ -23,8 +23,8 @@ import { type BridgeState, type NetworkRecord, type PoolCheckState, type Refused
 import { type PairingState, PAIRING_TTL_MS, isPairingActive, keyId, newPairingCode } from "./sync/pairing";
 import { POOL_TARGET } from "./sync/protocol";
 
-/** The release host arrives in phase 09. ".invalid" never resolves, so a copied command fails instead of running. */
-export const INSTALL_URL = "https://REPLACE-RELEASE-HOST.invalid/install.sh";
+/** The install host (spec change 58, docs/install-host.md): the newest release's install.sh, at a fixed path. */
+export const INSTALL_URL = "https://get.coffer.party/install.sh";
 export const PAGE = "/payments";
 export const WIDGET = "widget:xmr-status";
 

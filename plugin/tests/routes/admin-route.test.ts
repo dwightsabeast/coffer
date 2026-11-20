@@ -14,6 +14,18 @@ afterEach(async () => {
 	host = undefined;
 });
 
+// Spec change 58 (Wyatt, 2026-11-20): the install host is get.coffer.party; the placeholder is gone from the source.
+it("the install command fetches https://get.coffer.party/install.sh, and no placeholder host is left in src/", () => {
+	expect(INSTALL_URL).toBe("https://get.coffer.party/install.sh");
+	const sources = import.meta.glob("../../src/**/*.ts", { query: "?raw", import: "default", eager: true });
+	expect(Object.keys(sources).length).toBeGreaterThan(5);
+	for (const [path, text] of Object.entries(sources)) {
+		expect(text, path).not.toContain("REPLACE-RELEASE-HOST");
+		expect(text, path).not.toMatch(/[A-Za-z0-9-]\.invalid\b/);
+		expect(text, path).not.toMatch(/\.pages\.dev\b/);
+	}
+});
+
 /** A host with one good price response per currency queued: the page checks the price feed (then caches it a minute). */
 async function newHost() {
 	const h = await createPluginRuntimeTestHost();

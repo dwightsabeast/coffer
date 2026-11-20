@@ -59,7 +59,7 @@ Copy all four lines.
 
 On the **wallet host**, not your site's server, paste the four lines together and press Enter.
 
-The command downloads the wallet host program, checks it against this release's checksum, and starts the installer. `sudo` may ask for your password.
+The command downloads the wallet host program from `get.coffer.party`, checks it against this release's checksum, and starts the installer. `sudo` may ask for your password.
 
 ### 5. Answer the questions (the wallet host)
 
@@ -95,7 +95,7 @@ Coffer can't see your visitors' addresses on most Node hosts, so these limits be
 
 ## Doing it by hand (optional)
 
-The install command does three things you can do yourself: download the program, check it, and run its installer. The release address is the address in step 3's command, without `install.sh` at the end.
+The install command does three things you can do yourself: download the program, check it, and run its installer. The release address is `https://get.coffer.party/<version>/`, for example `https://get.coffer.party/1.0.0/`: the folder that step 3's command, `https://get.coffer.party/install.sh`, downloads from.
 
 1. **Download** `xmr-bridge-<version>-linux-amd64` (or `-arm64`), `SHA256SUMS`, `release.json` and `release.json.sig` from the release address, into one folder on the wallet host.
 
@@ -107,7 +107,7 @@ The install command does three things you can do yourself: download the program,
 
    **Check:** it prints the file's name and `OK`.
 
-3. **Check the release's signature (optional).** The install command checks the checksum only, so it trusts the place it downloaded from. The signature ties `release.json`, and the checksums inside it, to Coffer's release key. The release page on GitHub gives the public key as a file, `coffer-release.pub.pem`, and its fingerprint. Download it into the same folder, then run these one at a time:
+3. **Check the release's signature (optional).** The install command checks the checksum only, so it trusts the place it downloaded from. The signature ties `release.json`, and the checksums inside it, to Coffer's release key. The public key is `coffer-release.pub.pem` at the release address. Download it into the same folder, and compare its fingerprint with the one on Coffer's release page on GitHub: a key from the same place as the download proves nothing by itself. Then run these one at a time:
 
    ```sh
    { printf 'xmr-bridge-release-v1\n'; cat release.json; } > release.message

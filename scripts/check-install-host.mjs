@@ -11,7 +11,8 @@
 //    latest/, install.sh and the key are the newest version's files; each install.sh points at its own version folder;
 //    no _redirects or _headers; a top-level 404.html; no suffixed versions (the bridge's Newer ignores a suffix).
 // 2. The host: every file in the folder is served with HTTP 200, no Location, and the same bytes; a missing file is a
-//    404 with 404.html (not Pages' single-page-app fallback); install.sh and the newest binaries also download with
+//    404 with 404.html (not Pages' single-page-app fallback; 404.html itself isn't fetched by name, since Pages redirects
+//    .html paths, and no other .html file may be uploaded); install.sh and the newest binaries also download with
 //    `wget --max-redirect=0` (install.sh's wget path) and `curl -fsSL --proto =<scheme> --max-redirs 0`.
 // 3. The repo: a WARN for every tracked file that mentions a *.pages.dev address (the install URL is get.coffer.party).
 import { execFile } from "node:child_process";
@@ -120,6 +121,9 @@ const newest = good.at(-1);
 for (const n of ["_redirects", "_headers", "_worker.js", "_routes.json", "functions"]) {
 	if (existsSync(join(folder, n))) say("FAIL", `layout: ${n} is in the upload folder (no rules or code on the install host)`);
 }
+for (const p of all.filter((p) => p.toLowerCase().endsWith(".html") && p !== "404.html")) {
+	say("FAIL", `layout: ${p} is an .html file (Pages redirects .html paths; only 404.html may be one)`);
+}
 if (has("404.html")) say("PASS", "layout: 404.html at the top");
 else say("FAIL", "layout: no 404.html at the top (Pages would serve the root for a missing file)");
 for (const d of readdirSync(folder).filter((n) => statSync(join(folder, n)).isDirectory() && n !== "functions")) {
@@ -165,7 +169,13 @@ async function get(path) {
 // A listed version's file is compared with versions.json's SHA-256 (the record of what was published), any other file
 // with the upload folder's copy.
 const listedHash = new Map(good.flatMap((v) => Object.entries(versions[v])));
+// Pages redirects .html paths (live, 2026-11-20: /404.html -> 307 /404), so 404.html is checked as the body of a
+// missing file instead, below.
 for (const p of [...new Set([...all, ...listedHash.keys()])].sort()) {
+	if (p === "404.html") {
+		say("PASS", "/404.html isn't fetched by name (Pages redirects .html paths); the missing-file checks cover it");
+		continue;
+	}
 	const r = await get(p);
 	const want = listedHash.get(p) ?? sha(local(p));
 	const against = listedHash.has(p) ? "versions.json's SHA-256" : "the upload folder";

@@ -1,6 +1,7 @@
 // Tests for scripts/check-install-host.mjs (phase 09, spec change 58), against a local server that plays the install
 // host, with an upload folder in a temp folder. Run: node --test scripts/check-install-host.test.mjs
-// The wget and curl lines run the real tools against the loopback server.
+// The wget and curl lines run the real tools against the loopback server. Tests of a change the check must catch carry
+// [T32] (docs/security-matrix.md, a compromised or misconfigured install host).
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -119,7 +120,9 @@ test("a correct upload passes every check, and the output file holds the same li
 	const r = await check(s);
 	assert.equal(r.code, 0, r.stdout + r.stderr);
 	assert.deepEqual(fails(r.stdout), []);
-	for (const path of walk(s.folder)) assert.match(r.stdout, new RegExp(`PASS served without a redirect, bytes match: /${path.replaceAll(".", "\\.")}\\n`));
+	for (const path of walk(s.folder).filter((p) => p !== "404.html")) {
+		assert.match(r.stdout, new RegExp(`PASS served without a redirect, bytes match: /${path.replaceAll(".", "\\.")}\\n`));
+	}
 	assert.match(r.stdout, /PASS a missing file is a 404 with 404\.html/);
 	assert.match(r.stdout, /PASS wget --max-redirect=0: \/install\.sh/);
 	assert.match(r.stdout, /PASS curl --max-redirs 0: \/1\.0\.1\/xmr-bridge-1\.0\.1-linux-arm64/);
@@ -128,7 +131,24 @@ test("a correct upload passes every check, and the output file holds the same li
 	assert.equal(readFileSync(s.out, "utf8"), r.stdout);
 });
 
-test("a redirect on a binary fails, through fetch, wget and curl alike", async (t) => {
+test("Pages' redirect of /404.html to /404 is expected: 404.html is checked through the missing-file checks", async (t) => {
+	// Live, 2026-11-20: get.coffer.party answered /404.html with HTTP 307, Location: /404 (Pages strips .html).
+	const s = await setup(t, (p) => (p === "404.html" ? { status: 307, headers: { location: "/404" } } : undefined));
+	const r = await check(s);
+	assert.equal(r.code, 0, r.stdout);
+	assert.match(r.stdout, /PASS \/404\.html isn't fetched by name \(Pages redirects \.html paths\); the missing-file checks cover it/);
+	assert.match(r.stdout, /PASS a missing file is a 404 with 404\.html/);
+});
+
+test("an .html file other than 404.html fails: Pages would redirect it", async (t) => {
+	const s = await setup(t);
+	writeFileSync(join(s.folder, "index.html"), "<p>hi</p>\n");
+	const r = await check(s);
+	assert.equal(r.code, 1);
+	assert.match(fails(r.stdout).join("\n"), /FAIL layout: index\.html is an \.html file \(Pages redirects \.html paths; only 404\.html may be one\)/);
+});
+
+test("[T32] a redirect on a binary fails, through fetch, wget and curl alike", async (t) => {
 	const s = await setup(t, (p, files) =>
 		p === "1.0.1/xmr-bridge-1.0.1-linux-amd64" ? { status: 301, headers: { location: "/latest/xmr-bridge-1.0.1-linux-amd64" } } : undefined,
 	);
@@ -140,28 +160,28 @@ test("a redirect on a binary fails, through fetch, wget and curl alike", async (
 	assert.match(f, /FAIL curl --max-redirs 0: \/1\.0\.1\/xmr-bridge-1\.0\.1-linux-amd64/);
 });
 
-test("the single-page-app fallback (a 200 for a missing file) fails", async (t) => {
+test("[T32] the single-page-app fallback (a 200 for a missing file) fails", async (t) => {
 	const s = await setup(t, (p, files) => (Object.hasOwn(files, p) ? undefined : { status: 200, body: "<!doctype html><p>home</p>" }));
 	const r = await check(s);
 	assert.equal(r.code, 1);
 	assert.match(fails(r.stdout).join("\n"), /FAIL a missing file is a 404 with 404\.html: got HTTP 200/);
 });
 
-test("wrong bytes for an older version's file fail (every listed version is re-hashed)", async (t) => {
+test("[T32] wrong bytes for an older version's file fail (every listed version is re-hashed)", async (t) => {
 	const s = await setup(t, (p) => (p === "1.0.0/release.json" ? { status: 200, body: "changed" } : undefined));
 	const r = await check(s);
 	assert.equal(r.code, 1);
 	assert.match(fails(r.stdout).join("\n"), /FAIL \/1\.0\.0\/release\.json: the served bytes don't match versions\.json's SHA-256/);
 });
 
-test("an older version's file missing from the host fails", async (t) => {
+test("[T32] an older version's file missing from the host fails", async (t) => {
 	const s = await setup(t, (p, files) => (p === "1.0.0/xmr-bridge-1.0.0-linux-arm64" ? { status: 404, body: files["404.html"] } : undefined));
 	const r = await check(s);
 	assert.equal(r.code, 1);
 	assert.match(fails(r.stdout).join("\n"), /FAIL .*\/1\.0\.0\/xmr-bridge-1\.0\.0-linux-arm64.*HTTP 404/);
 });
 
-test("a local copy that no longer matches versions.json fails before anything is fetched", async (t) => {
+test("[T32] a local copy that no longer matches versions.json fails before anything is fetched", async (t) => {
 	const s = await setup(t);
 	writeFileSync(join(s.folder, "1.0.0/SHA256SUMS"), "edited later\n");
 	const r = await check(s);
@@ -169,7 +189,7 @@ test("a local copy that no longer matches versions.json fails before anything is
 	assert.match(fails(r.stdout).join("\n"), /FAIL versions\.json: 1\.0\.0\/SHA256SUMS in the upload folder doesn't match/);
 });
 
-test("a file in a version folder that versions.json doesn't list fails", async (t) => {
+test("[T32] a file in a version folder that versions.json doesn't list fails", async (t) => {
 	const s = await setup(t);
 	writeFileSync(join(s.folder, "1.0.0/extra.txt"), "x\n");
 	const r = await check(s);
@@ -177,7 +197,7 @@ test("a file in a version folder that versions.json doesn't list fails", async (
 	assert.match(fails(r.stdout).join("\n"), /FAIL versions\.json: 1\.0\.0\/extra\.txt isn't listed/);
 });
 
-test("latest/, install.sh and the key must be the newest version's files", async (t) => {
+test("[T32] latest/, install.sh and the key must be the newest version's files", async (t) => {
 	const s = await setup(t);
 	writeFileSync(join(s.folder, "latest/release.json"), readFileSync(join(s.folder, "1.0.0/release.json")));
 	writeFileSync(join(s.folder, "install.sh"), readFileSync(join(s.folder, "1.0.0/install.sh")));
@@ -188,7 +208,7 @@ test("latest/, install.sh and the key must be the newest version's files", async
 	assert.match(f, /FAIL layout: install\.sh isn't 1\.0\.1\/install\.sh/);
 });
 
-test("an install.sh whose RELEASE_BASE isn't this host's version folder fails", async (t) => {
+test("[T32] an install.sh whose RELEASE_BASE isn't this host's version folder fails", async (t) => {
 	const s = await setup(t);
 	for (const p of ["1.0.1/install.sh", "install.sh"]) {
 		writeFileSync(join(s.folder, p), '#!/bin/sh\nRELEASE_BASE="https://elsewhere.example/1.0.1"\n');
@@ -201,7 +221,7 @@ test("an install.sh whose RELEASE_BASE isn't this host's version folder fails", 
 	assert.match(fails(r.stdout).join("\n"), /FAIL layout: 1\.0\.1\/install\.sh's RELEASE_BASE isn't "http:\/\/127\.0\.0\.1:\d+\/1\.0\.1"/);
 });
 
-test("_redirects, _headers, a missing 404.html and a suffixed version all fail", async (t) => {
+test("[T32] _redirects, _headers, a missing 404.html and a suffixed version all fail", async (t) => {
 	const s = await setup(t);
 	writeFileSync(join(s.folder, "_redirects"), "/a /b 301\n");
 	writeFileSync(join(s.folder, "_headers"), "/*\n  X: y\n");

@@ -96,9 +96,9 @@ func TestBridgeNothingToDo(t *testing.T) {
 		version, reports, current string
 		date                      time.Time
 	}{
-		"same version":        {"0.1.0", "0.1.0", "0.1.0", t0.Add(-100 * time.Hour)},
-		"[T26] older version": {"0.0.9", "0.0.9", "0.1.0", t0.Add(-100 * time.Hour)},
-		"inside the 48 hours": {"0.2.0", "0.2.0", "0.1.0", t0.Add(-47 * time.Hour)},
+		"same version":             {"0.1.0", "0.1.0", "0.1.0", t0.Add(-100 * time.Hour)},
+		"[T26][T32] older version": {"0.0.9", "0.0.9", "0.1.0", t0.Add(-100 * time.Hour)},
+		"inside the 48 hours":      {"0.2.0", "0.2.0", "0.1.0", t0.Add(-47 * time.Hour)},
 	} {
 		t.Run(name, func(t *testing.T) {
 			r := newRelease(t)
@@ -115,7 +115,7 @@ func TestBridgeNothingToDo(t *testing.T) {
 }
 
 func TestBridgeRefuses(t *testing.T) {
-	t.Run("[T16] a bad bridge update is refused", func(t *testing.T) {
+	t.Run("[T16][T32] a bad bridge update is refused", func(t *testing.T) {
 		cases := map[string]func(r *release, u *Updater){
 			"tampered binary": func(r *release, u *Updater) {
 				r.files["xmr-bridge-0.2.0-linux-amd64"] = append(r.files["xmr-bridge-0.2.0-linux-amd64"], ' ')

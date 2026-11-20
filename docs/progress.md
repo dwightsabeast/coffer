@@ -5955,3 +5955,19 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 **Commits (local, not pushed):** `3eae16e` and `5cb0196`, plus this entry. Before them, `b0c8baf`, `eb95587`, `8f206dd` and `7df678a` are also unpushed.
 
 **Next step:** step 2 (build and sign), once Wyatt has the release key's public half. Still open: the two security drafts (with T32 to add), the EmDash 1.5.0 check, and Always Use HTTPS (Wyatt's call).
+
+## 2026-11-20 · Phase 09 · http now 301s to https; the report draft lists the five pinned Lows; pushed
+
+**Wyatt:** he turned on Always Use HTTPS for `coffer.party`, asked for the check to expect it, and approved pushing every commit.
+
+**The check, tests first** (`4900bde`):
+- Every path is now also requested over plain http: the root, a missing file and every file. It passes only on an exact 301 to the same path at the https base. A served file, another status or another target fails.
+- Three new tests, red then green. Script tests: 66 passed.
+- **Live:** 47 PASS, 0 FAIL. Every http path answered 301 to its https twin.
+
+**Report draft** (`docs/security-report.md`, untracked, not committed until Wyatt approves; copy in `~/xmr-pay-dev-data/09-drafts/security-report-20261120.md`):
+- A new subsection, "Known limits for release 1, each pinned by a test". It covers RT-01, RT-04, RT-06 (three tests), RT-09 and RT-25: what each one means for an admin, and that its expected-fail test starts to pass once the finding is fixed.
+- The "Eleven low-rated findings" line now points at that subsection rather than listing the five again.
+- T32 is still to be added to the draft's "Partly tested" table.
+
+**Pushed:** the commits from `b0c8baf` up to this entry's commit. CI result: in the next entry.

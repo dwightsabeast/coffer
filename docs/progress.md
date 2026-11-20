@@ -5971,3 +5971,7 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 - T32 is still to be added to the draft's "Partly tested" table.
 
 **Pushed:** the commits from `b0c8baf` up to this entry's commit. CI result: in the next entry.
+
+**CI on `4315341`** (Wyatt's pull request from `release-1` to `main`): run 44785891680 passed. All three jobs succeeded: plugin, bridge (the race-detector tests included) and theme. That run includes the dependency scans. This note is a local commit, not pushed.
+
+**Next step:** step 2 (build and sign), once Wyatt has the release key's public half. Still open: Wyatt's ruling on the two security drafts (T32 still to add to the report's "Partly tested" table) and the EmDash 1.5.0 check.

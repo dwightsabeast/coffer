@@ -262,7 +262,10 @@ type Health struct {
 	WalletRPCRestarts int
 	Synced            int // syncs the site accepted
 	SiteRefused       int // syncs the site answered but refused (an error code, or not a sync answer)
-	Unreachable       int // syncs that never reached the site (network down, site down)
+	Unreachable       int // syncs that never reached the site (network down, site down, HTTP 502, 503 or 504)
+	// UnreachableFor is how long the site has been unreachable since the update; it pauses a bridge update's health
+	// window (spec change 59 item 4), so only time the site could answer counts toward the 10 minutes.
+	UnreachableFor time.Duration
 }
 
 // Action is what to do about a pending update.
@@ -278,7 +281,8 @@ func (a Action) String() string { return [...]string{"wait", "commit", "roll bac
 
 // Decide applies the rules (Wyatt, 3g): an accepted sync commits. A bridge update rolls back after 10 minutes only if
 // the wallet never opened, or the site answered and refused while nothing was accepted; a site that can't be reached
-// is never held against the update. A wallet-rpc update rolls back if it fails 3 times or isn't ready in 5 minutes.
+// is never held against the update, and the time it was unreachable doesn't count toward the 10 minutes of the
+// refusal rule (spec change 59 item 4). A wallet-rpc update rolls back if it fails 3 times or isn't ready in 5 minutes.
 func Decide(p Pending, h Health, now time.Time) Action {
 	if h.Synced > 0 {
 		return Commit
@@ -290,10 +294,12 @@ func Decide(p Pending, h Health, now time.Time) Action {
 		}
 		return Wait
 	}
-	if elapsed < healthWindow {
-		return Wait
+	// The wallet rule keeps the real clock; only the site rule pauses while the site is unreachable (spec change 59
+	// item 4: a 502, 503 or 504 is the site being down, not the update failing).
+	if !h.WalletOpen && elapsed >= healthWindow {
+		return RollBack
 	}
-	if !h.WalletOpen || h.SiteRefused > 0 {
+	if h.SiteRefused > 0 && elapsed-h.UnreachableFor >= healthWindow {
 		return RollBack
 	}
 	return Wait

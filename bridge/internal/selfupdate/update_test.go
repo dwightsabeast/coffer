@@ -278,3 +278,30 @@ func TestWalletRPCUpdate(t *testing.T) {
 		t.Fatal("a failed download touched wallet-rpc")
 	}
 }
+
+// R14 (spec change 59 item 4): unreachable time pauses the 10-minute health window of a bridge update.
+func TestDecideR14(t *testing.T) {
+	p := Pending{Kind: KindBridge, Version: "0.2.0", At: t0}
+	for name, c := range map[string]struct {
+		h    Health
+		now  time.Time
+		want Action
+	}{
+		"[R14] an hour unreachable after one refusal: 1 reachable minute, wait":                                    {Health{WalletOpen: true, SiteRefused: 1, Unreachable: 60, UnreachableFor: 59 * time.Minute}, t0.Add(time.Hour), Wait},
+		"[R14] 15 minutes, 8 of them unreachable: 7 reachable, wait":                                               {Health{WalletOpen: true, SiteRefused: 3, Unreachable: 8, UnreachableFor: 8 * time.Minute}, t0.Add(15 * time.Minute), Wait},
+		"[R14] 19 minutes, 8 of them unreachable: 11 reachable, roll back":                                         {Health{WalletOpen: true, SiteRefused: 3, Unreachable: 8, UnreachableFor: 8 * time.Minute}, t0.Add(19 * time.Minute), RollBack},
+		"[R14] the pause never makes the window negative":                                                          {Health{WalletOpen: true, SiteRefused: 1, UnreachableFor: 2 * time.Hour}, t0.Add(time.Hour), Wait},
+		"[R14] the wallet rule isn't paused: a wallet that never opens rolls back at 10 minutes, site down or not": {Health{Unreachable: 10, UnreachableFor: 10 * time.Minute}, t0.Add(10 * time.Minute), RollBack},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := Decide(p, c.h, c.now); got != c.want {
+				t.Errorf("%v, want %v", got, c.want)
+			}
+		})
+	}
+	// The wallet-rpc rule is about the wallet program, not the site: the pause doesn't apply to it.
+	w := Pending{Kind: KindWalletRPC, Version: "0.18.6.0", At: t0}
+	if Decide(w, Health{UnreachableFor: time.Hour}, t0.Add(6*time.Minute)) != RollBack {
+		t.Error("[R14] wallet-rpc not ready in 5 minutes still rolls back, whatever the site did")
+	}
+}

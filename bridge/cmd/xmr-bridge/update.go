@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/dwightsabeast/coffer/bridge/internal/bridgeloop"
 	"github.com/dwightsabeast/coffer/bridge/internal/config"
 	"github.com/dwightsabeast/coffer/bridge/internal/hashsig"
 	"github.com/dwightsabeast/coffer/bridge/internal/moneroaddr"
@@ -75,6 +76,12 @@ func startUpdates(ctx context.Context, cfg config.Config, r *running, log *slog.
 	}()
 }
 
+// updateHealth is the update guard's view of the running bridge: whether the wallet opened, wallet-rpc's restarts, and
+// what the site did with the syncs, with the time it was unreachable (spec change 59 item 4).
+func updateHealth(opened bool, restarts int, ls bridgeloop.Status, now time.Time) selfupdate.Health {
+	return selfupdate.Health{WalletOpen: opened, WalletRPCRestarts: restarts, Synced: ls.Synced, SiteRefused: ls.SiteRefused, Unreachable: ls.Unreachable, UnreachableFor: ls.UnreachableFor(now)}
+}
+
 // watchPending decides about an update that has just been swapped in (Wyatt's 3g rules, selfupdate.Decide). It
 // returns true once the update is committed, false after asking for a rollback or when ctx ends.
 func watchPending(ctx context.Context, files selfupdate.Files, p selfupdate.Pending, r *running, log *slog.Logger) bool {
@@ -87,9 +94,9 @@ func watchPending(ctx context.Context, files selfupdate.Files, p selfupdate.Pend
 			opened = true
 			files.MarkStarted() // earlier failed starts no longer count for the guard
 		}
-		ls := r.loop.Status()
-		h := selfupdate.Health{WalletOpen: opened, WalletRPCRestarts: st.Restarts, Synced: ls.Synced, SiteRefused: ls.SiteRefused, Unreachable: ls.Unreachable}
-		switch selfupdate.Decide(p, h, time.Now()) {
+		now := time.Now()
+		h := updateHealth(opened, st.Restarts, r.loop.Status(), now)
+		switch selfupdate.Decide(p, h, now) {
 		case selfupdate.Commit:
 			files.ClearPending()
 			log.Info("update confirmed", "kind", p.Kind, "version", p.Version)

@@ -135,11 +135,16 @@ type Status struct {
 	// WalletCheck is the wallet check last sent to the site (nil without NodeInfo).
 	WalletCheck *syncclient.Check `json:"walletCheck,omitempty"`
 	// What the site did with the syncs sent since this process started (for the update rule).
-	Synced      int    `json:"synced"`
-	SiteRefused int    `json:"siteRefused"`
-	Unreachable int    `json:"unreachable"`
-	Updates     string `json:"updates,omitempty"`
-	WalletRPC   any    `json:"walletRpc,omitempty"`
+	Synced      int `json:"synced"`
+	SiteRefused int `json:"siteRefused"`
+	Unreachable int `json:"unreachable"`
+	// The time the site was unreachable (spec change 59 item 4): UnreachableSince is when the current run of unreachable
+	// syncs began (zero while the site answers), UnreachableTotal the runs that have ended. The update guard pauses its
+	// clock for this time. A 502, 503 or 504 counts as unreachable, a 500 or a 4xx as the site refusing.
+	UnreachableSince time.Time     `json:"unreachableSince,omitzero"`
+	UnreachableTotal time.Duration `json:"unreachableTotal,omitempty"`
+	Updates          string        `json:"updates,omitempty"`
+	WalletRPC        any           `json:"walletRpc,omitempty"`
 	// CatchUp is set while the wallet is being caught up to the site's pool (spec change 15).
 	CatchUp *CatchUp `json:"catchUp,omitempty"`
 	// PoolCheck is the last check of the site's pool against this wallet (spec change 46); nil until one.
@@ -310,6 +315,40 @@ func (l *Loop) Status() Status {
 		st.CatchUp = &c
 	}
 	return st
+}
+
+// UnreachableFor is how long the site has been unreachable since this process started, up to now.
+func (s Status) UnreachableFor(now time.Time) time.Duration {
+	d := s.UnreachableTotal
+	if !s.UnreachableSince.IsZero() && now.After(s.UnreachableSince) {
+		d += now.Sub(s.UnreachableSince)
+	}
+	return d
+}
+
+// countSend records what the site did with a full sync, for status and the update guard. Callers hold l.mu.
+func (l *Loop) countSend(err error) {
+	var se *syncclient.Error
+	reached := true
+	switch {
+	case err == nil:
+		l.st.Synced++
+	case errors.As(err, &se) && !se.SiteDown():
+		l.st.SiteRefused++
+	default:
+		l.st.Unreachable++
+		reached = false
+	}
+	now := l.o.Now()
+	switch {
+	case !reached && l.st.UnreachableSince.IsZero():
+		l.st.UnreachableSince = now
+	case reached && !l.st.UnreachableSince.IsZero():
+		if now.After(l.st.UnreachableSince) {
+			l.st.UnreachableTotal += now.Sub(l.st.UnreachableSince)
+		}
+		l.st.UnreachableSince = time.Time{}
+	}
 }
 
 // Run syncs until ctx ends.
@@ -571,14 +610,8 @@ func (l *Loop) syncOnce(ctx context.Context) error {
 			continue
 		}
 		l.mu.Lock()
-		var se *syncclient.Error
-		switch {
-		case err == nil:
-			l.st.Synced++
-		case errors.As(err, &se):
-			l.st.SiteRefused++
-		case !errors.Is(err, syncclient.ErrTooLarge):
-			l.st.Unreachable++
+		if !errors.Is(err, syncclient.ErrTooLarge) {
+			l.countSend(err)
 		}
 		l.mu.Unlock()
 		if err != nil {
@@ -825,19 +858,13 @@ func (l *Loop) sendReport(ctx context.Context, key ed25519.PrivateKey, height ui
 	_, err := l.o.Site.Send(ctx, key, body)
 	l.mu.Lock()
 	defer l.mu.Unlock()
-	var se *syncclient.Error
-	switch {
-	case err == nil:
-		l.st.Synced++
+	l.countSend(err)
+	if err == nil {
 		l.reportNow = false
 		if l.report == report {
 			l.report = nil
 		}
 		l.soon = true
-	case errors.As(err, &se):
-		l.st.SiteRefused++
-	default:
-		l.st.Unreachable++
 	}
 	return err
 }

@@ -176,6 +176,13 @@ type Error struct {
 	Hint   string
 }
 
+// SiteDown is true for HTTP 502, 503 and 504: the site, or something in front of it, is down or not ready (EmDash
+// 1.5.0 answers 503 STORAGE_INDEXES_NOT_READY while a plugin's storage indexes sync). The update guard counts these as
+// unreachable, never as the site refusing (spec change 59 item 4). A 500 or a 4xx is a refusal.
+func (e *Error) SiteDown() bool {
+	return e.Status == 502 || e.Status == 503 || e.Status == 504
+}
+
 func (e *Error) Error() string {
 	if e.Hint == "" {
 		return "the site answered " + e.Code
@@ -204,6 +211,8 @@ func hint(code string) string {
 		return "the request was too large for the site"
 	case "INVALID_TOKEN":
 		return "something in front of the site added an Authorization header. Let " + accessFixURL + " through without a login, and add no Origin or Authorization header"
+	case "STORAGE_INDEXES_NOT_READY":
+		return "the site's EmDash is still preparing Coffer's storage and refuses changes until it's done; syncs resume by themselves. If this stays, check the site's logs"
 	case "CSRF_REJECTED":
 		return "something in front of the site added an Origin header. Let " + accessFixURL + " through without a login, and add no Origin or Authorization header"
 	}

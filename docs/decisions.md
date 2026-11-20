@@ -64,6 +64,7 @@ Made by Wyatt between Sep 30 and Oct 1, 2026, before any code was written. The r
 | Build and test fully before publishing; the Atmosphere account comes at release | Config-managed installs (`sandboxed: [...]`) work without the registry |
 | Develop on a separate Debian 12 container | Wyatt's live EmDash site at wyattdilley.com must stay untouched |
 | Host the install script on a subdomain of wyattdilley.com (for example `get.wyattdilley.com`) | Without touching the live site |
+| Install host (Wyatt, 2026-11-20; spec change 58): Cloudflare Pages at `get.coffer.party`, uploaded by hand from Wyatt's PC; the apex `coffer.party` is kept for a future landing page; no deploy credentials on the dev box. Replaces the wyattdilley.com subdomain above. Layout: versioned folders written once, fixed `install.sh`, `latest/` as plain copies, a top-level `404.html`, the release public key; the upload folder is backed up | Keeps releases off the live site's domain; the dev box never holds a Cloudflare credential |
 | The release signing key is generated offline by Wyatt and never handled by Claude | Whoever holds it can push code to every wallet host |
 | Build with Claude Code, one phase per session, plan first, tests first | Small reviewable steps |
 | License: MIT, copyright Wyatt Dilley (phase 00) | Matches EmDash and DashCommerce; easiest for others to adopt |

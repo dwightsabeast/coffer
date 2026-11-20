@@ -18,7 +18,7 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
   - **Why it matters:** with a remote node and no second node answering, every payment is held and no height is reported.
   - **How to add a node:** probe it read-only, as on 2026-11-02 (synchronized, restricted, `get_block` by height, the same block hash as the others, a certificate that verifies), and only from an operator not already listed.
 - [ ] The self-update admin-copy question.
-- [ ] An install host that serves the bridge files without redirects (spec change 21).
+- [ ] An install host that serves the bridge files without redirects (spec change 21): `get.coffer.party` chosen 2026-11-20 (spec change 58); the no-redirect check waits for the probe upload.
 - [x] The Atmosphere account to publish under (below; done 2026-10-23).
 - [x] Your hand-made registry icon (Claude doesn't generate or draw one): `plugin/images/coffer-icon.png`, delivered 2026-10-23.
 - [x] Session 7g (EmDash 1.3 check) is done, and the floor is 1.4.0 since the check of 2026-11-14: `release.requires` and the listing text are in the manifest, and they name versions actually tested (spec change 41, items 3, 4, 9).
@@ -34,7 +34,7 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
    - At releases.emdashcms.com/publisher, **Automated publishing** is enabled (2026-10-23). The grant is create-only.
    - If release setup fails with `MISSING_BLOB_SCOPE` (a login made before blob publishing), log out and back in.
 2. **Release signing key, offline.** Claude prepares a short key ceremony checklist for the scheme chosen in phase 03. You generate the key on a machine that is offline (or a live USB), keep the private key on encrypted media with a backup, and give Claude only the public key. The private key never touches the dev box.
-3. **Install host:** a subdomain such as `get.wyattdilley.com` served by Cloudflare Pages or GitHub Pages, set up with a DNS record only, so the live site at wyattdilley.com is untouched.
+3. **Install host (decided 2026-11-20, spec change 58):** `get.coffer.party` on Cloudflare Pages, uploaded by hand from your PC (the apex `coffer.party` is kept for a landing page). The layout and the upload check are in `docs/install-host.md`. Back up the upload folder.
 4. **npm org `cofferhq`** (created 2026-10-16) for the theme package `@cofferhq/astro`: set up GitHub Actions trusted publishing (OIDC) for it on npm.
 5. **Live site:** before the mainnet trial, snapshot the live site's container. You decide when.
 

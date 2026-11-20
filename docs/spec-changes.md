@@ -2040,3 +2040,42 @@ Also accepted: the install docs gain an optional "check the signature by hand" s
 Effect on the admin budget: none (the by-hand check is optional).
 Effect on the trust contract: none.
 
+## 58. The install host: `get.coffer.party` on Cloudflare Pages, its layout, and the update path  (status: accepted, 2026-11-20, Wyatt: layout approved once the updater check below passed; it did)
+Found in: phase 09, before step 2. Wyatt chose the install host (2026-11-20): Cloudflare Pages, uploaded by hand from his PC, at `get.coffer.party`. The apex `coffer.party` is kept for a future landing page and is never used for releases. No deploy credentials go on the dev box.
+Spec says: "`curl -fsSL https://<release host>/install.sh | sh -s -- ...`" (Bridge service, The install command), and spec change 21's open item: the bridge binaries must be served from `RELEASE_BASE` without a redirect.
+Evidence:
+- **Sizes (real release flags, HEAD `a2fddcf`, go1.27.4, 2026-11-20):** `xmr-bridge-1.0.0-linux-amd64` 11,680,120 bytes (11.14 MiB), `-linux-arm64` 10,807,117 bytes (10.31 MiB). Pages' cap is 25 MiB a file. These were built only to measure and then deleted. The real release binaries come from CI (phase 09 step 2).
+- **The updater reads one folder:** `release.json`, `release.json.sig` and the binary, all under `releaseBase()` (`bridge/internal/selfupdate/update.go`, `get` and `PrepareBridge`). So a second fixed path is needed besides `install.sh`.
+- **What makes plain copies in a fixed folder safe (checked in code on 2026-11-20, Wyatt's condition):**
+  - (a) `release.json.sig` is checked against keys compiled into the bridge, with the prefix `xmr-bridge-release-v1\n` (`selfupdate.VerifyManifest`). The keys come from `releaseKeys()` in `cmd/xmr-bridge/release_release.go`, or in `release_dev.go` the dev key set at build time. Nothing reads a key from the host or from disk, and no bridge code parses a `.pem`. A build with no key pinned refuses every update (`ErrNoKey`). Tests: `TestVerifyManifest` (wrong key, changed byte, no prefix, no keys, bad signature), and `TestBridgeRefuses` "wrong key" and "no key pinned".
+  - (b) Only a strictly newer version is taken: `PrepareBridge` does nothing unless `Newer(man.Version, u.Current)`, and a rolled-back version stays refused. Tests: `TestNewer`, `TestBridgeNothingToDo` "same version" and "[T26] older version", `TestRefusedAfterRollback`.
+  - (c) The downloaded binary must match the signed `release.json`'s `size` and `sha256` before it's staged (`update.go`, right after `get(file.Name)`). Tests: `TestBridgeRefuses` "tampered binary" and "binary reports another version".
+  - Run on 2026-11-20: all six tests passed (`go test -count=1 -run '...' ./internal/selfupdate/`).
+  - **To know, not a blocker:** `Newer` ignores a `-suffix`, so a bridge on `1.0.0-rc1` would never update to `1.0.0`. The host therefore never publishes suffixed versions.
+- **Pages, from Cloudflare's docs (2026-11-20):**
+  - 25 MiB per file, and 20,000 files per deployment (1,000 by drag and drop).
+  - Without a top-level `404.html`, Pages treats the site as a single-page app and serves the root for any missing path.
+  - Pages redirects `.html` paths (`/x.html` to `/x`, `/x/index.html` to `/x/`). The docs don't say other files are left alone, so a probe upload checks it live.
+  - The docs don't say whether an upload replaces the whole site. This proposal assumes it does.
+Proposal:
+1. **Layout:**
+   ```text
+   get.coffer.party/
+     404.html                 top level, so a missing file is a 404, never the single-page-app fallback
+     install.sh               fixed; the newest release's filled script (RELEASE_BASE=https://get.coffer.party/<version>, CURL_PROTO==https)
+     coffer-release.pub.pem   the release public key, fixed
+     versions.json            the versions manifest: each version's files and their SHA-256
+     latest/                  fixed; what installed bridges poll: plain copies of the newest version's files
+       release.json  release.json.sig  xmr-bridge-<version>-linux-amd64  xmr-bridge-<version>-linux-arm64
+     <version>/               for example 1.0.0/: written once, never changed or removed
+       install.sh  SHA256SUMS  release.json  release.json.sig  coffer-release.pub.pem
+       xmr-bridge-<version>-linux-amd64  xmr-bridge-<version>-linux-arm64
+   ```
+   - No `_redirects`, no `_headers` and no root `index.html`. Pages' default `Cache-Control: public, max-age=0, must-revalidate` suits the fixed paths.
+   - `latest/` holds plain copies rather than a `_redirects` rewrite, so nothing depends on how rewrites behave. It costs about 22 MB more per upload.
+   - No suffixed versions go on the host (see `Newer` above).
+2. **The bridge's update address** becomes `https://get.coffer.party/latest` (it was `https://REPLACE-RELEASE-HOST.invalid/xmr-bridge/latest`). The admin page's command fetches `https://get.coffer.party/install.sh`.
+3. **Every upload is the whole site.** Wyatt keeps one growing upload folder on his PC, uploads all of it each time, and backs it up: in this layout it is the only copy of every published version. `scripts/check-install-host.mjs` checks each upload against `versions.json` (see `docs/install-host.md`).
+4. **The key on the host adds no trust.** Whoever controls the host controls the key file and the binaries alike, so `docs/install.md` keeps telling admins to compare the key's fingerprint with the GitHub release page.
+Effect on the admin budget: none.
+Effect on the trust contract: none. `allowedHosts` is the plugin's, and neither the bridge nor the installer is in it.

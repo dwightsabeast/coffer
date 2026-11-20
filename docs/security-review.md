@@ -380,3 +380,15 @@ From `d747a58` (the security drafts) to this commit.
 | **`plugin/src/admin.ts`**: one comment | Comment only | No behavior change |
 | **`[P04]`** (`sync-route.test.ts`) | Rewritten for activation at host start; mutation check | Still fails without the admin-load fallback |
 | **Dev scripts** (`scripts/redteam/lib.mjs`, `setup-test-reset.mjs`, `dev-e2e.mjs`, `round1-live.mjs`, `backlog-live.mjs`) | Never shipped. Loopback only, as before; KV read and written in `options`; the restore flushes and re-hashes its copy | As intended; script tests 69 passed |
+
+### The update guard and EmDash's 503 (2026-11-20)
+
+From `df01526` to this commit.
+
+| Change | Checked | Result |
+| --- | --- | --- |
+| **`syncclient.(*Error).SiteDown`** (502, 503, 504) and the `STORAGE_INDEXES_NOT_READY` hint | `TestR14SiteDown`: every 4xx and 500 stay refusals | As intended |
+| **`bridgeloop.countSend`**: one place for both sync paths' counts; a site-down answer counts as unreachable; the loop records when a run of unreachable syncs began and the total of past runs (`UnreachableSince`, `UnreachableTotal` in the status file) | `TestR14Outcomes`; the old counts tests pass; `ErrTooLarge` is still not counted | As intended. The status file gains two fields, written only by the bridge itself |
+| **`selfupdate.Decide`**: the refusal rule needs 10 minutes of reachable time; the wallet rule keeps the real clock | `TestDecide` (unchanged cases), `TestDecideR14`, `TestR14UpdateGuard` against the loop; two mutation checks | A bridge update can't be rolled back and refused because of 502, 503 or 504. A 500 or a 4xx window still rolls it back, and a wallet that never opens still does at 10 minutes. Downgrade and signature checks are untouched (T16, T26) |
+| **`cmd/xmr-bridge` `updateHealth`** | `TestUpdateHealthR14` | `watchPending` passes the unreachable time, an ongoing outage included |
+

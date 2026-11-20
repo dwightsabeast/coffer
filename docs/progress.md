@@ -6087,3 +6087,59 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 **Next step:** step 2 (build and sign), once the release key's public half exists.
 
 **Pushed** (Wyatt's go-ahead): `de12b35` to `df01526`, seven commits. That's the five approved plus the two answering his closing questions. **CI on `df01526`:** run 44825366892 passed. All three jobs succeeded: plugin, bridge (the race-detector tests included) and theme, with the dependency scans. Bundle: `coffer-release-1-20261120-df01526.bundle`, SHA-256 `88e5c267fe6f92c6a190019031aa77310ae81c9b48cf978b4994f312e3272a80`. This note is a local commit, not pushed.
+
+## 2026-11-20 · Phase 09 · Spec change 59 item 4 built (R14); the outage's cause; backups checked; disk use and a retention proposal
+
+**Wyatt:**
+- Approved spec change 59 item 4, narrowed: 502, 503 and 504 count as unreachable and pause the guard's clock; 500 and every 4xx still refuse. Plus the hint, tests first.
+- The 12:23 outage's cause: the Proxmox host's shared storage filled up and every LXC went read-only; he trimmed files and it recovered.
+- New rules (in memory):
+  - `df -h` with `free -m` before each heavy step, and stop above 85% full.
+  - Push exactly what he approves, and ask about anything else (the seven-commit push was fine this time).
+
+**Spec change 59 item 4 (tests first, matrix R14 added as Planned, then Covered):**
+- `syncclient`: `(*Error).SiteDown()` is true for 502, 503 and 504. New hint for `STORAGE_INDEXES_NOT_READY`.
+- `bridgeloop`: `countSend` does both sync paths' counts. A site-down answer is unreachable, and the loop keeps `UnreachableSince` and `UnreachableTotal`. `Status.UnreachableFor(now)`.
+- `selfupdate.Decide`: the refusal rule needs 10 minutes of reachable time. **My addition:** the wallet rule keeps the real clock, so a bridge whose wallet never opens still rolls back at 10 minutes with the site down. I found it while writing the code: the first version paused that too. Test first, red then green.
+- `cmd/xmr-bridge`: `updateHealth` feeds `watchPending`.
+- Tests: 15 R14 subtests across four packages.
+  - An hour of 503 never rolls back, so the version is never refused.
+  - 502 and 504 the same.
+  - 10 minutes of 500 roll back at minute 10.
+  - A 500, 19 minutes of 503, then 500s roll back at minute 29.
+  - The old `TestDecide` cases are unchanged.
+- Mutation checks:
+  - 503 counted as a refusal: 4 subtests fail.
+  - No pause: 4 fail.
+
+**Your follow-up, `ensureCron` and the 503:** it can't happen. 1.5.0 checks index readiness only in the plugin route handler (non-GET) and before scheduled tasks, where it only logs. `plugin:install` and `plugin:activate` pass neither, and `ensureCron` writes `options` and `_emdash_cron_tasks`, never plugin storage. The sandbox runner has no such check. No fix needed.
+
+**Backups and bundles written today** (`~/xmr-pay-dev-data/20261120-backup-check.txt`):
+- All 20 are sound:
+  - 6 bundles: `git bundle verify` ok.
+  - 9 databases: `PRAGMA integrity_check` ok, with the counts each should have.
+  - 2 pnpm lockfile copies: identical to git at `d747a58`.
+  - The site's `package.json` and `package-lock.json` copies parse.
+  - The `counts.mjs` copy passes a syntax check.
+- None is zero-filled.
+- A sweep of every file written from 12:15 to 12:43 found two more zero-filled: `redteam/h1-2026-11-20T192249407Z.txt` (808 bytes; run 2's numbers are also in `emdash150-timing-before.txt`, which is sound) and a Claude session tool-output file. Neither was deleted. Setup-friction's row has the cause.
+
+**Disk use:**
+- Inside the box: 21% of 95 GB. The box sits on a Proxmox thin volume, so its `df` doesn't show the host's shared pool.
+- Largest items: `~/.npm` 1.7G; `~/xmr-pay` 1.6G (`plugin/node_modules` 1.2G); pnpm store 1.3G plus cache 434M; `~/xmr-pay-dev-data` 1.2G (`baseline/` 750M); dev site 1.1G; `~/sites/xmr-cf-spike` 975M; Go build cache 354M; `~/work` 312M; scratchpad 76M (tmpfs).
+- Retention candidates, nothing deleted: `~/xmr-pay-dev-data/retention-candidates-20261120.txt`, 668 MB.
+  - 32 old `before-restore` copies, 546 MB.
+  - 5 setup-test copies.
+  - 1 red-team backup.
+  - 24 old bundles, 45 MB.
+  - `go1.27.3/`, 68 MB.
+
+**Tests:**
+- Bridge on go1.27.4: gofmt and vet clean; 21 packages ok (`~/xmr-pay-dev-data/r14-bridge-tests.txt`); the race detector on the four changed packages ok.
+- Plugin and theme: untouched, not run.
+
+**Commits (local, not pushed):** the bridge change with its tests and matrix row, and this docs commit. **Not pushed:** waiting for Wyatt's approval of exactly these.
+
+**Next step:**
+- Wyatt: approve the push of these commits (and `d9a9172`, the CI note), and rule on the retention proposal.
+- Then step 2 (build and sign), once the release key's public half exists.

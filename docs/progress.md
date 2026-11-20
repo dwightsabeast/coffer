@@ -5975,3 +5975,26 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 **CI on `4315341`** (Wyatt's pull request from `release-1` to `main`): run 44785891680 passed. All three jobs succeeded: plugin, bridge (the race-detector tests included) and theme. That run includes the dependency scans. This note is a local commit, not pushed.
 
 **Next step:** step 2 (build and sign), once Wyatt has the release key's public half. Still open: Wyatt's ruling on the two security drafts (T32 still to add to the report's "Partly tested" table) and the EmDash 1.5.0 check.
+
+## 2026-11-20 · Phase 09 · The security drafts approved and committed (ASD-STE100 wording)
+
+**Wyatt:**
+- He asked for both drafts in the ASD-STE100 framework (https://github.com/danyuchn/asd-ste100-skill), then said "Looks good". I took that as approval of both drafts as shown. That covers the STE rewording of RT-08's text and keeping "No finding rated Critical or High is open". Both are recorded in `docs/decisions.md`.
+
+**Done:**
+- **Both drafts rewritten** in the framework's STE-flavored mode. A scratch check (`ste-check.mjs` in the session scratchpad, not committed) found no semicolons and no compound tenses. The report's longest sentence is 22 words and the listing's is 25. Instructions are 20 words or fewer.
+- Phrasal verbs, the gerund heading and "-ing" adjectives were fixed. The ones kept on purpose: the title "Doing it by hand", the status name "waiting", and one passive whose actor doesn't matter.
+- **T32** is in the report's "Partly tested" table and in its "Tampered downloads" entry.
+- **Wired in, test first:** `sections.security` in `emdash-plugin.jsonc`, with a test in `manifest.test.ts`. It checks the section is declared, at most 2,000 graphemes and 20,000 bytes, and links the report and private reporting.
+- **`docs/security-review.md`:** section 8 items 4 and 7 updated. A delta review for today's changes: `INSTALL_URL`, `releaseBase()`, `sections.security`, the check script, T32.
+- Commit: `b198bf3`, local, not pushed.
+
+**Test results:** plugin typecheck, validate, bundle 76.7 KB; full suite 47 files, 545 passed, 7 expected fail, 1 skipped; switch on 6 files, 102 passed, 1 skipped (`~/xmr-pay-dev-data/58-plugin-tests-security.txt`).
+
+**Open:**
+- The listing's Security section is at exactly 2,000 graphemes, so any later edit must cut something.
+- The report's **[at the tag]** marks: the commit, the CI run, the totals and the per-ID appendix. The matrix says a script generates them from tagged CI output, and that script doesn't exist yet. It's needed before the tag.
+- There's no `SECURITY.md` yet; the matrix's report rules name one.
+- Still from section 8: the release key (step 2), the EmDash 1.5.0 check, and binary-mode govulncheck and `pnpm audit` on the release artifacts.
+
+**Next step:** step 2 (build and sign), once the release key's public half exists. The EmDash 1.5.0 check can be done before that.

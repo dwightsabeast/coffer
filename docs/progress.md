@@ -5928,3 +5928,30 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 2. With his go-ahead, run from the dev box: `node scripts/check-install-host.mjs --base https://get.coffer.party --folder ~/xmr-pay-dev-data/install-host-probe`. Record the result under spec change 21's open item.
 3. Then step 2 (build and sign), once the release key's public half exists.
 4. Still open: the two security drafts; the EmDash 1.5.0 check (due since 2026-11-18).
+
+## 2026-11-20 · Phase 09 · The probe passed on get.coffer.party; matrix T32 added
+
+**Wyatt:** the probe was uploaded, with the custom domain active and its certificate issued. He gave the go-ahead for the check and asked for a matrix row for a compromised install host.
+
+**Live check** (`node scripts/check-install-host.mjs --base https://get.coffer.party --folder ~/xmr-pay-dev-data/install-host-probe`):
+- **First run:** 31 PASS, 1 FAIL. `/404.html` answered 307 with `Location: /404`, which is Pages' `.html` rule. Every other file, the 11 MB binaries included, answered 200 with no redirect, through fetch, `wget --max-redirect=0` and `curl --max-redirs 0`.
+- **Script fixed, tests first** (two new tests, red then green): `404.html` is checked only as a missing file's body, and any other `.html` file in the upload folder fails.
+- **Second run:** 32 PASS, 0 FAIL (`~/xmr-pay-dev-data/install-host-check-output.txt`). Spec change 21's open item is closed, and the phase file's checkbox is ticked.
+- **Also seen:** plain `http://get.coffer.party` answers 200 rather than redirecting to https. No Coffer path uses http, so it's recommended to Wyatt only: turn on Always Use HTTPS. Recorded under spec change 58.
+
+**Matrix T32** (a compromised or misconfigured install host), **Partial**:
+- The bridge's refusals are Covered by T16 and T26's tests, now also tagged `[T32]`.
+- Detection is the check script after every upload. Nine of its tests carry `[T32]`.
+- Not covered: the check finds a change only when someone runs it; a first install trusts the host (design limit, spec change 57); the fingerprint step waits on step 2.
+- Threat rows: 26 Covered, 6 Partial, across 32 rows.
+- The untracked report draft (`docs/security-report.md`) lists the Partial rows without T32 yet. It gets added when Wyatt rules on the drafts.
+
+**Wyatt's other two questions (answered in chat; sources):**
+- **Bundle growth:** most of it is spec change 46's re-pairing and pool checks, 59.5 to 70.3 KB (progress, 2026-11-01). The rest is 07b's later fixes (to 74.8 KB) and step 3's tip rows and `tips_page` (to 76.7 KB).
+- **The 7 expected fails:** they are the open Lows RT-01, RT-04, RT-06 (three tests), RT-09 and RT-25 (`docs/redteam-findings.md`).
+
+**Tests:** script tests 63 passed; `selfupdate` ok after the tag renames; gofmt clean. The plugin and theme are untouched since `8f206dd`.
+
+**Commits (local, not pushed):** `3eae16e` and `5cb0196`, plus this entry. Before them, `b0c8baf`, `eb95587`, `8f206dd` and `7df678a` are also unpushed.
+
+**Next step:** step 2 (build and sign), once Wyatt has the release key's public half. Still open: the two security drafts (with T32 to add), the EmDash 1.5.0 check, and Always Use HTTPS (Wyatt's call).

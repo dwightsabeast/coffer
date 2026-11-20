@@ -2,7 +2,8 @@
 // Run: node --test scripts/*.test.mjs
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readdirSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync } from "node:fs";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -106,6 +107,20 @@ test("restore: the backup comes back whole, and the state it replaces is saved f
 	assert.ok(saved, "the replaced state is saved");
 	assert.equal(coffer(join(f.backups, saved)), 0);
 	assert.match(out, /restored .*before-setup-test/);
+});
+
+test("restore: the copy is flushed to disk and its SHA-256 checked against the backup's, which it prints", async () => {
+	// A crash at 12:23 on 2026-11-20 left a restored data.db as all zeros: copyFileSync's data was still in the page
+	// cache. The script now fsyncs the file and its folder (not testable here), then re-hashes the copy.
+	const f = fixture();
+	const port = String(await freePort());
+	run(["--db", f.path, "--backup-dir", f.backups, "--ports", port]);
+	const [backup] = readdirSync(f.backups);
+	const sha = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+	const want = sha(join(f.backups, backup));
+	const out = run(["--db", f.path, "--backup-dir", f.backups, "--ports", port, "--restore", join(f.backups, backup)]);
+	assert.equal(sha(f.path), want);
+	assert.match(out, new RegExp(`sha256 ${want}, flushed and checked`));
 });
 
 test("restore refuses a missing file and a file that isn't a dev-site database", async () => {

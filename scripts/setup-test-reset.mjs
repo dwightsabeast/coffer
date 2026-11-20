@@ -9,10 +9,11 @@
 // they hold the WAL's writes too (setup-friction, 2026-10-05). A fresh install has no Coffer rows at all: storage
 // (pool, invoices, KV) and the three settings go; the indexes and the cron task are the host's and stay (the plugin
 // schedules the cron again on the next admin load).
-import { copyFileSync, existsSync, mkdirSync, rmSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { connect } from "node:net";
 import { homedir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
 process.removeAllListeners("warning"); // node:sqlite's experimental notice
 const { DatabaseSync } = await import("node:sqlite");
@@ -79,7 +80,22 @@ if (opts["--restore"] !== undefined) {
 	// The backup is a whole database; the old WAL and shared-memory files belong to the file being replaced.
 	for (const ext of ["-wal", "-shm"]) rmSync(dbPath + ext, { force: true });
 	copyFileSync(from, dbPath);
-	console.log(`restored ${from}\nthe state it replaced: ${saved}`);
+	// Flush the copy and its folder entry to disk. Without it a crash can leave data.db as all zeros, its data never
+	// written (2026-11-20, setup-friction). Then check that the copy is the backup, byte for byte.
+	const flush = (path, flags) => {
+		const fd = openSync(path, flags);
+		try {
+			fsyncSync(fd);
+		} finally {
+			closeSync(fd);
+		}
+	};
+	flush(dbPath, "r+");
+	flush(dirname(dbPath), "r");
+	const sha = (path) => createHash("sha256").update(readFileSync(path)).digest("hex");
+	const want = sha(from);
+	if (sha(dbPath) !== want) fail(`the copy at ${dbPath} differs from ${from}; the state it replaced: ${saved}`);
+	console.log(`restored ${from} (sha256 ${want}, flushed and checked)\nthe state it replaced: ${saved}`);
 } else {
 	const saved = backup("setup-test");
 	const db = new DatabaseSync(dbPath);

@@ -7,8 +7,8 @@
 //
 // The site must be stopped: it keeps the database open and recent writes in data.db-wal. Backups use VACUUM INTO, so
 // they hold the WAL's writes too (setup-friction, 2026-10-05). A fresh install has no Coffer rows at all: storage
-// (pool, invoices, KV) and the three settings go; the indexes and the cron task are the host's and stay (the plugin
-// schedules the cron again on the next admin load).
+// (pool, invoices, stale pre-1.5.0 KV), the KV values in options and the three settings go; the indexes and the cron
+// task are the host's and stay (the plugin schedules the cron again on the next admin load).
 import { createHash } from "node:crypto";
 import { closeSync, copyFileSync, existsSync, fsyncSync, mkdirSync, openSync, readFileSync, rmSync } from "node:fs";
 import { connect } from "node:net";
@@ -102,11 +102,14 @@ if (opts["--restore"] !== undefined) {
 	db.exec("BEGIN");
 	const byCollection = db.prepare("SELECT collection, count(*) AS n FROM _plugin_storage WHERE plugin_id = ? GROUP BY collection").all(PLUGIN);
 	const rows = db.prepare("DELETE FROM _plugin_storage WHERE plugin_id = ?").run(PLUGIN).changes;
+	// Since EmDash 1.5.0 a sandboxed plugin's KV is in options too (plugin:coffer:<key>; the __kv rows above are stale
+	// pre-1.5.0 copies). The prefix ends in a colon, so another plugin whose name starts with "coffer" keeps its rows.
 	const settings = db.prepare("DELETE FROM options WHERE name LIKE ?").run(`plugin:${PLUGIN}:settings:%`).changes;
+	const kvValues = db.prepare("DELETE FROM options WHERE name LIKE ?").run(`plugin:${PLUGIN}:%`).changes;
 	db.exec("COMMIT");
 	db.close();
 	const n = (c) => byCollection.find((r) => r.collection === c)?.n ?? 0;
 	console.log(`backup: ${saved}`);
-	console.log(`removed ${rows} storage rows (${n("pool")} pool, ${n("invoices")} invoices, ${n("__kv")} KV) and ${settings} settings`);
+	console.log(`removed ${rows} storage rows (${n("pool")} pool, ${n("invoices")} invoices, ${n("__kv")} stale KV), ${kvValues} KV values and ${settings} settings`);
 	console.log(`Coffer now looks freshly installed. To put the dev data back: node scripts/setup-test-reset.mjs --restore ${saved}`);
 }

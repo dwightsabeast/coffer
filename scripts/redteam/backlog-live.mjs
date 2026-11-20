@@ -28,7 +28,7 @@
 // restore from the backup instead. PASS/FAIL per check; exit 1 on any FAIL.
 import { randomBytes } from "node:crypto";
 
-import { DEFAULT_DB, DEFAULT_SITE, PLUGIN, adminCall, assertMemory, devAdminSession, evidencePath, fakeAddress, flood, loopbackUrl, memAvailableMiB, newKey, openSiteDb, route as routeOn, send, signedHeaders, syncBody, writePairingCode, handoutWait } from "./lib.mjs";
+import { DEFAULT_DB, DEFAULT_SITE, PLUGIN, adminCall, assertMemory, devAdminSession, evidencePath, fakeAddress, kvGet, flood, loopbackUrl, memAvailableMiB, newKey, openSiteDb, route as routeOn, send, signedHeaders, syncBody, writePairingCode, handoutWait } from "./lib.mjs";
 import { appendFileSync, writeFileSync } from "node:fs";
 
 const args = process.argv.slice(2);
@@ -249,7 +249,10 @@ try {
 		check("answered the wallet probe", r.data?.ok === true && !Array.isArray(r.data?.probes), `${r.status} ${r.code ?? ""}`);
 	}
 	if (cmd === "time") {
-		const kvValue = () => db.prepare("SELECT data FROM _plugin_storage WHERE plugin_id = ? AND collection = '__kv' AND id = ?").get(PLUGIN, KV_KEY)?.data ?? "(none)";
+		const kvValue = () => {
+			const v = kvGet(db, KV_KEY);
+			return v === null ? "(none)" : JSON.stringify(v);
+		};
 		log(`the sync before the timed ones (the pairing, or the probe answer) took ${r.ms.toFixed(0)}ms${KV_KEY ? `  ${KV_KEY}: ${kvValue()}` : ""}`);
 		for (let n = 1; n <= SYNCS; n++) {
 			r = await sync({});

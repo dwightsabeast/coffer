@@ -16,7 +16,7 @@ const SCRIPT = join(import.meta.dirname, "setup-test-reset.mjs");
 const dirs = [];
 after(() => dirs.forEach((d) => rmSync(d, { recursive: true, force: true })));
 
-/** A database shaped like the dev site's: Coffer's rows, another plugin's, and site options. */
+/** A database shaped like the dev site's on EmDash 1.5.0: Coffer's rows, its KV in options (plus stale pre-1.5.0 __kv copies), another plugin's, and site options. */
 function fixture() {
 	const dir = mkdtempSync(join(tmpdir(), "setup-test-reset-"));
 	dirs.push(dir);
@@ -33,6 +33,7 @@ function fixture() {
 			('other', '__kv', 'state:x', '1', '', '', '1');
 		INSERT INTO options VALUES
 			('plugin:coffer:settings:bridgePublicKey', '"k"'), ('plugin:coffer:settings:currency', '"EUR"'),
+			('plugin:coffer:state:setupDone', 'true'), ('plugin:coffer:state:pairing', '{}'), ('plugin:coffer:cache:rate:USD', '{}'),
 			('plugin:other:settings:a', '1'), ('site:title', '"Shop"');
 		INSERT INTO _plugin_indexes VALUES ('coffer', 'invoices', 'status', '["status"]', '');
 		INSERT INTO _emdash_cron_tasks VALUES ('t1', 'coffer', 'housekeeping');
@@ -66,7 +67,7 @@ const fails = (args) => {
 	assert.fail("expected the script to fail");
 };
 
-test("reset: every Coffer row and setting goes, a full backup first; other plugins, site options, indexes and cron stay", async () => {
+test("reset: every Coffer row, KV value (options and stale __kv) and setting goes, a full backup first; other plugins, site options, indexes and cron stay", async () => {
 	const f = fixture();
 	const out = run(["--db", f.path, "--backup-dir", f.backups, "--ports", String(await freePort())]);
 	assert.equal(coffer(f.path), 0);
@@ -74,10 +75,10 @@ test("reset: every Coffer row and setting goes, a full backup first; other plugi
 	assert.equal(count(f.path, "SELECT count(*) AS n FROM options WHERE name IN ('plugin:other:settings:a', 'site:title')"), 2);
 	assert.equal(count(f.path, "SELECT count(*) AS n FROM _plugin_indexes"), 1);
 	assert.equal(count(f.path, "SELECT count(*) AS n FROM _emdash_cron_tasks"), 1);
-	assert.match(out, /removed 4 storage rows \(1 pool, 1 invoices, 2 KV\) and 2 settings/);
+	assert.match(out, /removed 4 storage rows \(1 pool, 1 invoices, 2 stale KV\), 3 KV values and 2 settings/);
 	const [backup] = readdirSync(f.backups);
 	assert.match(backup, /^data\.db\.before-setup-test-\d{8}T\d{6}\d{3}Z$/);
-	assert.equal(coffer(join(f.backups, backup)), 6);
+	assert.equal(coffer(join(f.backups, backup)), 9);
 	assert.match(out, new RegExp(`backup: ${join(f.backups, backup).replaceAll(".", "\\.")}`));
 });
 
@@ -91,7 +92,7 @@ test("refuses while the site is running (its port answers), and changes nothing"
 	} finally {
 		await new Promise((r) => s.close(r));
 	}
-	assert.equal(coffer(f.path), 6);
+	assert.equal(coffer(f.path), 9);
 	assert.equal(existsSync(f.backups), false);
 });
 
@@ -101,7 +102,7 @@ test("restore: the backup comes back whole, and the state it replaces is saved f
 	run(["--db", f.path, "--backup-dir", f.backups, "--ports", port]);
 	const [backup] = readdirSync(f.backups);
 	const out = run(["--db", f.path, "--backup-dir", f.backups, "--ports", port, "--restore", join(f.backups, backup)]);
-	assert.equal(coffer(f.path), 6);
+	assert.equal(coffer(f.path), 9);
 	assert.equal(count(f.path, "SELECT count(*) AS n FROM options WHERE name = 'site:title'"), 1);
 	const saved = readdirSync(f.backups).find((n) => n.includes("before-restore"));
 	assert.ok(saved, "the replaced state is saved");
@@ -130,7 +131,7 @@ test("restore refuses a missing file and a file that isn't a dev-site database",
 	const other = join(f.dir, "other.db");
 	new DatabaseSync(other).exec("CREATE TABLE t (x)");
 	assert.match(fails(["--db", f.path, "--backup-dir", f.backups, "--ports", port, "--restore", other]), /isn't a dev-site database/);
-	assert.equal(coffer(f.path), 6);
+	assert.equal(coffer(f.path), 9);
 });
 
 test("unknown options are refused", () => {

@@ -7,7 +7,8 @@ import { join } from "node:path";
 import { sign, verify } from "node:crypto";
 import { after, describe, it } from "node:test";
 
-import { backupDatabase, C5_WALL_MS, cookieOf, evidencePath, fakeAddress, flood, isKnownRt13Drip, loopbackUrl, magicTokenFrom, memAvailableMiB, rfc8032Key, route, send, signedHeaders, syncBody } from "./lib.mjs";
+import { backupDatabase, C5_WALL_MS, cleanupCofferRows, kvGet, cookieOf, evidencePath, fakeAddress, flood, isKnownRt13Drip, loopbackUrl, magicTokenFrom, memAvailableMiB, rfc8032Key, route, send, signedHeaders, syncBody, writePairingCode } from "./lib.mjs";
+import { createHash } from "node:crypto";
 
 const { DatabaseSync } = await import("node:sqlite");
 const scratch = mkdtempSync(join(tmpdir(), "redteam-lib-"));
@@ -200,5 +201,43 @@ describe("C5's known-finding label (RT-13)", () => {
 			{ ...rt13, status: "error", text: "TypeError: fetch failed" },
 			{ ...rt13, text: undefined },
 		]) assert.equal(isKnownRt13Drip(r), false, JSON.stringify(r));
+	});
+});
+
+describe("Coffer's KV in options (EmDash 1.5.0, #4277 and migration 092)", () => {
+	/** The dev site's two tables, with a run's rows in options and stale pre-1.5.0 copies in __kv. */
+	function site() {
+		const db = new DatabaseSync(join(mkdtempSync(join(scratch, "kv-")), "data.db"));
+		db.exec(`
+			CREATE TABLE _plugin_storage (plugin_id TEXT, collection TEXT, id TEXT, data TEXT, created_at TEXT, updated_at TEXT, revision TEXT, PRIMARY KEY (plugin_id, collection, id));
+			CREATE TABLE options (name TEXT PRIMARY KEY, value TEXT NOT NULL, revision TEXT DEFAULT '0' NOT NULL);
+			INSERT INTO _plugin_storage VALUES ('coffer', 'pool', '1', '{}', '', '', '1'), ('coffer', '__kv', 'state:bridge', '{"old":1}', '', '', '1'), ('coffer', '__kv', 'state:salt', '"s"', '', '', '1');
+			INSERT INTO options VALUES
+				('plugin:coffer:state:bridge', '{"height":1}', 'r1'), ('plugin:coffer:state:paidTop:2', '5', 'r2'), ('plugin:coffer:state:paidTop', '7', 'r3'),
+				('plugin:coffer:state:salt', '"s"', 'r4'), ('plugin:coffer:settings:currency', '"EUR"', 'r5'), ('plugin:coffer:settings:bridgePublicKey', '"k"', 'r6'),
+				('plugin:other:state:bridge', '1', 'r7'), ('site:title', '"Shop"', 'r8');
+		`);
+		return db;
+	}
+	const names = (db) => db.prepare("SELECT name FROM options ORDER BY name").all().map((r) => r.name);
+
+	it("writePairingCode stores the code's hash where the 1.5.0 runner reads KV, with a new revision each time", () => {
+		const db = site();
+		const code = writePairingCode(db, { now: 1_000 });
+		const row = db.prepare("SELECT value, revision FROM options WHERE name = 'plugin:coffer:state:pairing'").get();
+		assert.deepEqual(JSON.parse(row.value), { codeHash: createHash("sha256").update(code).digest("base64url"), expiresAt: 1_000 + 15 * 60_000, used: false });
+		assert.deepEqual(kvGet(db, "state:pairing"), JSON.parse(row.value));
+		writePairingCode(db, { now: 2_000 });
+		assert.notEqual(db.prepare("SELECT revision FROM options WHERE name = 'plugin:coffer:state:pairing'").get().revision, row.revision);
+		assert.equal(db.prepare("SELECT count(*) AS n FROM _plugin_storage WHERE collection = '__kv' AND id = 'state:pairing'").get().n, 0);
+		assert.equal(kvGet(db, "state:none"), null);
+	});
+
+	it("cleanupCofferRows removes the run's KV from options and its stale __kv copies, and keeps the salt, wallet 0's paidTop and the settings but the key", () => {
+		const db = site();
+		const removed = cleanupCofferRows(db);
+		assert.deepEqual(names(db), ["plugin:coffer:settings:currency", "plugin:coffer:state:paidTop", "plugin:coffer:state:salt", "plugin:other:state:bridge", "site:title"]);
+		assert.deepEqual(db.prepare("SELECT collection, id FROM _plugin_storage ORDER BY id").all().map((r) => `${r.collection}/${r.id}`), ["__kv/state:salt"]);
+		assert.deepEqual(removed, { rows: 1, kv: 2, staleKv: 1, key: 1 });
 	});
 });

@@ -6,6 +6,7 @@ import { createPluginTestHost, type PluginTestHost } from "@emdash-cms/plugin-te
 
 import descriptionSection from "../docs/description.md?raw";
 import installationSection from "../docs/installation.md?raw";
+import securitySection from "../docs/security.md?raw";
 import manifestSource from "../emdash-plugin.jsonc?raw";
 import packageSource from "../package.json?raw";
 
@@ -95,4 +96,17 @@ it("the listing's installation text leaves room under the registry's 2,000 graph
 	expect(installationSection).toContain("https://github.com/dwightsabeast/coffer/blob/coffer%401.0.0/docs/install.md");
 	expect(installationSection).toContain("/_emdash/api/plugins/coffer/*");
 	expect(installationSection).toContain("never the spend key");
+});
+
+// Phase 09 step 4: the listing's Security section, a plain summary of the security report (Wyatt approved the text,
+// ASD-STE100 wording, 2026-11-20). Registry limits: 2,000 graphemes and 20,000 bytes.
+it("the listing's Security section is declared, fits the registry's limits and links the report and private reporting", () => {
+	const m = JSON.parse(manifestSource.replace(/^\s*\/\/.*$/gm, ""));
+	expect(m.sections?.security).toEqual({ file: "./docs/security.md" });
+	expect(graphemes(securitySection)).toBeLessThanOrEqual(2000);
+	expect(new TextEncoder().encode(securitySection).length).toBeLessThanOrEqual(20_000);
+	expect(securitySection.startsWith("## What Coffer can and can't reach\n")).toBe(true);
+	expect(securitySection).toContain("The spend key stays in your wallet app.");
+	expect(securitySection).toContain("https://github.com/dwightsabeast/coffer/blob/coffer%401.0.0/docs/security-report.md");
+	expect(securitySection).toContain("https://github.com/dwightsabeast/coffer/security/advisories/new");
 });

@@ -78,7 +78,7 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
   - RT-12: one CPU-bound plugin request can hold the others for up to 30 s on the Node runner.
   - RT-13: slow connections are limited at the proxy or platform, next to the checkout rate limit.
   - RT-19: get the pairing code last, right before running the install command.
-  - The report's T03 uses spec change 44's final wording (RT-08).
+  - The report's T03 uses spec change 44's final wording (RT-08), in the ASD-STE100 rewording Wyatt approved on 2026-11-20.
 - **The install docs list what the wallet host needs:** Linux with systemd, `sh`, curl or wget, `sha256sum`, and `sudo` or a root login.
 - **The install docs say to use a wallet made for this shop, not one with history** (spec change 46's known limit, 2026-11-01). A wallet restored from keys stops at the first gap of 200 unused subaddresses, so a reused wallet paired as new can hand out addresses that already received payments.
 - **The install docs say a site behind a proxy that ends https must give EmDash its public address the way EmDash documents it** (`siteUrl`, `EMDASH_SITE_URL` or `SITE_URL`; RT-20's known limit, Wyatt 2026-11-06). The Site URL in Settings › General alone isn't enough: the plugin gets the right address, but every visitor's tip is refused with a 403. The tip page's note for the admin ("See Coffer's install guide") points here, so this section must exist before release. Warn first that setting one of these moves passkey sign-in to that address, and passkeys made at the old address stop working, so a sole admin with no email set up could be locked out. Link EmDash's guide: https://docs.emdashcms.com/reference/configuration/#reverse-proxy-setup.

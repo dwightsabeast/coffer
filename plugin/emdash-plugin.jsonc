@@ -14,9 +14,11 @@
 	// The registry listing's sections, profile text inlined at publish (2,000 graphemes at most each). Description: "What
 	// you'll need" and "Why a separate machine" (spec change 41 item 9; Wyatt approved the text, session 7g). Installation:
 	// Wyatt approved the text in phase 06 session 6c; release 1 covers tips, release 2 adds gated content (isPaid) to it.
+	// Security: a plain summary of docs/security-report.md (Wyatt approved the text, ASD-STE100 wording, 2026-11-20).
 	"sections": {
 		"description": { "file": "./docs/description.md" },
-		"installation": { "file": "./docs/installation.md" }
+		"installation": { "file": "./docs/installation.md" },
+		"security": { "file": "./docs/security.md" }
 	},
 
 	// The hosts EmDash installs this release on (spec change 41 item 3; the 1.3.1 floor is Wyatt's, 2026-10-25). Matches

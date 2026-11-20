@@ -1152,8 +1152,8 @@ const isObject = (v: unknown): v is Record<string, unknown> => typeof v === "obj
 
 export async function handleAdmin(ctx: PluginContext, input: unknown, now: number, origin?: string): Promise<AdminResponse> {
 	const view = (opts: PageOptions = {}) => page(ctx, now, { ...opts, origin });
-	// plugin:install and plugin:activate schedule the cron (for config-registered plugins since EmDash 1.2.0, on every
-	// boot since 1.5.0). The admin load stays as a fallback for a site where neither has run.
+	// plugin:install and plugin:activate schedule the cron. Since EmDash 1.5.0 a sandboxed config plugin gets both once,
+	// at the first boot with no recorded state. The admin load stays as a fallback for a site where neither has run.
 	if (!(await ctx.kv.get<boolean>(KV.cronScheduled))) await ensureCron(ctx);
 	const i = isObject(input) ? input : {};
 

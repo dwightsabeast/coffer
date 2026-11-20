@@ -95,6 +95,24 @@ describe("bridge/sync route", () => {
 		expect(await h.inspect.kv.get("state:alerts")).toEqual([expect.objectContaining({ invoiceId: "inv_7", kind: "reversed" })]);
 	});
 
+	it("[P04] a second boot doesn't run plugin:install or plugin:activate again: one cron task, Coffer's KV untouched", async () => {
+		// EmDash 1.5.0 runs them only for a config plugin with no recorded state (installUnrecordedConfigPlugins).
+		// ensureCron sets cronScheduled to true, so a false that survives the restart shows neither hook ran.
+		host = await createPluginRuntimeTestHost();
+		expect(await host.inspect.scheduledTasks()).toHaveLength(1);
+		await host.fixtures.plugin.kv(KV.cronScheduled, false);
+		const before = { kv: await host.inspect.kv.list(), tasks: await host.inspect.scheduledTasks(), state: await host.inspect.pluginState() };
+		await host.restart();
+		expect(await host.inspect.kv.get(KV.cronScheduled)).toBe(false);
+		expect(await host.inspect.kv.list()).toEqual(before.kv);
+		expect(await host.inspect.scheduledTasks()).toEqual(before.tasks);
+		expect(await host.inspect.pluginState()).toEqual(before.state);
+		// The marker works: an activate that did run sets it back.
+		await host.actions.plugin.activate();
+		expect(await host.inspect.kv.get(KV.cronScheduled)).toBe(true);
+		expect(await host.inspect.scheduledTasks()).toHaveLength(1);
+	});
+
 	it("pairs through the route and stores the key", async () => {
 		host = await createPluginRuntimeTestHost();
 		const { code, state } = await newPairingCode(Date.now());
@@ -155,9 +173,10 @@ describe("housekeeping and the backup cron", () => {
 	});
 
 	it("[P04] activation and the first admin page load schedule the backup cron; it purges too", async ({ task }) => {
-		// Since EmDash 1.5.0 (#4358) plugin:install and plugin:activate run when the host starts, on every boot, so the
-		// cron is there before any admin load. The admin load's fallback is keyed off the cronScheduled flag: clear it
-		// (a site whose activation never ran) and the load schedules again, without a second task.
+		// Since EmDash 1.5.0 (#4358) a sandboxed config plugin with no recorded state gets plugin:install and
+		// plugin:activate once at boot, and a new test host has no recorded state, so the cron is there before any admin
+		// load. The admin load's fallback is keyed off the cronScheduled flag: clear it (a site whose activation never
+		// ran) and the load schedules again, without a second task.
 		host = await createPluginRuntimeTestHost();
 		const atStart = await host.inspect.scheduledTasks();
 		Object.assign(task.meta, { atStart });

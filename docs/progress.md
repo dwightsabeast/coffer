@@ -5873,3 +5873,58 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 **Still open before publishing** (`docs/security-review.md`, section 8): step 2 (the release key and install address; needs the install host and the offline key's public half); EmDash 1.5.0's check after 2026-11-18, about 18:20 UTC; the report and listing section (drafted, above); binary-mode govulncheck and `pnpm audit` on the release artifacts; the admin page by eye (Wyatt, `inv_f7ea94de1471f114`); `docs/install.md` against a real release.
 
 **Next step:** Wyatt's answers on the two drafts. Then, test first: a length test and `sections.security` in the manifest, commit both files, a delta-review line, and a push with Wyatt's go-ahead.
+
+## 2026-11-20 · Phase 09 · The install host: get.coffer.party (spec change 58); the probe upload waits on Wyatt
+
+**Wyatt (2026-11-20):** the install host is Cloudflare Pages at `get.coffer.party`, uploaded by hand from his PC. The apex `coffer.party` is kept for a landing page, and no deploy credentials go on the dev box. He approved the layout, `/latest/` as plain copies and the `releaseBase()` change, on condition that the updater check below passed. The listing keeps the URL line, with its cap raised to 1,950. The README's signature sentence is fixed.
+
+**Updater check (Wyatt's condition), from the code:** all three hold, so there's no blocking finding.
+- (a) `release.json.sig` is verified only against keys compiled in (`releaseKeys()`). No bridge code reads a key from the host or from disk.
+- (b) Only a strictly newer version is taken (`Newer`), and a rolled-back one stays refused.
+- (c) The binary's size and SHA-256 must match the signed `release.json` before it's staged.
+- Tests: `TestVerifyManifest`, `TestBridgeRefuses`, `TestNewer`, `TestBridgeNothingToDo`, `TestBridgeUpdate` and `TestRefusedAfterRollback` all passed.
+- Not a blocker: `Newer` ignores a `-suffix`, so the host never publishes suffixed versions. The check script refuses one.
+
+**Sizes, real release flags, HEAD `a2fddcf`, go1.27.4:** amd64 11,680,120 B (11.14 MiB), arm64 10,807,117 B (10.31 MiB), against Pages' 25 MiB cap. Built only to measure, then deleted. **The real release binaries come from CI** (step 2).
+
+**Commits (local, not pushed):**
+- `b0c8baf`: spec change 58 (the layout and the evidence), the decision row, and the phase file's host line.
+- `eb95587`: `scripts/check-install-host.mjs`, its 12 tests (red first, then green) and `docs/install-host.md` (the layout, `versions.json`, the upload routine, **back up the upload folder**).
+- `8f206dd`: the install URL changed everywhere it appears:
+  - code: `INSTALL_URL`, `releaseBase()`, `install.sh`'s header and `setup-test-plugin.sh`;
+  - docs: `docs/install.md`, the listing and the README.
+  - The new exact-URL tests were red first.
+
+**The check script:**
+- **Folder:** reads `versions.json` in the upload folder (each version and its files' SHA-256) and re-hashes every listed version, locally and on the host. It checks that `latest/`, `install.sh` and the key are the newest version's files, and that each `install.sh` points at its own folder. It fails on rule files, a missing `404.html` or a suffixed version.
+- **Host:** every file must answer HTTP 200 with no Location, and a missing file must be a real 404. It also downloads with `wget --max-redirect=0` and `curl --max-redirs 0`.
+- **Repo:** it warns for any tracked file that mentions `*.pages.dev`. None does today.
+- No new dependency.
+- I judged it a release-process tool, not a test of Coffer's own security behavior, so it carries no matrix tag and adds no row. T16's checks are the bridge's and the installer's. Wyatt to say if he wants a row.
+
+**Test results:**
+- Script tests: 61 passed (49 before, plus 12 new).
+- Plugin: typecheck; validate; bundle 76.7 KB; full suite 47 files, 544 passed, 7 expected fail, 1 skipped; switch on 6 files, 102 passed, 1 skipped (`~/xmr-pay-dev-data/58-plugin-tests.txt`).
+- Bridge on go1.27.4: gofmt, vet, 21 packages ok (`58-bridge-tests.txt`).
+- Listing: 1,894 graphemes.
+- Theme: untouched, not run.
+
+**The probe (step D, waiting on Wyatt):** `~/xmr-pay-dev-data/install-host-probe/`, 13 files, 43 MB.
+- Version `0.0.0`. The "binaries" are random bytes at the real sizes, and the release files are marked "not a release". There is no key.
+- Its `install.sh` prints "Coffer is not released yet" and exits 1.
+- Run on loopback against `python3 -m http.server`: 28 PASS, with the three expected loopback FAILs (`RELEASE_BASE` names the real host, and python's own 404 page) and one WARN (python lists the root).
+- The 1.0.0 upload will replace `0.0.0/`, which was never a release.
+
+**Not covered:**
+- Whether Pages adds redirects for files without an `.html` ending. Cloudflare's docs don't say, so this waits on the live probe.
+- Whether an upload replaces the whole site. Assumed; the script catches it from the second real upload on.
+- A real signed release on the host, and the published command on a machine with wget and no curl.
+- `docs/install.md` doesn't yet say how to compute the key's fingerprint. That's step 2, with the key.
+
+**For admins and dev sites:** a dev site's admin page now shows the real `https://get.coffer.party/install.sh`. Until 1.0.0 is uploaded, that URL serves nothing, or the probe's harmless script. `setup-test-plugin.sh` still swaps in the dev release address for setup tests.
+
+**Next step:**
+1. Wyatt uploads the probe folder.
+2. With his go-ahead, run from the dev box: `node scripts/check-install-host.mjs --base https://get.coffer.party --folder ~/xmr-pay-dev-data/install-host-probe`. Record the result under spec change 21's open item.
+3. Then step 2 (build and sign), once the release key's public half exists.
+4. Still open: the two security drafts; the EmDash 1.5.0 check (due since 2026-11-18).

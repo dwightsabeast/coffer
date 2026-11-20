@@ -18,7 +18,7 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
   - **Why it matters:** with a remote node and no second node answering, every payment is held and no height is reported.
   - **How to add a node:** probe it read-only, as on 2026-11-02 (synchronized, restricted, `get_block` by height, the same block hash as the others, a certificate that verifies), and only from an operator not already listed.
 - [ ] The self-update admin-copy question.
-- [ ] An install host that serves the bridge files without redirects (spec change 21): `get.coffer.party` chosen 2026-11-20 (spec change 58); the no-redirect check waits for the probe upload.
+- [x] An install host that serves the bridge files without redirects (spec change 21): `get.coffer.party` (spec change 58); the probe upload passed the check on 2026-11-20.
 - [x] The Atmosphere account to publish under (below; done 2026-10-23).
 - [x] Your hand-made registry icon (Claude doesn't generate or draw one): `plugin/images/coffer-icon.png`, delivered 2026-10-23.
 - [x] Session 7g (EmDash 1.3 check) is done, and the floor is 1.4.0 since the check of 2026-11-14: `release.requires` and the listing text are in the manifest, and they name versions actually tested (spec change 41, items 3, 4, 9).

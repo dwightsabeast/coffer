@@ -488,7 +488,7 @@ Decision (Wyatt, 2026-10-12):
    - `-nv`, not `-q`: `wget -q` prints nothing on a 404, so the command would end silently.
    - It no longer runs in fish; bash, dash and zsh are fine.
 2. **`install.sh`** uses curl with `--proto` as before, else `wget --max-redirect=0`, else the same plain message. The SHA-256 check and everything after it are unchanged.
-3. **What stands in for `--proto` on the wget path: no redirects at all.** GNU wget can't limit the protocol a redirect goes to (`--https-only` applies only to recursive downloads), so it follows none, and the release URL keeps the protocol the build allows. Integrity never depended on it: the binary must match the SHA-256 written into `install.sh`. Open item for phase 09's install host: the binaries must be served from `RELEASE_BASE` without a redirect (GitHub Releases asset URLs redirect).
+3. **What stands in for `--proto` on the wget path: no redirects at all.** GNU wget can't limit the protocol a redirect goes to (`--https-only` applies only to recursive downloads), so it follows none, and the release URL keeps the protocol the build allows. Integrity never depended on it: the binary must match the SHA-256 written into `install.sh`. Open item for phase 09's install host: the binaries must be served from `RELEASE_BASE` without a redirect (GitHub Releases asset URLs redirect). **Closed 2026-11-20 (spec change 58):** on `get.coffer.party` (Cloudflare Pages), a probe upload's `install.sh`, binaries and `latest/` files all answered HTTP 200 with no redirect, through fetch, `wget --max-redirect=0` and `curl --max-redirs 0`.
 
 Effect on the admin budget: better. A machine without curl no longer needs software installed first; a machine with neither curl nor wget is told plainly what to install.
 Effect on the trust contract: none.
@@ -2057,6 +2057,11 @@ Evidence:
   - Without a top-level `404.html`, Pages treats the site as a single-page app and serves the root for any missing path.
   - Pages redirects `.html` paths (`/x.html` to `/x`, `/x/index.html` to `/x/`). The docs don't say other files are left alone, so a probe upload checks it live.
   - The docs don't say whether an upload replaces the whole site. This proposal assumes it does.
+- **Live, the probe upload (2026-11-20, `node scripts/check-install-host.mjs --base https://get.coffer.party`):**
+  - The first run: 31 PASS, 1 FAIL. `/404.html` answered HTTP 307 with `Location: /404`, Pages' `.html` rule, while every other file answered 200 with no redirect, the binaries included. The script now checks `404.html` only as the body of a missing file, and fails any other `.html` file in the upload folder.
+  - The second run: 32 PASS, 0 FAIL. Missing paths, at the top and inside `0.0.0/`, got a 404 with `404.html`; the root is a 404.
+  - Headers on `install.sh` and the binaries: `content-type: application/octet-stream`, `cache-control: public, max-age=0, must-revalidate`.
+  - Plain `http://get.coffer.party/install.sh` answers 200 instead of redirecting to https. No Coffer path uses http (every URL is https; curl runs with `--proto =https`), so this is a recommendation only: turn on Always Use HTTPS for the zone (Wyatt's Cloudflare settings).
 Proposal:
 1. **Layout:**
    ```text

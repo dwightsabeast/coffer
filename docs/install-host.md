@@ -22,6 +22,7 @@ get.coffer.party/
   - `install.sh` fetches the binary from its own version folder.
   - The bridge checks `https://get.coffer.party/latest/` for updates.
 - **Never add** `_redirects`, `_headers`, `_worker.js`, `_routes.json` or a `functions/` folder. The wget path in `install.sh` follows no redirect at all (spec change 21).
+- **No `.html` files except `404.html`.** Pages redirects `.html` paths (seen live: `/404.html` answers 307 to `/404`).
 - **Versions are plain `x.y.z`.** The bridge ignores a `-suffix` when it compares versions, so a bridge on `1.0.0-rc1` would never update to `1.0.0`.
 - **Only `get.coffer.party` goes in docs and code.** The project's `*.pages.dev` address serves the same files, but it isn't the install URL. The check below warns about any repo file that mentions one.
 - **The key file here adds no trust.** Whoever controls this host controls the binaries too. The install guide tells admins to compare the key's fingerprint with the GitHub release page.
@@ -84,7 +85,7 @@ It sends only GET requests to the host and writes `~/xmr-pay-dev-data/install-ho
   - There are no rule files, there is a top-level `404.html`, and there are no suffixed versions.
 - **The host:**
   - Every file, and every file `versions.json` lists for any version, is served with HTTP 200 and no redirect. Its bytes must match `versions.json`, or the folder for files it doesn't list.
-  - A missing file gets a 404 with `404.html`.
+  - A missing file gets a 404 with `404.html`. `404.html` itself isn't fetched by name, because Pages redirects it.
   - `install.sh` and the newest binaries also download with `wget --max-redirect=0` and with `curl --max-redirs 0`.
 - **The repo:** a WARN for any tracked file that mentions a `*.pages.dev` address.
 

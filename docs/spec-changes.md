@@ -2085,3 +2085,30 @@ Proposal:
 4. **The key on the host adds no trust.** Whoever controls the host controls the key file and the binaries alike, so `docs/install.md` keeps telling admins to compare the key's fingerprint with the GitHub release page.
 Effect on the admin budget: none.
 Effect on the trust contract: none. `allowedHosts` is the plugin's, and neither the bridge nor the installer is in it.
+
+## 59. EmDash 1.5.0: sandboxed KV moves to `options`, the floor is 1.5.0, and Cloudflare's default call limit is 30  (status: proposed, 2026-11-20; the floor itself decided by Wyatt the same day)
+Found in: the EmDash 1.5.0 check (`docs/emdash-upgrade-checklist.md`, "EmDash 1.5.0"), read from the 1.4.0 and 1.5.0 packages and EmDash's upgrade guide (docs.emdashcms.com/plugins/upgrading-sites).
+Spec says:
+- Storage and the trust contract: Coffer's state is plugin KV and its two collections. The spec doesn't say where EmDash keeps KV.
+- Spec change 35: release 1 is Node-only because a sandboxed plugin gets 10 bridge calls per invocation on Cloudflare.
+
+Evidence:
+- **KV's location (#4277, migration 092).** `@emdash-cms/sandbox-workerd` 0.9.7 keeps every key but `settings:` ones in the `options` table as `plugin:coffer:<key>`, through the same `createKVAccess` that in-process plugins use. 0.9.6 kept them in `_plugin_storage`, collection `__kv`.
+  - Migration 092 copies the old rows, keeping their revisions, and deletes nothing. The old rows stay as stale copies that nothing reads.
+  - `options`' conditional write is one `UPDATE … WHERE revision = ?`, and every write gets a new UUID revision. So RT-07's single-winner claim (spec change 50) still holds by construction.
+  - The trust contract doesn't change. The same keys hold the same values, under the same plugin scope.
+- **Uninstall with "delete data".** 1.5.0 deletes the plugin's `_plugin_storage` rows (the stale copies too) and every `plugin:coffer:` option. 1.4.0 deleted only `_plugin_storage`. Coffer's own `deletePluginData` already removed its settings and the KV keys it knows.
+- **EmDash's upgrade steps for a site moving to 1.5.0:**
+  1. Back up the database and stop every writer.
+  2. Upgrade `emdash` and the sandbox runner together.
+  3. Build, then apply the migrations from the CLI (`emdash migrate`) before starting the site.
+  - Mixed core and runner versions aren't refused. An old runner keeps using `__kv` while the new core reads `options`.
+  - Coffer has only ever run sandboxed, so it can't have the conflicting in-process values the guide warns about.
+- **The floor.** `@emdash-cms/plugin-test` 0.2.12 pins `emdash` 1.5.0. Wyatt raised the floor to 1.5.0 (`docs/decisions.md`, 2026-11-20).
+- **Cloudflare (#4712).** `@emdash-cms/cloudflare` 1.5.0's sandbox defaults are `subrequests: 30` and `cpuMs: 50` (1.4.0: 10 and 50). Not measured: the spike site's token has expired.
+Proposal:
+1. **`docs/install.md` and the listing:** one sentence for admins coming from EmDash 1.4: upgrade EmDash and its sandbox runner together and follow EmDash's upgrade guide before Coffer runs again. **Deferred** (Wyatt, 2026-11-20: "skip the install.md sentence for now"). It touches the admin-facing text, and the listing's Security section is at its 2,000-grapheme cap. It isn't a new Coffer step: the site upgrade needs it with or without Coffer.
+2. **Spec change 35:** recorded as evidence only. A higher default limit could make option A smaller, or let release 1.x drop the Cloudflare refusal. That needs a measurement on a Cloudflare test site (pairing, checkout, a sync, the admin page). No change for release 1.
+3. The dev scripts that wrote or read `__kv` directly now use `options` (`scripts/redteam/lib.mjs`: `kvGet`, `kvSet`, `writePairingCode`, `cleanupCofferRows`; `setup-test-reset.mjs` removes Coffer's KV values from `options`). Done in this check, tests first.
+Effect on the admin budget: none for a new install. An existing site on 1.4.0 follows EmDash's own upgrade steps.
+Effect on the trust contract: none.

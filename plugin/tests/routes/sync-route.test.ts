@@ -6,6 +6,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { PURGE_MS } from "../../src/housekeeping";
+import { KV } from "../../src/store";
 import { newPairingCode } from "../../src/sync/pairing";
 import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
@@ -154,9 +155,17 @@ describe("housekeeping and the backup cron", () => {
 	});
 
 	it("[P04] activation and the first admin page load schedule the backup cron; it purges too", async ({ task }) => {
+		// Since EmDash 1.5.0 (#4358) plugin:install and plugin:activate run when the host starts, on every boot, so the
+		// cron is there before any admin load. The admin load's fallback is keyed off the cronScheduled flag: clear it
+		// (a site whose activation never ran) and the load schedules again, without a second task.
 		host = await createPluginRuntimeTestHost();
-		expect(await host.inspect.scheduledTasks()).toEqual([]);
+		const atStart = await host.inspect.scheduledTasks();
+		Object.assign(task.meta, { atStart });
+		expect(atStart).toEqual([expect.objectContaining({ name: "housekeeping", schedule: "0 * * * *" })]);
+		expect(await host.inspect.kv.get(KV.cronScheduled)).toBe(true);
+		await host.fixtures.plugin.kv(KV.cronScheduled, false);
 		await host.admin.loadPage("/payments");
+		expect(await host.inspect.kv.get(KV.cronScheduled)).toBe(true);
 		const afterAdmin = await host.inspect.scheduledTasks();
 		Object.assign(task.meta, { afterAdmin });
 		expect(afterAdmin).toEqual([expect.objectContaining({ name: "housekeeping", schedule: "0 * * * *" })]);

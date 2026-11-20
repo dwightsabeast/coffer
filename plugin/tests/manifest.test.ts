@@ -5,6 +5,8 @@ import { afterEach, expect, it } from "vitest";
 import { createPluginTestHost, type PluginTestHost } from "@emdash-cms/plugin-test";
 
 import descriptionSection from "../docs/description.md?raw";
+import installationSection from "../docs/installation.md?raw";
+import securitySection from "../docs/security.md?raw";
 import manifestSource from "../emdash-plugin.jsonc?raw";
 import packageSource from "../package.json?raw";
 
@@ -66,13 +68,13 @@ it("the source manifest points at the renamed repository, dwightsabeast/coffer (
 	expect(m.security).toEqual({ url: "https://github.com/dwightsabeast/coffer/security/advisories/new" });
 });
 
-// Spec change 41 items 3 and 9, with Wyatt's decision D as amended on 2026-10-25 (EmDash's floor is the tested version: 1.3.1 then, 1.4.0 since 2026-11-14).
+// Spec change 41 items 3 and 9, with Wyatt's decision D as amended on 2026-10-25 (EmDash's floor is the tested version: 1.3.1 then, 1.4.0 from 2026-11-14, 1.5.0 since 2026-11-20).
 const graphemes = (text: string) => [...new Intl.Segmenter("en", { granularity: "grapheme" }).segment(text)].length;
 
 it("[T01] the source manifest declares the supported EmDash and Astro versions (spec change 41 item 3)", () => {
 	const m = JSON.parse(manifestSource.replace(/^\s*\/\/.*$/gm, ""));
-	expect(m.release?.requires).toEqual({ "env:emdash": ">=1.4.0 <2.0.0", "env:astro": ">=7.3.5 <8.0.0" });
-	expect(JSON.parse(packageSource).peerDependencies).toEqual({ emdash: ">=1.4.0 <2.0.0" });
+	expect(m.release?.requires).toEqual({ "env:emdash": ">=1.5.0 <2.0.0", "env:astro": ">=7.3.5 <8.0.0" });
+	expect(JSON.parse(packageSource).peerDependencies).toEqual({ emdash: ">=1.5.0 <2.0.0" });
 });
 
 it("the listing says what setup needs before the Install click (spec change 41 item 9)", () => {
@@ -81,7 +83,30 @@ it("the listing says what setup needs before the Install click (spec change 41 i
 	expect(graphemes(m.description)).toBeLessThanOrEqual(140);
 	expect(m.sections?.description).toEqual({ file: "./docs/description.md" });
 	expect(descriptionSection.startsWith("## What you'll need\n")).toBe(true);
-	expect(descriptionSection).toContain("EmDash 1.4.0 or later");
+	expect(descriptionSection).toContain("EmDash 1.5.0 or later");
 	expect(graphemes(descriptionSection)).toBeLessThanOrEqual(2000);
 	expect(new TextEncoder().encode(descriptionSection).length).toBeLessThanOrEqual(20_000);
+});
+
+// Wyatt, 2026-11-15: about 1,850 of the registry's 2,000 graphemes, so the real install address fits later; raised to
+// 1,950 with that address in it (Wyatt, 2026-11-20, spec change 58).
+it("the listing's installation text leaves room under the registry's 2,000 graphemes and links the install guide", () => {
+	expect(graphemes(installationSection)).toBeLessThanOrEqual(1950);
+	expect(installationSection).toContain("The command downloads from https://get.coffer.party.");
+	expect(installationSection).toContain("https://github.com/dwightsabeast/coffer/blob/coffer%401.0.0/docs/install.md");
+	expect(installationSection).toContain("/_emdash/api/plugins/coffer/*");
+	expect(installationSection).toContain("never the spend key");
+});
+
+// Phase 09 step 4: the listing's Security section, a plain summary of the security report (Wyatt approved the text,
+// ASD-STE100 wording, 2026-11-20). Registry limits: 2,000 graphemes and 20,000 bytes.
+it("the listing's Security section is declared, fits the registry's limits and links the report and private reporting", () => {
+	const m = JSON.parse(manifestSource.replace(/^\s*\/\/.*$/gm, ""));
+	expect(m.sections?.security).toEqual({ file: "./docs/security.md" });
+	expect(graphemes(securitySection)).toBeLessThanOrEqual(2000);
+	expect(new TextEncoder().encode(securitySection).length).toBeLessThanOrEqual(20_000);
+	expect(securitySection.startsWith("## What Coffer can and can't reach\n")).toBe(true);
+	expect(securitySection).toContain("The spend key stays in your wallet app.");
+	expect(securitySection).toContain("https://github.com/dwightsabeast/coffer/blob/coffer%401.0.0/docs/security-report.md");
+	expect(securitySection).toContain("https://github.com/dwightsabeast/coffer/security/advisories/new");
 });

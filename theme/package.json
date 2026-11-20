@@ -1,7 +1,7 @@
 {
 	"name": "@cofferhq/astro",
 	"version": "0.1.0",
-	"description": "Astro components for Coffer, Monero payments for EmDash: the tip button and its endpoint, the /pay page, the isPaid helper and checkout messages.",
+	"description": "Astro components for Coffer, Monero payments for EmDash: the tip button and its endpoint, the /pay page and checkout messages.",
 	"license": "MIT",
 	"type": "module",
 	"private": true,
@@ -10,7 +10,6 @@
 		"./page": "./src/page.ts",
 		"./TipButton.astro": "./src/TipButton.astro",
 		"./tip": "./src/tip.ts",
-		"./isPaid": "./src/isPaid.ts",
 		"./messages": "./src/messages.ts",
 		"./qr": "./src/qr.ts"
 	},
@@ -29,11 +28,11 @@
 	},
 	"peerDependencies": {
 		"astro": ">=7.3.5 <8",
-		"emdash": ">=1.4.0 <2"
+		"emdash": ">=1.5.0 <2"
 	},
 	"devDependencies": {
 		"astro": "7.3.5",
-		"emdash": "1.4.0",
+		"emdash": "1.5.0",
 		"typescript": "5.9.3",
 		"vitest": "4.1.11"
 	},

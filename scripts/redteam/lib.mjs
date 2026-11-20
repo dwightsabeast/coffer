@@ -209,26 +209,39 @@ export function openSiteDb(path = DEFAULT_DB, { readOnly = false } = {}) {
 }
 
 /**
+ * Where a sandboxed plugin's KV lives. Since EmDash 1.5.0 (#4277) the sandbox runner keeps every key but `settings:`
+ * ones in the options table as `plugin:<id>:<key>`, with a revision that changes on every write. Before 1.5.0 they were
+ * rows of _plugin_storage, collection "__kv"; migration 092 copied them and left the old rows, which nothing reads.
+ */
+export const kvName = (key) => `plugin:${PLUGIN}:${key}`;
+/** A KV value as the plugin would read it, or null. */
+export function kvGet(db, key) {
+	const row = db.prepare("SELECT value FROM options WHERE name = ?").get(kvName(key));
+	return row ? JSON.parse(row.value) : null;
+}
+/** Writes a KV value the way EmDash's OptionsRepository.set does: JSON, and a new revision. */
+export function kvSet(db, key, value) {
+	db.prepare("INSERT INTO options (name, value, revision) VALUES (?, ?, ?) ON CONFLICT (name) DO UPDATE SET value = excluded.value, revision = excluded.revision").run(kvName(key), JSON.stringify(value), crypto.randomUUID());
+}
+
+/**
  * The KV shortcut: the admin page stores only a SHA-256 hash of its pairing code, so a script can't read one back.
- * This writes a new code's hash into the plugin's KV row (the sandbox runner keeps a sandboxed plugin's KV in
- * _plugin_storage, collection "__kv"), exactly what the admin page's Connect wallet host would store, and returns the
- * code. Valid 15 minutes, single use.
+ * This writes a new code's hash into the plugin's KV (kvSet), exactly what the admin page's Connect wallet host would
+ * store, and returns the code. Valid 15 minutes, single use.
  */
 export function writePairingCode(db, { code = b64url(randomBytes(16)), now = Date.now() } = {}) {
-	const state = JSON.stringify({ codeHash: b64url(createHash("sha256").update(code).digest()), expiresAt: now + 15 * 60_000, used: false });
-	const stamp = new Date(now).toISOString();
-	db.prepare(
-		"INSERT INTO _plugin_storage (plugin_id, collection, id, data, revision, created_at, updated_at) VALUES (?, '__kv', 'state:pairing', ?, ?, ?, ?) ON CONFLICT (plugin_id, collection, id) DO UPDATE SET data = excluded.data, revision = excluded.revision, updated_at = excluded.updated_at",
-	).run(PLUGIN, state, crypto.randomUUID(), stamp, stamp);
+	kvSet(db, "state:pairing", { codeHash: b64url(createHash("sha256").update(code).digest()), expiresAt: now + 15 * 60_000, used: false });
 	return code;
 }
 
-/** Removes Coffer's pool and invoice rows, the run's KV rows and the paired key. Returns what it removed. */
+/** Removes Coffer's pool and invoice rows, the run's KV (and its stale pre-1.5.0 __kv copies) and the paired key. Returns what it removed. */
 export function cleanupCofferRows(db) {
 	const rows = db.prepare("DELETE FROM _plugin_storage WHERE plugin_id = ? AND collection IN ('pool', 'invoices')").run(PLUGIN).changes;
-	const kv = db.prepare(`DELETE FROM _plugin_storage WHERE plugin_id = ? AND collection = '__kv' AND (id IN (${RUN_KV.map(() => "?").join(",")}) OR id LIKE 'state:paidTop:%')`).run(PLUGIN, ...RUN_KV).changes;
+	const marks = RUN_KV.map(() => "?").join(",");
+	const kv = db.prepare(`DELETE FROM options WHERE name IN (${marks}) OR name LIKE ?`).run(...RUN_KV.map(kvName), `${kvName("state:paidTop:")}%`).changes;
+	const staleKv = db.prepare(`DELETE FROM _plugin_storage WHERE plugin_id = ? AND collection = '__kv' AND (id IN (${marks}) OR id LIKE 'state:paidTop:%')`).run(PLUGIN, ...RUN_KV).changes;
 	const key = db.prepare("DELETE FROM options WHERE name = ?").run(KEY_OPTION).changes;
-	return { rows, kv, key };
+	return { rows, kv, staleKv, key };
 }
 
 // ---- evidence and backups ----

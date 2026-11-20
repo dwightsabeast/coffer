@@ -1,7 +1,7 @@
 #!/bin/sh
 # xmr-bridge installer for the wallet host.
 #
-#   curl -fsSL <release host>/install.sh | sh -s -- --site https://your-site.example --pair <one-time code>
+#   curl -fsSL https://get.coffer.party/install.sh | sh -s -- --site https://your-site.example --pair <one-time code>
 #
 # (The site's admin page shows the same command with a wget fallback, for machines without curl.) It downloads the xmr-bridge program for this machine's CPU, checks it against the SHA-256 written into this file
 # for this release, and runs `xmr-bridge install` with sudo. That program asks for the shop wallet's address and

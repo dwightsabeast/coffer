@@ -12,16 +12,16 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
 
 **Before the session** (from the plan change's waiting list):
 
-- [ ] Phase 07b is done: no Critical or High finding open, every Medium fixed or accepted in `docs/decisions.md`.
+- [x] Phase 07b is done: no Critical or High finding open, every Medium fixed or accepted in `docs/decisions.md` (checked in `docs/security-review.md`, section 1, 2026-11-14).
 - [x] The mainnet second-node list for the cross-check (spec change 13): decided 2026-11-02, https only (`node.monerodevs.org:18089`, `xmr-node.cakewallet.com:18081`, `ravfx.its-a-node.org:18081`), built in `1162b8f`.
 - [ ] Grow the HTTPS second-node list (Wyatt, 2026-11-02). Today it's three mainnet nodes, one per operator, and stagenet still uses http because only one of its nodes has a certificate that verifies.
   - **Why it matters:** with a remote node and no second node answering, every payment is held and no height is reported.
   - **How to add a node:** probe it read-only, as on 2026-11-02 (synchronized, restricted, `get_block` by height, the same block hash as the others, a certificate that verifies), and only from an operator not already listed.
 - [ ] The self-update admin-copy question.
-- [ ] An install host that serves the bridge files without redirects (spec change 21).
+- [x] An install host that serves the bridge files without redirects (spec change 21): `get.coffer.party` (spec change 58); the probe upload passed the check on 2026-11-20.
 - [x] The Atmosphere account to publish under (below; done 2026-10-23).
 - [x] Your hand-made registry icon (Claude doesn't generate or draw one): `plugin/images/coffer-icon.png`, delivered 2026-10-23.
-- [ ] Session 7g (EmDash 1.3 check) is done: `release.requires` and the listing text are in the manifest, and they name versions actually tested (spec change 41, items 3, 4, 9).
+- [x] Session 7g (EmDash 1.3 check) is done, and the floor is 1.5.0 since the check of 2026-11-20 (1.4.0 from 2026-11-14): `release.requires` and the listing text are in the manifest, and they name versions actually tested (spec change 41, items 3, 4, 9).
 - [ ] A browser with passkey support, for approving each release (spec change 41 A).
 - [ ] The repository is still public: the release service trusts only public GitHub provenance.
 - [ ] Spec change 49 item 4's txid lookup: a new index or a bounded scan, decided before 1.0.0's storage contract is frozen (step 1 below; Wyatt, 2026-11-08).
@@ -34,7 +34,7 @@ This phase mixes Claude's work with steps only Wyatt can do. Claude never holds 
    - At releases.emdashcms.com/publisher, **Automated publishing** is enabled (2026-10-23). The grant is create-only.
    - If release setup fails with `MISSING_BLOB_SCOPE` (a login made before blob publishing), log out and back in.
 2. **Release signing key, offline.** Claude prepares a short key ceremony checklist for the scheme chosen in phase 03. You generate the key on a machine that is offline (or a live USB), keep the private key on encrypted media with a backup, and give Claude only the public key. The private key never touches the dev box.
-3. **Install host:** a subdomain such as `get.wyattdilley.com` served by Cloudflare Pages or GitHub Pages, set up with a DNS record only, so the live site at wyattdilley.com is untouched.
+3. **Install host (decided 2026-11-20, spec change 58):** `get.coffer.party` on Cloudflare Pages, uploaded by hand from your PC (the apex `coffer.party` is kept for a landing page). The layout and the upload check are in `docs/install-host.md`. Back up the upload folder.
 4. **npm org `cofferhq`** (created 2026-10-16) for the theme package `@cofferhq/astro`: set up GitHub Actions trusted publishing (OIDC) for it on npm.
 5. **Live site:** before the mainnet trial, snapshot the live site's container. You decide when.
 
@@ -65,7 +65,7 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
 
 **2. Build and sign**
 
-- Reproducible bridge builds for linux amd64 and arm64: `CGO_ENABLED=0`, `-trimpath`, the Go version pinned in `bridge/go.mod` (go1.27.3 or later, RT-28), version stamped from the tag. **CI builds them** from a clean checkout with provenance (CLAUDE.md tier 3; Wyatt, 2026-10-31): the binaries, a checksum file and the unsigned release manifest.
+- Reproducible bridge builds for linux amd64 and arm64: `CGO_ENABLED=0`, `-trimpath`, the Go version pinned in `bridge/go.mod` (go1.27.4 or later, RT-28 and RT-39), version stamped from the tag. **CI builds them** from a clean checkout with provenance (CLAUDE.md tier 3; Wyatt, 2026-10-31): the binaries, a checksum file and the unsigned release manifest.
 - **Before signing, Wyatt rebuilds on the dev box** with the same Go and the same flags and confirms the hashes match CI's. The signing key never goes to CI.
 - Just before publishing, rerun `govulncheck -mode binary` on the release binaries and `pnpm audit` on the release packages (07b F5; nothing called is the bar).
 - Wyatt signs the release manifest offline with the real key and hands back only the signature. Pin the real public key in the bridge (replacing the placeholder), with tests proving that release builds contain neither the placeholder, the dev release key, the `--release-url` dev option, nor the RFC 8032 test keys.
@@ -78,7 +78,7 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
   - RT-12: one CPU-bound plugin request can hold the others for up to 30 s on the Node runner.
   - RT-13: slow connections are limited at the proxy or platform, next to the checkout rate limit.
   - RT-19: get the pairing code last, right before running the install command.
-  - The report's T03 uses spec change 44's final wording (RT-08).
+  - The report's T03 uses spec change 44's final wording (RT-08), in the ASD-STE100 rewording Wyatt approved on 2026-11-20.
 - **The install docs list what the wallet host needs:** Linux with systemd, `sh`, curl or wget, `sha256sum`, and `sudo` or a root login.
 - **The install docs say to use a wallet made for this shop, not one with history** (spec change 46's known limit, 2026-11-01). A wallet restored from keys stops at the first gap of 200 unused subaddresses, so a reused wallet paired as new can hand out addresses that already received payments.
 - **The install docs say a site behind a proxy that ends https must give EmDash its public address the way EmDash documents it** (`siteUrl`, `EMDASH_SITE_URL` or `SITE_URL`; RT-20's known limit, Wyatt 2026-11-06). The Site URL in Settings › General alone isn't enough: the plugin gets the right address, but every visitor's tip is refused with a 403. The tip page's note for the admin ("See Coffer's install guide") points here, so this section must exist before release. Warn first that setting one of these moves passkey sign-in to that address, and passkeys made at the old address stop working, so a sole admin with no email set up could be locked out. Link EmDash's guide: https://docs.emdashcms.com/reference/configuration/#reverse-proxy-setup.
@@ -95,11 +95,12 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
   - **How it pages:** like All invoices' `invoices_page` and `invoices_newest`, with a storage cursor over the query the Tips view already runs (`where: { kind: "tip" }, orderBy: { createdAt: "desc" }`). That's the declared `["kind", "createdAt"]` index.
   - **No contract change:** no new route, collection, index, capability, page or widget.
   - **What a page shows:** the rows with items 1–3 above.
-    - Test tips (no `via`) are filtered out after the query, so a page can hold fewer than 10.
+    - Test tips (no `via`) are filtered out after the query, so a page can hold fewer than 10, the first included (accepted for 1.0.0, Wyatt 2026-11-15; on the after-release list in `docs/decisions.md`).
     - Tips past the 30-day purge show without notes.
     - The totals don't change: they still cover the newest 1,000.
   - **Tests, written first:**
-    - **[F04] A malformed or forged cursor is refused with an error toast, changes nothing, and never crashes.** Wrong type, empty, oversized, look-alike, another list's cursor, and one built by hand.
+    - **[F04] A malformed cursor, or one EmDash can't decode, is refused with an error toast, changes nothing, and never crashes.** Wrong type, empty, oversized, look-alike, cut short, and one built by hand.
+      - **A well-formed cursor from another list isn't always refused** (RT-42, Low, accepted by Wyatt 2026-11-15): to EmDash it is a position, so one that decodes shows a page of visitor tips from the same query. Admin-only, read-only, data the admin can already see. The test records that it shows nothing else and writes nothing.
     - **[F04] A non-admin request is refused:** an anonymous user, a signed-in user who isn't an admin, and a request without `X-EmDash-Request`.
     - **[T30] Test tips are filtered:** they never appear on any page and never count.
     - **[T09] No page shows a pay token.**

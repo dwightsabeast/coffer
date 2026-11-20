@@ -43,6 +43,13 @@ Severity is by what happens to people (the brief's table): Critical, High, Mediu
 | RT-33 | Low, doesn't block release 1 (Wyatt, 2026-11-06) | R10, T14 | 1, fix sessions (combined live, step 2) | The height floor moves a tip settled before the floor existed to review as "reversed", with an alert | fixed in code 2026-11-06 with RT-34 (spec change 48); unit-tested, its live window has ended. 2026-11-08 (Wyatt): Mark settled stores the floor, so 1.0.0 can't create the state; the fallback and its test are gone |
 | RT-34 | Medium, fix in release 1 (Wyatt, 2026-11-06) | R10, T14 | 1, fix sessions (found tracing RT-33, 2026-11-06) | After a height heal, the floor of an invoice with an inflated `createdHeight` follows the site's height, so an honest settled payment turns "reversed" 31 blocks after it's mined | fixed in code 2026-11-06 (spec change 48); unit-tested, not live (Wyatt) |
 | RT-35 | Low (Wyatt, 2026-11-14) | T03, R08 | 1, fix sessions (found answering RT-08's re-check question, 2026-11-14) | On a busy site the check list's 150-row cap crowds out the rotation, so claimed rows older than 24 hours are never re-checked | fixed in code 2026-11-14 (spec change 54); unit-tested, not live |
+| RT-36 | Medium (Wyatt, 2026-11-15) | F04, T11, T03 | phase 09 security review | A transfer's time lock too large to be a date makes the admin page fail | **fixed** 2026-11-15: an over-range unlock time shows as "time-locked", never an error |
+| RT-37 | Medium (Wyatt, 2026-11-15) | none yet (gating) | phase 09 security review | `isPaid` says yes to any settled invoice, so a dust tip opens a gated page | **fixed** 2026-11-15 (spec change 55 accepted): `isPaid` and the README's gating example are out of release 1 |
+| RT-38 | Medium (Wyatt, 2026-11-15) | T14 | phase 09 security review (the independent reviewer) | The remote node's operator can switch the cross-check off with a DNS answer at the bridge's start | **fixed** 2026-11-15: a node given by name is always cross-checked; no lookup decides it. Unit-tested, not live |
+| RT-39 | Low (Wyatt, 2026-11-15) | T28 | phase 09 security review | go1.27.3 carries GO-2026-6859 (net/http server); govulncheck reports it as called | **fixed in the repo** 2026-11-15: go1.27.4 in both `go.mod` files; govulncheck reports nothing. The dev box's own Go waits on Wyatt's sudo step |
+| RT-40 | Low (Wyatt, 2026-11-15) | T07 | phase 09 security review (the independent reviewer) | Checkout reads the speed setting with `in`, so an inherited name would give no confirmation target | **fixed** 2026-11-15: checkout uses the form's own check. Reproduced before the fix: `required` was undefined |
+| RT-41 | Low (Wyatt, 2026-11-15) | P04, T02 | phase 09 security review | An invoice that never becomes final keeps its note for good | **fixed** 2026-11-15: the purge also clears a never-final invoice 30 days past its window |
+| RT-42 | Low (Wyatt, 2026-11-15) | F04 | phase 09 step 3 (the `tips_page` delta review) | A well-formed cursor from another list isn't always refused by `tips_page`; one that decodes shows a page of visitor tips | **accepted** 2026-11-15: admin-only, read-only, data the admin can already see. No code change |
 
 ---
 
@@ -1035,3 +1042,72 @@ Found live on the dev site, 2026-11-02, in 46's live step 6 (the switch to a sec
 - **Ruling (Wyatt, 2026-11-14):** Low; fix now; the rotation keeps 25 of the 150 rows.
 - **Status:** **fixed (2026-11-14, spec change 54).** The rotation keeps 25 of the list's 150 rows when a turn starts, its chunk is no longer than the room left, and the chunk keeps its room for the rest of the turn; the pointer moves only past rows that were sent. Three tests in `plugin/tests/sync/poolcheck.test.ts`, red first: every older row is listed on a busy day; every sync in a turn lists the whole chunk; a month-old thief row found by the rotation turns bad and its tip goes to review. Unit-tested, not live. A full pass on a busy site takes (claimed rows ÷ 25) × 30 s.
 
+---
+
+# Phase 09, step 1: the security review (2026-11-14 and 15 UTC)
+
+Found by reading the code against the spec, not by an attacker session. The full write-up, the options and the recommendations are in `docs/security-review.md`, section 7. Severities are proposals until Wyatt rules.
+
+## RT-36 — A transfer's time lock too large to be a date makes the admin page fail
+
+- **Rows:** F04 (the admin route never crashes), T11, T03. **Proposed:** Medium.
+- **What I did:** on the test host, settled a tip, then sent a signed snapshot reporting the same payment with `unlockTime` `18446744073709551615` (2^64 − 1, the largest Monero carries).
+- **What happened:** the tip went to review (reversed), as it should. Every load of the payments page then failed: `Plugin admin request failed (400): {"success":false,"error":{"code":"ROUTE_ERROR","message":"Invalid time value"}}`.
+- **Why:** `plugin/src/admin.ts:575` formats an unlock time of 500,000,000 or more with `new Date(Number(u) * 1000).toISOString()`, which throws above 8,640,000,000,000. The sync parser accepts 20 digits.
+- **Reach:** the bridge key's holder; or a miner-included transfer to a tip address whose counted payment later stops counting. The failing page is the one with "Connect a new wallet host" (that action renders the page too: read, not run). The widget still loads. Release 2's invoice rows, and phase 09's tip rows with transfers, reach the same line through `transferNote`.
+- **Test:** `plugin/tests/redteam/admin.test.ts`, "[F04][T11] [RT-36] the admin page still loads when a reversed tip holds a transfer time-locked past the year 275760", `it.fails`. Run once as a plain test first: it failed with the error above.
+
+## RT-37 — `isPaid` says yes to any settled invoice, so a dust tip opens a gated page
+
+- **Rows:** none yet; a gating row is proposed with spec change 55. **Proposed:** Medium.
+- **Read in the code:** `theme/src/isPaid.ts` returns `r.ok && r.status.status === "settled"`; `theme/README.md`, "Gated content", shows that as the whole gate; the package exports it.
+- **Reach:** release 1 makes only tips, which settle at 0.0001 XMR. One such tip's token opens every page gated this way, for as long as the invoice exists, for anyone holding the token.
+- **No test:** a test of security behavior needs its matrix row first.
+
+## RT-38 — The remote node's operator can switch the cross-check off with a DNS answer
+
+- **Row:** T14. **Proposed:** Medium. Found by the independent reviewer; I read the code and agree.
+- **Read in the code:** `bridge/cmd/xmr-bridge/bridge.go:84` calls `crosscheck.IsOwnNode` once at start. A name that resolves only to loopback, private or link-local addresses is "the shop's own node", and no cross-checker exists for the life of the process. wallet-rpc resolves the name separately.
+- **Reach:** an operator who answers that one lookup with a private address. The admin page then shows the node check as off (own node), and confirmations the node makes up pass unchecked. Any node on a private-range address also counts as "own", whoever runs it.
+- **Not run.**
+
+## RT-39 — go1.27.3 carries GO-2026-6859; govulncheck reports it as called
+
+- **Row:** T28. **Proposed:** Low.
+- **What I did:** govulncheck v1.9.0 (commit `e672cbe8fbc8c76e28fcb6db0efd9ce354e0dac5`, checked against sum.golang.org and `go.googlesource.com/vuln`'s tag; built with go1.27.3 into `~/work/govulncheck/bin`, `go env -changed` empty but for `GOTOOLCHAIN=local`).
+- **Results, by exit code** (0 none, 3 found; no run failed): `bridge/` source mode 3; fresh static amd64 and arm64 builds (`-trimpath`, `CGO_ENABLED=0`, go1.27.3) in binary mode 3 and 3; `bridge/oracle/` source mode with `-test` 0. Every 3 is the one entry: GO-2026-6859, "HTTP/1 server crash due to MaxBytesReader header race in net/http", found in go1.27.3, fixed in go1.27.4.
+- **Reach:** none found. The entry is about an HTTP server; the shipped bridge has none, and the only one in the module is the test-only `internal/hostile`. The traces are the package's shared symbols.
+- **Manifests:** `bridge/go.mod` (no `require`) and `bridge/oracle/go.mod`. The npm side is in the review, "Dependency audits".
+- **Evidence:** `~/xmr-pay-dev-data/09-review-govulncheck/`.
+
+## RT-40 — Checkout reads the speed setting with `in`
+
+- **Row:** T07. **Proposed:** Low, hardening. Found by the independent reviewer; I checked the line.
+- **Read in the code:** `plugin/src/checkout.ts`, `speedSetting !== null && speedSetting in PRESETS`. For a stored value such as `toString`, `requiredConfirmations` returns undefined and `classify`'s `depth < required` is false, so the invoice would settle at any depth.
+- **Reach:** not through Coffer's own form, which accepts only the three speeds. Whether EmDash offers another way to write a plugin's setting wasn't determined.
+- **Not run.**
+
+## RT-41 — An invoice that never becomes final keeps its note for good
+
+- **Rows:** P04, T02. **Proposed:** Low.
+- **Read in the code:** `plugin/src/housekeeping.ts` purges at `finalAt + 30 days`; `finalAt` is set only when an invoice leaves the open states, which takes a sync.
+- **Cases:** a wallet host removed and never replaced; a tip held at `confirming`; a site waiting for a probe answer; rows past the scan cap.
+- **Not tested.**
+
+## Rulings and fixes (2026-11-15, Wyatt)
+
+- **RT-36, Medium, fixed.** `notCountedReasons` in `plugin/src/admin.ts`: a block height below 500,000,000 as before; a time up to 8,640,000,000,000 s as a date; anything above as "time-locked". The `it.fails` is a plain test now, with a second one for the edges.
+- **RT-37, Medium, fixed.** Spec change 55 accepted. `theme/src/isPaid.ts`, its export, its tests and the README's "Gated content" section are gone; `theme/tests/release1.test.ts` pins the package's exports.
+- **RT-38, Medium, fixed.** Wyatt: never off; a check that can't be made is handled like a mismatch (hold and a Health warning). `crosscheck.IsOwnNode` no longer looks a name up: `localhost` or a literal loopback, private or link-local address is the shop's own node, and any other name is remote. A remote node with no second node answering was already held at 0 confirmations with the "cross-check unavailable" warning. **A change admins can meet:** a node on the shop's own network given by name is now cross-checked with the built-in second nodes (which see block heights only); giving its address instead keeps the check off.
+- **RT-39, Low, fixed in the repo.** go1.27.4. govulncheck v1.9.0 afterwards: exit 0 in source mode on `bridge/` and in binary mode on fresh amd64 and arm64 builds (`~/xmr-pay-dev-data/09-fix-govulncheck/`). Run with a private copy of go1.27.4 under `~/work/go1.27.4/`; the system Go changes with Wyatt's `go1274-install.sh`.
+- **RT-40, Low, fixed.** The test showed it before the fix: with `speed` stored as `toString`, a tip's `required` was undefined. `isSpeed` now lives in `core/constants.ts` and checkout uses it.
+- **RT-41, Low, fixed** (it was small). `purgeBatch` clears buyer data when `finalAt` is missing; the query already limits it to invoices more than 30 days past their window. The status doesn't change.
+
+## RT-42 — A well-formed cursor from another list isn't always refused by `tips_page`
+
+- **Rows:** F04. **Low, accepted** (Wyatt, 2026-11-15). No code change.
+- **Found in:** phase 09 step 3, the delta review of `tips_page`. The phase file asked for another list's cursor to be refused.
+- **What happens:** a cursor that is the wrong type, empty, oversized, not base64, cut short, or one EmDash can't decode gets the toast "That page of tips isn't available. Showing the newest." and the newest page. A well-formed cursor is a position to EmDash, not a reference to a list. The hand-built ones tried were refused; one that did decode would be read as a position in the tips query.
+- **Reach:** the private `admin` route only, so an admin. The query is fixed (`kind: "tip"`, newest first), so such a cursor can only show a page of visitor tips, 10 at a time, which the admin can already page to. It can't show another kind of invoice, and nothing is written.
+- **Why accepted:** admin-only, read-only, data the admin can already see.
+- **Tested:** `plugin/tests/routes/admin-tips-page.test.ts`, the two "[F04] …" tests record what is refused and that a cursor that decodes shows only visitor tips.

@@ -488,7 +488,7 @@ Decision (Wyatt, 2026-10-12):
    - `-nv`, not `-q`: `wget -q` prints nothing on a 404, so the command would end silently.
    - It no longer runs in fish; bash, dash and zsh are fine.
 2. **`install.sh`** uses curl with `--proto` as before, else `wget --max-redirect=0`, else the same plain message. The SHA-256 check and everything after it are unchanged.
-3. **What stands in for `--proto` on the wget path: no redirects at all.** GNU wget can't limit the protocol a redirect goes to (`--https-only` applies only to recursive downloads), so it follows none, and the release URL keeps the protocol the build allows. Integrity never depended on it: the binary must match the SHA-256 written into `install.sh`. Open item for phase 09's install host: the binaries must be served from `RELEASE_BASE` without a redirect (GitHub Releases asset URLs redirect).
+3. **What stands in for `--proto` on the wget path: no redirects at all.** GNU wget can't limit the protocol a redirect goes to (`--https-only` applies only to recursive downloads), so it follows none, and the release URL keeps the protocol the build allows. Integrity never depended on it: the binary must match the SHA-256 written into `install.sh`. Open item for phase 09's install host: the binaries must be served from `RELEASE_BASE` without a redirect (GitHub Releases asset URLs redirect). **Closed 2026-11-20 (spec change 58):** on `get.coffer.party` (Cloudflare Pages), a probe upload's `install.sh`, binaries and `latest/` files all answered HTTP 200 with no redirect, through fetch, `wget --max-redirect=0` and `curl --max-redirs 0`.
 
 Effect on the admin budget: better. A machine without curl no longer needs software installed first; a machine with neither curl nor wget is told plainly what to install.
 Effect on the trust contract: none.
@@ -1992,3 +1992,127 @@ Effect on the trust contract: none. The same `check` field and cap, the same KV 
 Built (2026-11-14): `checkList` in `plugin/src/sync/handle.ts`, `CHECK_ROTATION_RESERVE = 25`; three tests in `plugin/tests/sync/poolcheck.test.ts` tagged `[T03] [RT-35]`, red first.
 For the live spec (Wyatt applies): spec change 46's order gains "the rotation always has room for at least 25 rows, and never passes a row it didn't send".
 
+
+## 55. `isPaid` says yes to any settled invoice, so in release 1 a dust tip opens any gated page  (status: accepted, 2026-11-15, Wyatt: item 1 built the same day; items 2 and 3 for phase 08)
+Found in: phase 09, step 1 (`docs/security-review.md`, REV-8), reading `theme/src/isPaid.ts` and `theme/README.md`, "Gated content".
+Spec says: Theme integration, piece 3: "**Gating:** for gated content, the page or route checks `status` server-side and treats only `settled` as paid."
+Evidence:
+- `isPaid(astro, token)` returns `r.ok && r.status.status === "settled"`. It doesn't look at the invoice's kind, what it was for, or how much arrived.
+- The package exports it (`"./isPaid"`) and the README shows it as the whole gate: `if (!(await isPaid(Astro, Astro.url.searchParams.get("token")))) return Astro.redirect("/");`
+- Release 1 makes only tips. A tip settles at the dust floor, 0.0001 XMR, whatever was asked (spec change 33). So on a site that gates a page the README's way, one settled tip of 0.0001 XMR opens that page.
+- The same token opens every page gated this way, for as long as the invoice's row exists, and for anyone it's shared with.
+- The plugin's own claim holds (the status is read on the server and only `settled` counts). What's missing is any tie between the invoice and the thing being unlocked. Release 2 has the same gap between products: a cheap product's token opens a dear product's page.
+- Not tested: read from the code. `theme/tests/ispaid.test.ts` checks only settled against not settled.
+Proposal:
+1. **Release 1:** take `isPaid` out of the theme package's exports and its "Gated content" section out of the README. Release 1 sells nothing, so it has nothing to gate. The listing's installation text doesn't mention gated content; the manifest's comment says release 2 adds it.
+2. **Release 2 (phase 08):** `isPaid` takes what the page is selling and checks the invoice against it: the kind (`product` or `order`, never `tip`), the product or order reference, and that it settled in full. The status route then has to return the reference, which is a change to a public route's response; Wyatt decides its shape with spec change 36's contract.
+3. **The spec's Gating line** gains: "and checks that the invoice is for the thing being unlocked; a settled tip never unlocks anything."
+Effect on the admin budget: none.
+Effect on the trust contract: none for item 1 (the theme package only). Item 2 adds fields to `status`'s response, with no new route, collection, index, capability or host.
+
+## 56. The txid lookup is a bounded scan; 1.0.0's storage contract doesn't change  (status: accepted, 2026-11-15, Wyatt; phase 09's security review, for spec change 49 item 4)
+Found in: phase 09, step 1 (`docs/security-review.md`, section 6).
+Spec says: spec change 49: "A txid has no index: it's inside `transfers[]`, so it needs either a bounded scan or a new index. A new index changes the storage trust contract, so Wyatt decides." And: "Before 1.0.0's storage contract is frozen, phase 09 decides whether item 4's txid lookup needs a new index."
+Evidence:
+- **EmDash can't index inside an array.** Its storage docs give index fields as plain names, and the installed `emdash` 1.4.0 builds each index as `json_extract(data, '$.<field>')` on a validated identifier. An index would need a new top-level field holding one txid, and an invoice can have up to 32.
+- **A bounded scan is quick enough.** On the built copy (EmDash 1.4.0, Node, the dev box) with 20,165 invoices, 200 pages of 100 took 574 to 628 ms in storage's own order, and 6,909 to 7,056 ms as tips newest first (twelve readings each).
+- **Limits:** the seeded rows had no transfers; one machine; nothing past 20,000 rows.
+Proposal:
+1. Item 4's lookup by txid is a scan in storage's own order (no filter, no `orderBy`), at most 200 pages, on the private admin route.
+   - **Not public (Wyatt's question, 2026-11-15).** It's an action on `admin`, the one private route (`permission: "plugins:manage"`; EmDash refuses anonymous users, non-admins and requests without `X-EmDash-Request` before the plugin runs). No public route gains a scan: `checkout`, `status` and `bridge/sync` are unchanged, and `status` still reads one row by its unique token.
+   - **The 7 s figure isn't what's proposed.** That was the same scan ordered newest first, measured for comparison. The proposal is the unordered scan: about 0.6 s at the 20,000-row cap, and only when an admin presses the button.
+2. When the scan stops at the cap without a match, the page says it looked through 20,000 invoices and found none, never a plain "not found".
+3. 1.0.0 declares no new index and writes no new field. Phase 08 builds the lookup.
+Effect on the admin budget: none.
+Effect on the trust contract: none.
+
+## 57. Three sentences in the Security model say more than the build does  (status: accepted, 2026-11-15, Wyatt; wording only, no code)
+Found in: phase 09's security review (`docs/security-review.md`, REV-5, REV-8, REV-10) and its independent reading.
+Spec says, and what is true:
+1. **Tampered installer or downloads:** "The install command checks the bridge's signature". It checks the download against a SHA-256 written into `install.sh` for that release (decision of 2026-10-04). The Ed25519 signature is on `release.json`, which the bridge checks for updates. A first install therefore trusts the install host and its TLS.
+2. **Database leak:** "Invoice tokens (random 128-bit, short-lived)". A token works for as long as its invoice row exists; `status` has no age check.
+3. **Wallet host exposure:** "The bridge makes outbound HTTPS calls only." The site's address must be https. A node's address may be http (the shop's own node on loopback always is), and the built-in stagenet second nodes are http.
+Proposal (for the live spec; Wyatt applies):
+1. "The install command checks the download against the release's checksum, carried in the install script; the bridge checks its own updates against the release-signing key. Admins who want more can check the release's signature by hand before running anything."
+2. "Invoice tokens (random 128-bit)": drop "short-lived".
+3. "The bridge listens on no port. It calls the site over https only, and its node at the address the admin gave."
+Also accepted: the install docs gain an optional "check the signature by hand" step (phase 09, step 3).
+Effect on the admin budget: none (the by-hand check is optional).
+Effect on the trust contract: none.
+
+## 58. The install host: `get.coffer.party` on Cloudflare Pages, its layout, and the update path  (status: accepted, 2026-11-20, Wyatt: layout approved once the updater check below passed; it did)
+Found in: phase 09, before step 2. Wyatt chose the install host (2026-11-20): Cloudflare Pages, uploaded by hand from his PC, at `get.coffer.party`. The apex `coffer.party` is kept for a future landing page and is never used for releases. No deploy credentials go on the dev box.
+Spec says: "`curl -fsSL https://<release host>/install.sh | sh -s -- ...`" (Bridge service, The install command), and spec change 21's open item: the bridge binaries must be served from `RELEASE_BASE` without a redirect.
+Evidence:
+- **Sizes (real release flags, HEAD `a2fddcf`, go1.27.4, 2026-11-20):** `xmr-bridge-1.0.0-linux-amd64` 11,680,120 bytes (11.14 MiB), `-linux-arm64` 10,807,117 bytes (10.31 MiB). Pages' cap is 25 MiB a file. These were built only to measure and then deleted. The real release binaries come from CI (phase 09 step 2).
+- **The updater reads one folder:** `release.json`, `release.json.sig` and the binary, all under `releaseBase()` (`bridge/internal/selfupdate/update.go`, `get` and `PrepareBridge`). So a second fixed path is needed besides `install.sh`.
+- **What makes plain copies in a fixed folder safe (checked in code on 2026-11-20, Wyatt's condition):**
+  - (a) `release.json.sig` is checked against keys compiled into the bridge, with the prefix `xmr-bridge-release-v1\n` (`selfupdate.VerifyManifest`). The keys come from `releaseKeys()` in `cmd/xmr-bridge/release_release.go`, or in `release_dev.go` the dev key set at build time. Nothing reads a key from the host or from disk, and no bridge code parses a `.pem`. A build with no key pinned refuses every update (`ErrNoKey`). Tests: `TestVerifyManifest` (wrong key, changed byte, no prefix, no keys, bad signature), and `TestBridgeRefuses` "wrong key" and "no key pinned".
+  - (b) Only a strictly newer version is taken: `PrepareBridge` does nothing unless `Newer(man.Version, u.Current)`, and a rolled-back version stays refused. Tests: `TestNewer`, `TestBridgeNothingToDo` "same version" and "[T26] older version", `TestRefusedAfterRollback`.
+  - (c) The downloaded binary must match the signed `release.json`'s `size` and `sha256` before it's staged (`update.go`, right after `get(file.Name)`). Tests: `TestBridgeRefuses` "tampered binary" and "binary reports another version".
+  - Run on 2026-11-20: all six tests passed (`go test -count=1 -run '...' ./internal/selfupdate/`).
+  - **To know, not a blocker:** `Newer` ignores a `-suffix`, so a bridge on `1.0.0-rc1` would never update to `1.0.0`. The host therefore never publishes suffixed versions.
+- **Pages, from Cloudflare's docs (2026-11-20):**
+  - 25 MiB per file, and 20,000 files per deployment (1,000 by drag and drop).
+  - Without a top-level `404.html`, Pages treats the site as a single-page app and serves the root for any missing path.
+  - Pages redirects `.html` paths (`/x.html` to `/x`, `/x/index.html` to `/x/`). The docs don't say other files are left alone, so a probe upload checks it live.
+  - The docs don't say whether an upload replaces the whole site. This proposal assumes it does.
+- **Live, the probe upload (2026-11-20, `node scripts/check-install-host.mjs --base https://get.coffer.party`):**
+  - The first run: 31 PASS, 1 FAIL. `/404.html` answered HTTP 307 with `Location: /404`, Pages' `.html` rule, while every other file answered 200 with no redirect, the binaries included. The script now checks `404.html` only as the body of a missing file, and fails any other `.html` file in the upload folder.
+  - The second run: 32 PASS, 0 FAIL. Missing paths, at the top and inside `0.0.0/`, got a 404 with `404.html`; the root is a 404.
+  - Headers on `install.sh` and the binaries: `content-type: application/octet-stream`, `cache-control: public, max-age=0, must-revalidate`.
+  - Plain `http://get.coffer.party/install.sh` answered 200 instead of redirecting to https. No Coffer path uses http (every URL is https; curl runs with `--proto =https`).
+  - **Wyatt turned on Always Use HTTPS for `coffer.party` (2026-11-20).** The check now expects every http path to answer exactly 301 to the same https path. The third run: 47 PASS, 0 FAIL, every http path (the root, a missing file and all 13 files) answering 301 to its https twin.
+Proposal:
+1. **Layout:**
+   ```text
+   get.coffer.party/
+     404.html                 top level, so a missing file is a 404, never the single-page-app fallback
+     install.sh               fixed; the newest release's filled script (RELEASE_BASE=https://get.coffer.party/<version>, CURL_PROTO==https)
+     coffer-release.pub.pem   the release public key, fixed
+     versions.json            the versions manifest: each version's files and their SHA-256
+     latest/                  fixed; what installed bridges poll: plain copies of the newest version's files
+       release.json  release.json.sig  xmr-bridge-<version>-linux-amd64  xmr-bridge-<version>-linux-arm64
+     <version>/               for example 1.0.0/: written once, never changed or removed
+       install.sh  SHA256SUMS  release.json  release.json.sig  coffer-release.pub.pem
+       xmr-bridge-<version>-linux-amd64  xmr-bridge-<version>-linux-arm64
+   ```
+   - No `_redirects`, no `_headers` and no root `index.html`. Pages' default `Cache-Control: public, max-age=0, must-revalidate` suits the fixed paths.
+   - `latest/` holds plain copies rather than a `_redirects` rewrite, so nothing depends on how rewrites behave. It costs about 22 MB more per upload.
+   - No suffixed versions go on the host (see `Newer` above).
+2. **The bridge's update address** becomes `https://get.coffer.party/latest` (it was `https://REPLACE-RELEASE-HOST.invalid/xmr-bridge/latest`). The admin page's command fetches `https://get.coffer.party/install.sh`.
+3. **Every upload is the whole site.** Wyatt keeps one growing upload folder on his PC, uploads all of it each time, and backs it up: in this layout it is the only copy of every published version. `scripts/check-install-host.mjs` checks each upload against `versions.json` (see `docs/install-host.md`).
+4. **The key on the host adds no trust.** Whoever controls the host controls the key file and the binaries alike, so `docs/install.md` keeps telling admins to compare the key's fingerprint with the GitHub release page.
+Effect on the admin budget: none.
+Effect on the trust contract: none. `allowedHosts` is the plugin's, and neither the bridge nor the installer is in it.
+
+## 59. EmDash 1.5.0: sandboxed KV moves to `options`, the floor is 1.5.0, and Cloudflare's default call limit is 30  (status: proposed, 2026-11-20; the floor itself decided by Wyatt the same day)
+Found in: the EmDash 1.5.0 check (`docs/emdash-upgrade-checklist.md`, "EmDash 1.5.0"), read from the 1.4.0 and 1.5.0 packages and EmDash's upgrade guide (docs.emdashcms.com/plugins/upgrading-sites).
+Spec says:
+- Storage and the trust contract: Coffer's state is plugin KV and its two collections. The spec doesn't say where EmDash keeps KV.
+- Spec change 35: release 1 is Node-only because a sandboxed plugin gets 10 bridge calls per invocation on Cloudflare.
+
+Evidence:
+- **KV's location (#4277, migration 092).** `@emdash-cms/sandbox-workerd` 0.9.7 keeps every key but `settings:` ones in the `options` table as `plugin:coffer:<key>`, through the same `createKVAccess` that in-process plugins use. 0.9.6 kept them in `_plugin_storage`, collection `__kv`.
+  - Migration 092 copies the old rows, keeping their revisions, and deletes nothing. The old rows stay as stale copies that nothing reads.
+  - `options`' conditional write is one `UPDATE … WHERE revision = ?`, and every write gets a new UUID revision. So RT-07's single-winner claim (spec change 50) still holds by construction.
+  - The trust contract doesn't change. The same keys hold the same values, under the same plugin scope.
+- **Uninstall with "delete data".** 1.5.0 deletes the plugin's `_plugin_storage` rows (the stale copies too) and every `plugin:coffer:` option. 1.4.0 deleted only `_plugin_storage`. Coffer's own `deletePluginData` already removed its settings and the KV keys it knows.
+- **EmDash's upgrade steps for a site moving to 1.5.0:**
+  1. Back up the database and stop every writer.
+  2. Upgrade `emdash` and the sandbox runner together.
+  3. Build, then apply the migrations from the CLI (`emdash migrate`) before starting the site.
+  - Mixed core and runner versions aren't refused. An old runner keeps using `__kv` while the new core reads `options`.
+  - Coffer has only ever run sandboxed, so it can't have the conflicting in-process values the guide warns about.
+- **The floor.** `@emdash-cms/plugin-test` 0.2.12 pins `emdash` 1.5.0. Wyatt raised the floor to 1.5.0 (`docs/decisions.md`, 2026-11-20).
+- **Cloudflare (#4712).** `@emdash-cms/cloudflare` 1.5.0's sandbox defaults are `subrequests: 30` and `cpuMs: 50` (1.4.0: 10 and 50). Not measured: the spike site's token has expired.
+Proposal:
+1. **`docs/install.md` and the listing:** one sentence for admins coming from EmDash 1.4: upgrade EmDash and its sandbox runner together and follow EmDash's upgrade guide before Coffer runs again. **Deferred** (Wyatt, 2026-11-20: "skip the install.md sentence for now"). It touches the admin-facing text, and the listing's Security section is at its 2,000-grapheme cap. It isn't a new Coffer step: the site upgrade needs it with or without Coffer.
+2. **Spec change 35:** recorded as evidence only. A higher default limit could make option A smaller, or let release 1.x drop the Cloudflare refusal. That needs a measurement on a Cloudflare test site (pairing, checkout, a sync, the admin page). No change for release 1.
+3. The dev scripts that wrote or read `__kv` directly now use `options` (`scripts/redteam/lib.mjs`: `kvGet`, `kvSet`, `writePairingCode`, `cleanupCofferRows`; `setup-test-reset.mjs` removes Coffer's KV values from `options`). Done in this check, tests first.
+4. **The bridge's update guard and EmDash's 503 (found 2026-11-20, Wyatt's question).** While a plugin's storage indexes aren't synced, EmDash 1.5.0 answers every POST to it with HTTP 503 `STORAGE_INDEXES_NOT_READY` before the plugin runs (#4095). The bridge reads that as a site answer and counts it as `SiteRefused` (`bridgeloop.go`, the `errors.As(err, &se)` case). `selfupdate.Decide` then rolls a pending bridge update back once its 10-minute health window passes with no accepted sync and any refusal, and the rolled-back version stays refused. Checked at runtime with throwaway tests (not committed): `parse(503, …)` gives code `STORAGE_INDEXES_NOT_READY`, status 503, no hint; `Decide` says wait at 5 minutes and roll back at 10; counted as unreachable it keeps waiting.
+   - **When it bites:** only if the index sync keeps failing for the whole window during an update. Normally the sync runs on the first POST and the 503 never shows (none seen in any live run of this check). If it does happen, the site is down for Coffer anyway; the harm is a good release blamed and refused, and no hint in `xmr-bridge status`.
+   - **Proposal:** count a 5xx answer (503 `STORAGE_INDEXES_NOT_READY` at least) as `Unreachable`, not `SiteRefused`, so a site that is failing doesn't count against an update. Also add a hint for the code ("the site's EmDash is still preparing Coffer's storage; if this stays, check the site's logs"). A bridge change, tests first; **Wyatt to decide**.
+   - **Approved for release 1, narrowed (Wyatt, 2026-11-20):** 502, 503 and 504 count as unreachable, and unreachable time pauses the update guard's clock instead of counting toward the 10 minutes. 500 and every 4xx still count as the site refusing, so a broken update that crashes the plugin's handler still rolls back. The `xmr-bridge status` hint for `STORAGE_INDEXES_NOT_READY` is added. **Built the same day, tests first** (matrix R14). One addition, mine: the wallet rule keeps the real clock, so a bridge whose wallet never opens still rolls back at 10 minutes even while the site is down.
+Effect on the admin budget: none for a new install. An existing site on 1.4.0 follows EmDash's own upgrade steps.
+Effect on the trust contract: none.

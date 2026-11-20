@@ -1777,9 +1777,9 @@ Section B of the organizer sheet, done:
   - Run once and checked with `stat` and a pattern count, never displayed. It works once and expires in 7 days.
   - The `CLAUDE.md` command row is added.
   - **Note:** EmDash's dev console email provider writes the first 200 characters of each email to astro's dev log, which likely includes the token. Don't read that log until the invite is used.
-- **Release:** `0.0.202610140046-dev.55207d3` for amd64 and arm64, base `http://192.168.8.249:8099`. Wyatt signed it, and `check-dev-signature.sh` verifies it.
+- **Release:** `0.0.202610140046-dev.55207d3` for amd64 and arm64, base `http://<dev box LAN address>:8099`. Wyatt signed it, and `check-dev-signature.sh` verifies it.
 - **Release server:** tmux `release`, bound to the LAN address on 8099. The served `install.sh` matches the built file.
-- **Plugin:** `setup-test-plugin.sh --base http://192.168.8.249:8099`, with the bundle check inside it. The built site's server bundle carries the LAN URL.
+- **Plugin:** `setup-test-plugin.sh --base http://<dev box LAN address>:8099`, with the bundle check inside it. The built site's server bundle carries the LAN URL.
 - **Built copy:** tmux `built` on 4322 with `EMDASH_SITE_URL=https://dev.wyattdilley.com`. Its status route answers 200.
 
 Tests:
@@ -1908,7 +1908,7 @@ Next steps:
 1. **Push** these commits and wait for CI (Wyatt's rule: CI passes before the release rebuild).
 2. **Rebuild:**
    - stop `built`
-   - `build-dev-release.sh --base http://192.168.8.249:8099`; Wyatt signs it
+   - `build-dev-release.sh --base http://<dev box LAN address>:8099`; Wyatt signs it
    - `setup-test-plugin.sh`, then the site build
    - reset (it clears the stale code; the tester account stays)
    - start `built`
@@ -5668,3 +5668,478 @@ No code this entry. It records Wyatt's answers and the state for the next sessio
 **Left before phase 09:** nothing from the 07b fix list. EmDash 1.5.0's check comes after 2026-11-18, about 18:20 UTC.
 
 **Next step:** phase 09, plan first, when Wyatt names it; or the EmDash 1.5.0 check once it's of age.
+
+## 2026-11-15 · Phase 09, step 1 · The security review gate: written, not passed yet (six findings to rule on)
+
+**The bundle from the entry above:** `coffer-redteam-1-20261114-f2ab8ef.bundle`, SHA-256 `f0d06f38f5d49414c9c3e9ff9a5d6dbd846e7a57cdda0a36a43547c367999dbd`.
+
+**Branches (Wyatt, 2026-11-14):** `f2ab8ef` pushed to `origin/redteam-1`; CI run 43643905081 passed (plugin, theme, bridge). `redteam-1` merged into `main` locally as `0e7dab2` (the merged tree is `f2ab8ef`'s), and `release-1` starts there. **`main` and `release-1` are not pushed.**
+
+**Done:** `docs/security-review.md`, covering commit `d83b273d43f66c4a44eb64a3f737d47fb8a515ab`. It walks the spec's 16 threat rows, the privacy list, every pass-1 matrix row not marked Covered, and the areas the phase file lists.
+- **No threat row is uncovered; nothing Critical or High.**
+- **Six findings for Wyatt's ruling** (`docs/redteam-findings.md`): RT-36 (the admin page fails on a time lock too large to be a date; reproduced, `it.fails`), RT-37 (`isPaid` accepts any settled invoice; spec change 55), RT-38 (a DNS answer can switch the cross-check off), all proposed Medium; RT-39 (go1.27.3 and GO-2026-6859; go1.27.4 fixes it), RT-40 (the speed setting read with `in`), RT-41 (notes on invoices that never become final), proposed Low.
+- **Nine observations and wording items** (REV-2 to REV-10), among them: T28's CI steps, decided on 2026-10-31, were never built; the spec says the install command checks a signature and it checks a hash.
+- **The txid lookup (spec change 49 item 4):** EmDash can't index inside an array. A bounded scan of 20,000 rows took 574 to 628 ms in storage order and 6,909 to 7,056 ms as tips newest first, on the built copy. Proposed as spec change 56: a scan, no new index in 1.0.0.
+- **The independent reading** (a fresh subagent: spec, code and the draft only): agreed on 11 of 16 rows, disagreed on rows 2, 10, 14, 16 and P03, all taken into the review; it found RT-36 on its own, and RT-38 and RT-40 are its.
+- **Matrix:** T21, T30, T31, F03, F08 and R11 are Covered (stale rows; their tests existed). Threat rows: 25 Covered, 5 Partial, 1 Planned (T28).
+- **Secrets sweep** of the tree and all 421 commits: nothing to rotate. The dev box's LAN address is in this file (three lines, 2026-10-14) and three commits; the first commit carries Wyatt's personal email as author; the public test hostname appears throughout.
+
+**Test results:**
+- Plugin, `pnpm test`: 532 passed, 7 expected fail, 1 skipped (default); 102 passed, 1 skipped (switch on). Run before the two test edits; after them only the two files touched were run: 22 passed, 1 expected fail. Typecheck, validate, bundle check (74.7 KB).
+- Theme: 80 passed, 1 skipped, zbar required; typecheck.
+- Bridge (go1.27.3): gofmt, vet, 21 packages ok.
+- `pnpm audit`: production 0 in both packages; with dev dependencies, plugin 69 (0 critical, 21 high) and theme 31 (0 critical, 6 high), all dev tooling and EmDash's tree.
+- govulncheck v1.9.0: exit 3 on `bridge/` and on both fresh binaries (GO-2026-6859 only), exit 0 on `bridge/oracle/`.
+- **Not covered:** the full plugin suite with RT-36's test in it; nothing live on stagenet; RT-37, RT-38, RT-40 and RT-41 are read from the code, not run; the timing run's rows had no transfers.
+
+**New on the box:** `~/work/govulncheck/bin/govulncheck` (v1.9.0, Wyatt approved 2026-11-14). Evidence in `~/xmr-pay-dev-data/`: `09-review-*`, `09-review-govulncheck/`, `redteam/h1-2026-11-15T0231…`, `…0232…`, `…0233…`.
+
+**State of the box:** dev site, built copy and watcher stopped. `data.db` restored from this session's backup `redteam/09-txid-before.db` and checked: 64 invoices, 366 pool rows, bridge key present. The throwaway branch is deleted; `plugin/dist/` and the dev site's `dist/` are rebuilt from `release-1`. Commits are local. A session-end bundle follows.
+
+**For Wyatt:** rule on RT-36 to RT-41, spec changes 55 and 56, and REV-5, REV-8 and REV-10's wording; approve go1.27.4 (a sudo step on the dev box); say whether to push `main` and `release-1`; say whether to replace the LAN address in this file.
+
+**Left before publishing:** `docs/security-review.md`, section 8. EmDash 1.5.0's check comes after 2026-11-18, about 18:20 UTC.
+
+**Next step:** Wyatt's rulings; then a fix session for what he accepts (tests first, each fix with a delta review in `docs/security-review.md`), then step 3's admin-page work.
+
+## 2026-11-15 · Phase 09, step 1 · The review's six findings ruled on and fixed; delta reviews written
+
+**The bundle from the entry above:** `coffer-release-1-20261115-7ce1127.bundle`, SHA-256 `d569a452273ded802544fed0a75c5d8eb8f9cf554c2f56ac78c6fb18c4bcd47e`.
+
+**Pushed (Wyatt, 2026-11-15):** `main` at `0e7dab2` and `release-1` at `7ce1127`. This entry's commits are local.
+
+**Wyatt's rulings** (`docs/decisions.md`): RT-36, RT-37 and RT-38 Medium, RT-39, RT-40 and RT-41 Low, all to fix; spec changes 55 and 57 accepted; the LAN address replaced going forward, no history rewrite. Spec change 56 waits on his ruling: it now says the lookup is on the private admin route and uses the 0.6 s unordered scan, not the 7 s ordered one.
+
+**Fixed, tests first, each with a delta review in `docs/security-review.md`:**
+- `a310d2c` RT-39: go1.27.4 in both `go.mod` files and the floor test.
+- `66805cd` RT-38: a node given by name is always cross-checked; no DNS lookup decides it.
+- `554ab0c` RT-37: `isPaid` and the README's gating section are out of the theme package.
+- `9a6af0e` RT-41: the purge also clears a never-final invoice 30 days past its window.
+- `7aff94e` RT-36 and RT-40: an over-range unlock time reads "time-locked"; checkout checks the speed by its own name.
+
+**Test results (all after the last fix):**
+- Plugin, full `pnpm test`: 536 passed, 7 expected fail, 1 skipped (default); 102 passed, 1 skipped (switch on). Typecheck, validate, bundle check (74.8 KB).
+- Theme: 79 passed, 1 skipped, zbar required; typecheck.
+- Bridge on go1.27.4 (a private copy in `~/work/go1.27.4/`): gofmt, vet, 21 packages ok; `bridge/oracle` ok.
+- govulncheck v1.9.0 on go1.27.4: exit 0 in source mode and on fresh amd64 and arm64 builds.
+- **Not covered:** CI on these commits (not pushed); nothing live; RT-38's fix on a real wallet host with a named node.
+
+**Waiting on Wyatt:**
+- **go1.27.4 on the dev box:** `sudo sh /home/dev/xmr-pay-dev-data/go1274-install.sh 2>&1 | tee /home/dev/xmr-pay-dev-data/go1274-install-output.txt` (the tarball's SHA-256 matches go.dev's list and dl.google.com's `.sha256`; the old Go is kept at `/usr/local/go1.27.3-old`). **Until then the system Go refuses to build the bridge** (`go.mod` asks for 1.27.4 and `GOTOOLCHAIN=local`).
+- Spec change 56's ruling.
+- Whether to push these commits.
+
+**For admins, from RT-38:** a node on the shop's own network given by name is now cross-checked with the built-in second nodes; giving its address keeps the check off. The install docs (step 3) should say so.
+
+**Also changed:** the dev box's LAN address is gone from this file and from `plugin/tests/routes/admin-site.test.ts` (history keeps it). The matrix's T07, T14, T21, T28, P04 and F04 rows carry the fixes.
+
+**State of the box:** dev site and built copy stopped; `data.db` as restored in the entry above; `plugin/dist/` built from `7aff94e` (the dev site's `dist/` still holds the build from before these fixes). A session-end bundle follows.
+
+**Next step:** step 3, plan first: `tips_page`, spec change 49 items 1 to 3, spec change 42's banner text, the install docs. The install host and the real install URL are still Wyatt's to provide.
+
+## 2026-11-15 · Phase 09, step 3 · Handoff after items 1 and 2: tip rows and "Show older tips"
+
+**CI:** see the next entry.
+**Wyatt (2026-11-15):** spec change 56 accepted; the fix commits pushed (`release-1` at `271447f`); go1.27.4 installed on the dev box (`go1274-install-output.txt`: PASS; the bridge tests pass on the system Go). RT-38 confirmed: a remote node given by a public IP is still cross-checked (`TestIsOwnNode`: 8.8.8.8, 203.0.113.7 and 2001:db8::1 are remote); only `localhost` and loopback, private or link-local addresses keep the check off.
+
+**Done (items 1 and 2), tests first:**
+- **Tip rows (spec change 49, items 1 to 3):** each listed tip has its invoice ID alone in a code box, "Address" in short form (first and last six characters), and a box of its payments: amount, block or "not in a block yet", confirmations, counted or why not, and the Transaction ID.
+- **`tips_page`:** the list is now its own query, 10 rows a page on a storage cursor, with "Show older tips" and "Newest tips". Test tips are filtered after the query, so any page, the first included, can hold fewer than 10. The totals still come from the newest 1,000.
+- **A refused cursor** (wrong type, empty, oversized, not base64, cut short, or one EmDash can't decode, hand-built ones included) shows the newest page with "That page of tips isn't available. Showing the newest." Nothing is written.
+- **Tests:** `plugin/tests/routes/admin-tips-page.test.ts`, six tests tagged T09, F04, T30 and P04, red first. All route tests and the red-team admin tests: 207 passed, 1 skipped. Typecheck; bundle check 76.4 KB.
+- **Not covered:** the anonymous, non-admin and no-header refusals are EmDash's, before the plugin runs, so the test host can't make them; `scripts/dev-e2e.mjs` checks them for the `admin` route on a dev site and wasn't run this session. The page hasn't been looked at in a browser (Wyatt, with `inv_f7ea94de1471f114`).
+- **Differs from the phase file's wording:** it says a cursor from another list is refused. A well-formed cursor is a position to EmDash, so one that decodes shows a page of visitor tips; it can't show another kind or change anything. The test records that.
+
+**Next step:** item 3 (spec change 42's banner and toast text), then `docs/install.md`, then the delta review for step 3.
+
+## 2026-11-15 · Phase 09, step 3 · Handoff after item 3: spec change 42's banner and toast text
+
+**CI on the six fixes: not run.** `ci.yml` runs on pushes to `main` and on pull requests; `release-1` has neither, so the push of `271447f` started nothing (the watcher found no runs). `redteam-1`'s runs came from its pull request. The merge on `main` (`0e7dab2`) did run: 43671545805 passed. **For Wyatt:** open a pull request from `release-1` to `main`, or say to merge `release-1` into `main` and push.
+
+**Done (item 3), tests first:** the two red address banners and the toast carry Wyatt's exact text of 2026-11-06 (`PROXY_AND_SIGN_IN` in `plugin/src/admin.ts`); the titles are unchanged. The toast is "This site has no public https address".
+- **Also changed, for Wyatt to confirm:** the three other lines that said "EmDash's saved address" now say "EmDash's address for this site" (the grey line under the command, in both forms, and the "Two addresses for this site" warning). That was item 3's original wording change; the 2026-11-06 text didn't cover those lines.
+- **Tests:** `admin-site.test.ts` and `admin-route.test.ts` changed first (five red), then green. Route and red-team admin tests: 207 passed, 1 skipped. Typecheck; bundle check 76.7 KB.
+
+**Next step:** `docs/install.md`, then step 3's delta review, the full suites and a push if Wyatt says so.
+
+## 2026-11-15 · Phase 09, step 3 · Handoff: items 1 to 5 written; the session stopped at the usage limit
+
+**Done and committed (local, not pushed):** `62855dd` tip rows and `tips_page`; `7c4e2d4` spec change 42's text; `af306e2` `docs/install.md` and the listing's link at the `coffer@1.0.0` tag (the listing's installation text is 1,985 of 2,000 characters); this commit: step 3's delta review in `docs/security-review.md` and the matrix's F04, T09 and T30 rows.
+
+**Test results:** plugin route and red-team admin tests 207 passed, 1 skipped; typecheck; bundle check 76.7 KB. Theme 79 passed, 1 skipped; typecheck. Bridge on the system go1.27.4: gofmt, vet, 21 packages ok.
+**Not finished:** the full plugin suite after step 3 was still running when the session stopped. Its output is `~/xmr-pay-dev-data/09-step3-plugin-tests.txt`; read its totals first next session (expected: 542 passed, 7 expected fail, 1 skipped; 102 passed, 1 skipped) and correct the delta review's "Run after step 3" line.
+**Not covered:** CI on `release-1` (it runs on `main` and pull requests only); `scripts/dev-e2e.mjs` for the non-admin refusals; the admin page by eye (Wyatt, with `inv_f7ea94de1471f114`); `docs/install.md` against a real release; no session-end bundle was made for these commits.
+
+**For Wyatt:** a pull request from `release-1` to `main` (or a merge) so CI runs; confirm "EmDash's address for this site" on the three lines the 2026-11-06 text didn't cover; the by-hand signature check needs `coffer-release.pub.pem` on the release page (step 2); the first tips page can now hold fewer than 10 when test tips are among the newest.
+
+**Next step:** read the full suite's result, make the bundle, then step 2 (build and sign) when the install host and the release key exist; T28's CI steps (REV-4) are still to build.
+
+## 2026-11-15 · Phase 09, step 3 · The full plugin suite after step 3 passed
+
+**The suite the entry above left running:** 47 files, 542 passed, 7 expected fail, 1 skipped (default); 6 files, 102 passed, 1 skipped (switch on); exit 0. The delta review's "Run after step 3" line in `docs/security-review.md` now says so. Everything else in the entry above stands, including what isn't covered and what waits on Wyatt.
+
+**State of the box:** dev site and built copy stopped; `data.db` as restored on 2026-11-15; working tree clean after this commit; `release-1` is ahead of `origin/release-1` (at `271447f`) by step 3's commits. A session-end bundle follows.
+
+**Next step:** Wyatt's answers (a pull request or merge so CI runs; the three "EmDash's address for this site" lines); then T28's CI steps (REV-4), and step 2 when the install host and the release key exist.
+
+## 2026-11-15 · Phase 09, step 3 · Wyatt's answers: RT-42, the phase file's wording, the listing trimmed
+
+**Wyatt's rulings (2026-11-15), recorded in `docs/decisions.md`:**
+- Step 3's commits pushed: `origin/release-1` was at `b87db3d` before this commit (the first try failed on a DNS lookup for github.com; the retry went through).
+- **CI:** Wyatt opened a pull request from `release-1` to `main` and leaves it open until 1.0.0, so every push runs CI. **Claude never merges to `main`.**
+- "EmDash's address for this site" stays on the three lines.
+- The first tips page holding fewer than 10: accepted for 1.0.0; on the new "After release 1 (backlog, not planned)" list in `docs/decisions.md`. There was no single list before, so that section also points at the items already left for after release 1 (spec change 51's three, RT-23's admin field, REV-9 as a recommendation not yet ruled on, C07).
+- **RT-42, Low, accepted, no code change:** a well-formed cursor from another list isn't always refused by `tips_page` (admin-only, read-only, data the admin can already see). Filed in `docs/redteam-findings.md`; the phase file's F04 test line and "fewer than 10" line now match; matrix row F04 and the step 3 delta review name it.
+
+**Done, test first:** the listing's installation text (`plugin/docs/installation.md`) is 1,841 graphemes, down from 1,985, so the real install address fits later. A new test in `plugin/tests/manifest.test.ts` caps it at 1,850 and checks that "never the spend key", the `/_emdash/api/plugins/coffer/*` line and the install guide's link are still there (red at 1,985 first). What was shortened is listed in the delta review.
+
+**Test results** (`~/xmr-pay-dev-data/09-step3b-plugin-tests.txt`, exit 0): typecheck; validate; bundle check 76.7 KB; the full plugin suite, 47 files, 543 passed, 7 expected fail, 1 skipped (default); 6 files, 102 passed, 1 skipped (switch on). Theme and bridge untouched, not re-run.
+
+**The bundle for `b87db3d`** (made before this entry): `~/xmr-pay-dev-data/bundles/coffer-release-1-20261115-b87db3d.bundle`, SHA-256 `ff560d283987157a0fb079c1d3102aeda0e40d606cd87afffcb529127c975e47`.
+
+**Not covered:** `scripts/dev-e2e.mjs` (non-admin refusals); the admin page by eye (Wyatt, with `inv_f7ea94de1471f114`); `docs/install.md` against a real release; the listing's trimmed text hasn't been seen rendered on a registry page.
+
+**Next step (Wyatt, 2026-11-15):** run `scripts/dev-e2e.mjs` for the non-admin refusals (back up `data.db` first, fresh plugin build, dev site running), then T28's CI steps: `govulncheck` on `bridge/` and `pnpm audit --prod` (REV-4; a new GitHub Action or tool in CI is a dependency, so show Wyatt the exact pin first). Step 2 waits on the install host and the release key.
+
+## 2026-11-15 · Phase 09, step 3 · `scripts/dev-e2e.mjs` run for the non-admin refusals
+
+**Run** on the dev site in `astro dev`, with a fresh plugin build of `42a5369` (output: `~/xmr-pay-dev-data/09-e2e-output.txt`): `--cleanup-only` first (it removed the dev data: 430 pool and invoice rows, 9 KV rows, the bridge key), then the full run. **32 checks, all PASS, exit 0.**
+- **`admin` with an invalid Bearer token:** 401 `INVALID_TOKEN`.
+- **`admin` with no session** (anonymous, and no `X-EmDash-Request` header in the same request): 401 `UNAUTHORIZED`.
+- The rest passed too: the cross-origin 403s, the 256 KiB limit, pairing, the signature and timestamp refusals, a tip from checkout to settled, product checkout refused.
+
+**Not covered by this run:**
+- Both admin requests send `page_load`, not `tips_page`. The refusal is EmDash's, before the plugin sees the action, so it is the same for every action; `tips_page` itself wasn't sent.
+- A signed-in session without `X-EmDash-Request`, and a signed-in non-admin: the script has no session. The Subscriber case is Wyatt's manual check of 2026-10-29.
+
+**Database:** backed up first with `VACUUM INTO` (`~/xmr-pay-dev-data/redteam/09-e2e-before.db`), restored after with the site stopped, and verified: 64 invoices, 366 pool rows, the bridge key present with the same fingerprint as before. Dev site stopped; port 4321 free.
+
+**Next step:** T28's CI steps (`govulncheck` on `bridge/`, `pnpm audit --prod`), pins shown to Wyatt first.
+
+**CI on `42a5369`** (Wyatt's pull request from `release-1` to `main`): run 43726973474, success; plugin, bridge (race-detector tests included) and theme all passed. That is the first CI run covering the six fixes and step 3.
+
+## 2026-11-15 · Phase 09 · T28's CI steps built (REV-4); not yet run in CI
+
+**Pushed first** (Wyatt): `fc9607f` and `e9c4286`; `origin/release-1` at `e9c4286`.
+
+**Built in `.github/workflows/ci.yml`,** as decided on 2026-10-31:
+- **Plugin and theme jobs:** `pnpm audit --prod --audit-level high` after the frozen install.
+- **Bridge job:** govulncheck v1.9.0 installed with `go install` into the runner's temp folder, its module hash checked against the one in the workflow, then `govulncheck ./...` in `bridge/` (source mode).
+- **One thing stricter than the decision, for Wyatt to confirm:** the decision said "failing on exit 3". The step also fails on any other non-zero exit ("could not finish"), so a scan that didn't run can't pass. An outage at vuln.go.dev would then fail CI until a re-run.
+
+**Run on the dev box** (system go1.27.4): `govulncheck ./...` in `bridge/`, "No vulnerabilities found", exit 0; `pnpm audit --prod --audit-level high` in `plugin/` and `theme/`, "No known vulnerabilities found", exit 0 each; the CI install rehearsed with CI's settings into the scratchpad, hash matched.
+**Not covered:** the steps haven't run on a GitHub runner; the workflow file wasn't parsed locally (no YAML parser on the box); exit 3 wasn't reproduced through the new step (it was seen on go1.27.3, RT-39). Matrix T28 stays Planned until a CI run passes.
+
+**Next step:** with Wyatt's go-ahead, push this commit and read the pull request's CI run; if it passes, mark T28 Covered and close REV-4 and section 8's item 3. Then step 2 when the install host and the release key exist.
+
+## 2026-11-15 · Phase 09 · T28's CI steps passed in CI; T28 Covered, REV-4 closed
+
+**Pushed** (Wyatt): `6a723c6`. **CI run 43729208960 on `6a723c6`: success.** Read from the run's step list: "Audit runtime dependencies" succeeded in the plugin and theme jobs; "Install govulncheck v1.9.0" (with the module-hash check) and "govulncheck on the bridge" succeeded in the bridge job.
+**Wyatt's ruling:** keep the stricter exit rule (any govulncheck failure fails the job). Recorded in `docs/decisions.md`.
+**Docs:** matrix T28 is Covered; REV-4 and section 8's item 3 in `docs/security-review.md` are closed. Threat rows now: 26 Covered, 5 Partial (T01, T02, T08, T15, T23), none Planned.
+**Not covered:** a failing scan has not been seen in CI (exit 3 was seen on the dev box on go1.27.3, RT-39).
+
+**Still open before publishing** (`docs/security-review.md`, section 8): the release key and install address (step 2: needs the install host and the offline key); EmDash 1.5.0's check after 2026-11-18, about 18:20 UTC; the public report and `docs/security.md`; binary-mode govulncheck and `pnpm audit` on the release artifacts; the admin page by eye (Wyatt, `inv_f7ea94de1471f114`); `docs/install.md` against a real release.
+
+**Next step:** step 2 (build and sign) when Wyatt has the install host and the release key's public half.
+
+## 2026-11-15 · Phase 09 · Stopped here: the CI check confirmed, two security drafts waiting on Wyatt
+
+**Pushed** (Wyatt): `ee4d760`; `origin/release-1` was at `ee4d760` when this entry was written. This entry's commit is local.
+
+**The workflow check Wyatt asked for:** a `govulncheck` or `pnpm audit` finding fails the job. `ci.yml` has no `continue-on-error`, `|| true`, `set +e` or `if:`; the audit and scan steps have no pipe; the install step's one pipe ends in the `grep` that must match. Run on the dev box with the steps' own commands:
+- the scan step on a copy of `bridge/` under go1.27.3: "found a vulnerability that the bridge calls", exit 1;
+- the scan step when the scan can't run (go1.27.3 against `go.mod`'s 1.27.4): "could not finish (exit 1)", exit 1;
+- as committed on go1.27.4: exit 0;
+- the audit command on a scratch project with `lodash@4.17.15` as a runtime dependency: 3 high, exit 1; as a dev dependency: exit 0.
+A failing result hasn't been seen on a GitHub runner. No throwaway pull request was needed.
+
+**Two drafts, written and NOT committed** (Wyatt: show both before committing). They are untracked files in the working tree, with copies in `~/xmr-pay-dev-data/09-drafts/`:
+- `plugin/docs/security.md`: the listing's Security section, 1,994 of 2,000 graphemes.
+- `docs/security-report.md`: the public report, hand-written from `docs/security-review.md` and the matrix. RT-08 in Wyatt's final wording of 2026-11-08; RT-12; every Partial row (T01, T02, T08, T15, T23, P05, R05, F01, F04) with what was and wasn't tested; the eleven open Lows by number.
+
+**Waiting on Wyatt:**
+1. Approve both drafts, or say what to change.
+2. The listing says "No finding rated Critical or High is open", which counts RT-08 as accepted, not open. Keep it or name the accepted High.
+
+**To know about the drafts:**
+- "Later updates are signature-checked" and "checked against Coffer's release key" are true only once step 2 pins the release key. Both links point at the `coffer@1.0.0` tag, which doesn't exist yet.
+- The matrix says the report is generated from tagged CI output by a script; that script doesn't exist. The commit, CI run, totals and per-ID appendix are marked "[at the tag]".
+- T15's limit (RT-21) is in the report only, not the listing.
+- Not wired in: the manifest has no `sections.security` entry and there's no length test for it. Both come after approval, test first. There is no `SECURITY.md` yet either (the matrix's report rules name one).
+
+**State of the box:** dev site and built copy stopped; `data.db` as restored on 2026-11-15 (64 invoices, 366 pool rows, bridge key present); nothing running.
+
+**Still open before publishing** (`docs/security-review.md`, section 8): step 2 (the release key and install address; needs the install host and the offline key's public half); EmDash 1.5.0's check after 2026-11-18, about 18:20 UTC; the report and listing section (drafted, above); binary-mode govulncheck and `pnpm audit` on the release artifacts; the admin page by eye (Wyatt, `inv_f7ea94de1471f114`); `docs/install.md` against a real release.
+
+**Next step:** Wyatt's answers on the two drafts. Then, test first: a length test and `sections.security` in the manifest, commit both files, a delta-review line, and a push with Wyatt's go-ahead.
+
+## 2026-11-20 · Phase 09 · The install host: get.coffer.party (spec change 58); the probe upload waits on Wyatt
+
+**Wyatt (2026-11-20):** the install host is Cloudflare Pages at `get.coffer.party`, uploaded by hand from his PC. The apex `coffer.party` is kept for a landing page, and no deploy credentials go on the dev box. He approved the layout, `/latest/` as plain copies and the `releaseBase()` change, on condition that the updater check below passed. The listing keeps the URL line, with its cap raised to 1,950. The README's signature sentence is fixed.
+
+**Updater check (Wyatt's condition), from the code:** all three hold, so there's no blocking finding.
+- (a) `release.json.sig` is verified only against keys compiled in (`releaseKeys()`). No bridge code reads a key from the host or from disk.
+- (b) Only a strictly newer version is taken (`Newer`), and a rolled-back one stays refused.
+- (c) The binary's size and SHA-256 must match the signed `release.json` before it's staged.
+- Tests: `TestVerifyManifest`, `TestBridgeRefuses`, `TestNewer`, `TestBridgeNothingToDo`, `TestBridgeUpdate` and `TestRefusedAfterRollback` all passed.
+- Not a blocker: `Newer` ignores a `-suffix`, so the host never publishes suffixed versions. The check script refuses one.
+
+**Sizes, real release flags, HEAD `a2fddcf`, go1.27.4:** amd64 11,680,120 B (11.14 MiB), arm64 10,807,117 B (10.31 MiB), against Pages' 25 MiB cap. Built only to measure, then deleted. **The real release binaries come from CI** (step 2).
+
+**Commits (local, not pushed):**
+- `b0c8baf`: spec change 58 (the layout and the evidence), the decision row, and the phase file's host line.
+- `eb95587`: `scripts/check-install-host.mjs`, its 12 tests (red first, then green) and `docs/install-host.md` (the layout, `versions.json`, the upload routine, **back up the upload folder**).
+- `8f206dd`: the install URL changed everywhere it appears:
+  - code: `INSTALL_URL`, `releaseBase()`, `install.sh`'s header and `setup-test-plugin.sh`;
+  - docs: `docs/install.md`, the listing and the README.
+  - The new exact-URL tests were red first.
+
+**The check script:**
+- **Folder:** reads `versions.json` in the upload folder (each version and its files' SHA-256) and re-hashes every listed version, locally and on the host. It checks that `latest/`, `install.sh` and the key are the newest version's files, and that each `install.sh` points at its own folder. It fails on rule files, a missing `404.html` or a suffixed version.
+- **Host:** every file must answer HTTP 200 with no Location, and a missing file must be a real 404. It also downloads with `wget --max-redirect=0` and `curl --max-redirs 0`.
+- **Repo:** it warns for any tracked file that mentions `*.pages.dev`. None does today.
+- No new dependency.
+- I judged it a release-process tool, not a test of Coffer's own security behavior, so it carries no matrix tag and adds no row. T16's checks are the bridge's and the installer's. Wyatt to say if he wants a row.
+
+**Test results:**
+- Script tests: 61 passed (49 before, plus 12 new).
+- Plugin: typecheck; validate; bundle 76.7 KB; full suite 47 files, 544 passed, 7 expected fail, 1 skipped; switch on 6 files, 102 passed, 1 skipped (`~/xmr-pay-dev-data/58-plugin-tests.txt`).
+- Bridge on go1.27.4: gofmt, vet, 21 packages ok (`58-bridge-tests.txt`).
+- Listing: 1,894 graphemes.
+- Theme: untouched, not run.
+
+**The probe (step D, waiting on Wyatt):** `~/xmr-pay-dev-data/install-host-probe/`, 13 files, 43 MB.
+- Version `0.0.0`. The "binaries" are random bytes at the real sizes, and the release files are marked "not a release". There is no key.
+- Its `install.sh` prints "Coffer is not released yet" and exits 1.
+- Run on loopback against `python3 -m http.server`: 28 PASS, with the three expected loopback FAILs (`RELEASE_BASE` names the real host, and python's own 404 page) and one WARN (python lists the root).
+- The 1.0.0 upload will replace `0.0.0/`, which was never a release.
+
+**Not covered:**
+- Whether Pages adds redirects for files without an `.html` ending. Cloudflare's docs don't say, so this waits on the live probe.
+- Whether an upload replaces the whole site. Assumed; the script catches it from the second real upload on.
+- A real signed release on the host, and the published command on a machine with wget and no curl.
+- `docs/install.md` doesn't yet say how to compute the key's fingerprint. That's step 2, with the key.
+
+**For admins and dev sites:** a dev site's admin page now shows the real `https://get.coffer.party/install.sh`. Until 1.0.0 is uploaded, that URL serves nothing, or the probe's harmless script. `setup-test-plugin.sh` still swaps in the dev release address for setup tests.
+
+**Next step:**
+1. Wyatt uploads the probe folder.
+2. With his go-ahead, run from the dev box: `node scripts/check-install-host.mjs --base https://get.coffer.party --folder ~/xmr-pay-dev-data/install-host-probe`. Record the result under spec change 21's open item.
+3. Then step 2 (build and sign), once the release key's public half exists.
+4. Still open: the two security drafts; the EmDash 1.5.0 check (due since 2026-11-18).
+
+## 2026-11-20 · Phase 09 · The probe passed on get.coffer.party; matrix T32 added
+
+**Wyatt:** the probe was uploaded, with the custom domain active and its certificate issued. He gave the go-ahead for the check and asked for a matrix row for a compromised install host.
+
+**Live check** (`node scripts/check-install-host.mjs --base https://get.coffer.party --folder ~/xmr-pay-dev-data/install-host-probe`):
+- **First run:** 31 PASS, 1 FAIL. `/404.html` answered 307 with `Location: /404`, which is Pages' `.html` rule. Every other file, the 11 MB binaries included, answered 200 with no redirect, through fetch, `wget --max-redirect=0` and `curl --max-redirs 0`.
+- **Script fixed, tests first** (two new tests, red then green): `404.html` is checked only as a missing file's body, and any other `.html` file in the upload folder fails.
+- **Second run:** 32 PASS, 0 FAIL (`~/xmr-pay-dev-data/install-host-check-output.txt`). Spec change 21's open item is closed, and the phase file's checkbox is ticked.
+- **Also seen:** plain `http://get.coffer.party` answers 200 rather than redirecting to https. No Coffer path uses http, so it's recommended to Wyatt only: turn on Always Use HTTPS. Recorded under spec change 58.
+
+**Matrix T32** (a compromised or misconfigured install host), **Partial**:
+- The bridge's refusals are Covered by T16 and T26's tests, now also tagged `[T32]`.
+- Detection is the check script after every upload. Nine of its tests carry `[T32]`.
+- Not covered: the check finds a change only when someone runs it; a first install trusts the host (design limit, spec change 57); the fingerprint step waits on step 2.
+- Threat rows: 26 Covered, 6 Partial, across 32 rows.
+- The untracked report draft (`docs/security-report.md`) lists the Partial rows without T32 yet. It gets added when Wyatt rules on the drafts.
+
+**Wyatt's other two questions (answered in chat; sources):**
+- **Bundle growth:** most of it is spec change 46's re-pairing and pool checks, 59.5 to 70.3 KB (progress, 2026-11-01). The rest is 07b's later fixes (to 74.8 KB) and step 3's tip rows and `tips_page` (to 76.7 KB).
+- **The 7 expected fails:** they are the open Lows RT-01, RT-04, RT-06 (three tests), RT-09 and RT-25 (`docs/redteam-findings.md`).
+
+**Tests:** script tests 63 passed; `selfupdate` ok after the tag renames; gofmt clean. The plugin and theme are untouched since `8f206dd`.
+
+**Commits (local, not pushed):** `3eae16e` and `5cb0196`, plus this entry. Before them, `b0c8baf`, `eb95587`, `8f206dd` and `7df678a` are also unpushed.
+
+**Next step:** step 2 (build and sign), once Wyatt has the release key's public half. Still open: the two security drafts (with T32 to add), the EmDash 1.5.0 check, and Always Use HTTPS (Wyatt's call).
+
+## 2026-11-20 · Phase 09 · http now 301s to https; the report draft lists the five pinned Lows; pushed
+
+**Wyatt:** he turned on Always Use HTTPS for `coffer.party`, asked for the check to expect it, and approved pushing every commit.
+
+**The check, tests first** (`4900bde`):
+- Every path is now also requested over plain http: the root, a missing file and every file. It passes only on an exact 301 to the same path at the https base. A served file, another status or another target fails.
+- Three new tests, red then green. Script tests: 66 passed.
+- **Live:** 47 PASS, 0 FAIL. Every http path answered 301 to its https twin.
+
+**Report draft** (`docs/security-report.md`, untracked, not committed until Wyatt approves; copy in `~/xmr-pay-dev-data/09-drafts/security-report-20261120.md`):
+- A new subsection, "Known limits for release 1, each pinned by a test". It covers RT-01, RT-04, RT-06 (three tests), RT-09 and RT-25: what each one means for an admin, and that its expected-fail test starts to pass once the finding is fixed.
+- The "Eleven low-rated findings" line now points at that subsection rather than listing the five again.
+- T32 is still to be added to the draft's "Partly tested" table.
+
+**Pushed:** the commits from `b0c8baf` up to this entry's commit. CI result: in the next entry.
+
+**CI on `4315341`** (Wyatt's pull request from `release-1` to `main`): run 44785891680 passed. All three jobs succeeded: plugin, bridge (the race-detector tests included) and theme. That run includes the dependency scans. This note is a local commit, not pushed.
+
+**Next step:** step 2 (build and sign), once Wyatt has the release key's public half. Still open: Wyatt's ruling on the two security drafts (T32 still to add to the report's "Partly tested" table) and the EmDash 1.5.0 check.
+
+## 2026-11-20 · Phase 09 · The security drafts approved and committed (ASD-STE100 wording)
+
+**Wyatt:**
+- He asked for both drafts in the ASD-STE100 framework (https://github.com/danyuchn/asd-ste100-skill), then said "Looks good". I took that as approval of both drafts as shown. That covers the STE rewording of RT-08's text and keeping "No finding rated Critical or High is open". Both are recorded in `docs/decisions.md`.
+
+**Done:**
+- **Both drafts rewritten** in the framework's STE-flavored mode. A scratch check (`ste-check.mjs` in the session scratchpad, not committed) found no semicolons and no compound tenses. The report's longest sentence is 22 words and the listing's is 25. Instructions are 20 words or fewer.
+- Phrasal verbs, the gerund heading and "-ing" adjectives were fixed. The ones kept on purpose: the title "Doing it by hand", the status name "waiting", and one passive whose actor doesn't matter.
+- **T32** is in the report's "Partly tested" table and in its "Tampered downloads" entry.
+- **Wired in, test first:** `sections.security` in `emdash-plugin.jsonc`, with a test in `manifest.test.ts`. It checks the section is declared, at most 2,000 graphemes and 20,000 bytes, and links the report and private reporting.
+- **`docs/security-review.md`:** section 8 items 4 and 7 updated. A delta review for today's changes: `INSTALL_URL`, `releaseBase()`, `sections.security`, the check script, T32.
+- Commit: `b198bf3`, local, not pushed.
+
+**Test results:** plugin typecheck, validate, bundle 76.7 KB; full suite 47 files, 545 passed, 7 expected fail, 1 skipped; switch on 6 files, 102 passed, 1 skipped (`~/xmr-pay-dev-data/58-plugin-tests-security.txt`).
+
+**Open:**
+- The listing's Security section is at exactly 2,000 graphemes, so any later edit must cut something.
+- The report's **[at the tag]** marks: the commit, the CI run, the totals and the per-ID appendix. The matrix says a script generates them from tagged CI output, and that script doesn't exist yet. It's needed before the tag.
+- There's no `SECURITY.md` yet; the matrix's report rules name one.
+- Still from section 8: the release key (step 2), the EmDash 1.5.0 check, and binary-mode govulncheck and `pnpm audit` on the release artifacts.
+
+**Next step:** step 2 (build and sign), once the release key's public half exists. The EmDash 1.5.0 check can be done before that.
+
+## 2026-11-20 · Phase 09 · The EmDash 1.5.0 check: upgraded, every row holds; the floor is 1.5.0; the live tip settled
+
+**The bundle from the entry above:** `coffer-release-1-20261120-d747a58.bundle` (made at 12:00, verified again after the reboot).
+
+**The dev box went down mid-session.** It booted again at 12:42:30; I can't read the system log, so the cause isn't known to me. The step-1 restore at 12:23 (`setup-test-reset.mjs --restore`) never reached the disk: `data.db` was 2,093,056 zero bytes. Everything else was intact: the backup it restored from, the lockfile copies, the repo (`git fsck`), the bundle. `data.db` was copied again from `redteam/emdash150-before.db`, then `sync`, the hash compared, `PRAGMA integrity_check` ok, and the counts matched. **Fix, test first (`de12b35`):** the restore now fsyncs the copy and its folder, re-hashes it against the backup and prints the hash. Setup-friction row added.
+
+**Wyatt:** approved the four bumps; raised the floor to 1.5.0; deferred spec change 59's install.md sentence ("skip the install.md sentence for now"); paid the live tip.
+
+**Done:**
+- **Code reading, 1.4.0 against 1.5.0** (notes: `~/xmr-pay-dev-data/emdash150-reading.md`). Every function a checklist row names is byte-identical. The exceptions:
+  - `readSiteInfo`: only the title source changed; the URL order is the same.
+  - KV: it moved to `options`, through `createKVAccess` (#4277).
+  - New behavior around it: the 503 while indexes sync (#4095), install and activate once per unrecorded config plugin, which I first wrote as "every boot" (#4358; corrected in the next entry), partial unique indexes (#4715), Cloudflare's default of 30 calls (#4712).
+  - 1.5.0's uninstall with "delete data" also deletes `plugin:coffer:` options.
+- **`plugin/`** (`a9a5d6f`): `emdash` 1.5.0, `plugin-cli` 0.13.6 and `plugin-test` 0.2.12. The floor to `>=1.5.0 <2.0.0` (manifest test red first). `[P04]` rewritten: the cron exists at host start; clearing `cronScheduled` shows the admin-load fallback; a mutation check makes it fail without the fallback. `admin.ts`'s stale comment fixed.
+- **Dev scripts** (`c2d664d`, tests first): `lib.mjs` gains `kvName`, `kvGet` and `kvSet`; the pairing shortcut and the cleanup use `options`; `dev-e2e`, `round1-live` and `backlog-live` read through `kvGet`. **Found and fixed:** on 1.5.0, `setup-test-reset.mjs` would have left Coffer's pairing state behind, since it deleted only `plugin:coffer:settings:%`.
+- **`theme/`** (`4d077aa`): `emdash` 1.5.0, peer `>=1.5.0 <2`.
+- **The dev site** (outside the repo): `emdash` 1.5.0 and `sandbox-workerd` 0.9.7 with `--before=2026-11-13T20:11:30Z`. 76 entries changed, 9 added, 4 removed; the newest was published 2026-11-13 08:00 UTC. 3,480 signatures verified. Built, then `emdash migrate --status` and the apply with the target's fingerprint (092 to 097), before the site started. 16 KV keys copied with the same value and revision, no conflicts. Old files: `~/xmr-pay-dev-data/baseline/*before-emdash150`.
+- **Docs:** the checklist's 1.5.0 section and three new rows (KV in `options`, the 503, lifecycle at boot); spec change 59 (proposed; item 1 deferred); the decisions rows; `docs/security-review.md` section 8 item 6 done, section 9 re-checked, REV-7's note, and a delta review; the phase file's floor line.
+
+**Test results:**
+- Plugin: typecheck; validate; bundle 76.7 KB; default 47 files, 545 passed, 7 expected fail, 1 skipped; switch on 6 files, 102 passed, 1 skipped (`~/xmr-pay-dev-data/150-plugin-tests.txt`). The same counts as on 1.4.0. The first run had one failure, `[P04]`, fixed as above.
+- Theme: 79 passed, 1 skipped with zbar required; typecheck (the count since RT-37).
+- Script tests: 69 passed (66 at the start of the day, plus three new).
+- Dev site, `astro dev`: the installed bridge synced on 1.5.0 (200, under 100 ms) and wrote `options` only; `dev-e2e.mjs` 32 of 32; `round2-live.mjs c6` one winner in each of three rounds; `round1-live.mjs` all PASS but C5's known RT-13. Admin page: the red banner on localhost, an https `Origin` used. The toolbar is off `e150`'s pay page, signed in or out.
+- Built copy, flood of 20,100: before (1.4.0) run medians 1121, 1089 and 1092 ms, all nine 1102; after (1.5.0) 1138, 1128 and 1094 ms, all nine 1107; slowest 1162; limit 5000. Headers as before.
+- RT-12: unchanged (spin stopped at 30,037 ms; `status` waited 30,024 ms). The canary's 15 probes: the same two "allowed".
+- **Live tip `e150`** (0.002 XMR, index 362): created 20:44:41 UTC, paid by Wyatt. Stagenet was slow (13 blocks in 34 minutes). `expired` at 21:15:00 on the first sync after the deadline. The transfer was in block 2,254,700, inside `expiresHeight` 2,254,705, so it reopened and settled at 2 confirmations by 21:20:06 (spec: a payment made in time reopens and settles). So the reopen path ran live on 1.5.0.
+- Bridge: not run; nothing of its changed.
+
+**Not covered:** the Cloudflare runner's limits (read only); uninstall with "delete data" (read only); the tip button through the tunnel on the built copy; the matrix needed no change (no row's conditions or coverage moved).
+
+**Open:**
+- **REV-7 (Wyatt):** Astro's floor. EmDash 1.5.0 doesn't settle it (it still asks for `astro >=6.0.0-beta.0`). The dev site's audit lists Astro's advisories as moderate.
+- Spec change 59 item 2: measure Cloudflare's new limit on a test site, for release 1.x.
+- Why the box went down, if Wyatt knows (for the setup-friction row).
+
+**State of the box:**
+- Dev site, built copy, watcher, release server and canary all off.
+- `data.db` is the migrated state plus the bridge's syncs and `e150`: 65 invoices, 367 pool rows, the bridge key `sha256:5f8d0659a624`. The 16 stale `__kv` rows are still there, as EmDash leaves them.
+- Backups: `redteam/emdash150-{before,preupgrade,migrated,before-e2e,before-flood}.db`.
+
+**Commits (local, not pushed):** `de12b35`, `a9a5d6f`, `c2d664d`, `4d077aa` and this docs commit.
+
+**Next step:** step 2 (build and sign), once Wyatt has the release key's public half. Before the first publish: REV-7's ruling, the report's **[at the tag]** generator script, and `SECURITY.md`.
+
+## 2026-11-20 · Phase 09 · The 1.5.0 check's closing questions (Wyatt), one correction, REV-7 ruled; pushed
+
+**The bundle from the entry above:** `coffer-release-1-20261120-3a88092.bundle`, SHA-256 `5a893d614d2a740b0198cf89151b06fc057af123f51b3c1790245bf45c380b0b`.
+
+**Wyatt asked for five explicit results before closing the check, then a push.**
+
+1. **Duplicate inserts after migration 095, and D2b.**
+   - On a copy of the migrated dev database (rolled back), each of the three duplicates was refused by its unique index: `addrIndex` in `pool`, `token` in `invoices`, `subaddress` in `invoices`.
+   - The same values under another plugin, and `addrIndex` in Coffer's `invoices`, were accepted (the new scoping). Lookups use the unique indexes (`~/xmr-pay-dev-data/150-dup-inserts.txt`).
+   - Through Coffer: the 17 `[P02]` files, 240 passed and 3 expected fail. The D2b companion ("no two invoices share an address") passes.
+   - `[P02] [RT-09] D2b` is still an expected fail: a stolen-key sync can still add a pool row duplicating a held address. RT-09 is open, Low, and unchanged by 095.
+2. **Two boots.**
+   - Coffer's `plugin:install` and `plugin:activate` both call `ensureCron`: one `housekeeping` cron task (`0 * * * *`) and `state:cronScheduled = true`. Nothing else.
+   - **Correction:** 1.5.0 runs them once per config plugin with no recorded `_plugin_state`, not "on every boot" as I first wrote. Fixed in the checklist, the `[P04]` comment, `admin.ts`'s comment, and the progress line above.
+   - On the dev site they ran once, at the first boot on 1.5.0 (`installed_at` 20:26:02 UTC).
+   - Live: two boots of the built copy changed none of Coffer's rows, not even a KV revision (`150-boots-{0,1,2}.json`).
+   - New test, `[P04] a second boot doesn't run plugin:install or plugin:activate again…`: after `restart()`, a `false` flag survives and KV, cron task and plugin state are unchanged; an `activate()` then flips the flag, which shows the marker works.
+   - Also from the code: if a hook throws, 1.5.0 disables the plugin and its cron tasks.
+3. **The 503 `STORAGE_INDEXES_NOT_READY` window.**
+   - The bridge backs off (15 s, doubling to 5 min), logs "sync failed", and counts the answer as `SiteRefused` with no hint.
+   - **Gap:** during a bridge self-update, 10 minutes of it with no accepted sync roll the update back and the version stays refused. Confirmed with throwaway tests, deleted. Proposal: spec change 59 item 4, Wyatt to decide.
+   - The site raises no alarm of its own: the plugin never runs; the admin page is a POST and gets the 503 too; checkout says "wallet host silent" after 5 minutes.
+   - None seen in any live run.
+4. **`__kv` after uninstall (read only).** No stale row survives "delete data". The only uninstall routes (marketplace and registry) delete all `_plugin_storage` rows for the plugin and every `plugin:coffer:` option after Coffer's hook. A config-registered plugin has no uninstall route. No P row or upstream draft is needed.
+5. **REV-7: Astro's floor stays 7.3.5, by Wyatt's rule.**
+   - GHSA-mh32-jxcr-mh9f (low, dynamic tag names): the theme has no dynamic tags.
+   - GHSA-r3h5-4585-7x3w (moderate, `@astrojs/node`'s `/_image`): neither the theme nor the pay and tip pages use the image service.
+   - Neither touches request handling, headers or origin checks. 7.3.5 is above EmDash 1.5.0's `astro >=6.0.0-beta.0`.
+   - Recorded in `docs/decisions.md` and `docs/security-review.md`. `pnpm audit --prod --audit-level high` passes in `plugin/` and `theme/`; the theme's dev tree has other highs (`zod`, `body-parser`, `undici`), none shipped.
+
+**Test results:**
+- Plugin: typecheck, validate, bundle 76.7 KB; default 47 files, 546 passed (545 plus the new test), 7 expected fail, 1 skipped; switch on 6 files, 102 passed, 1 skipped (`~/xmr-pay-dev-data/150-plugin-tests-2.txt`).
+- `sync-route.test.ts`: 12 passed (11 before, plus the new test).
+- `[P02]` files: 240 passed, 3 expected fail.
+
+**Matrix:** P04's test list gains the new test. No row's conditions changed.
+
+**Open for Wyatt:** spec change 59 item 4 (the update guard); why the box went down.
+
+**Next step:** step 2 (build and sign), once the release key's public half exists.
+
+**Pushed** (Wyatt's go-ahead): `de12b35` to `df01526`, seven commits. That's the five approved plus the two answering his closing questions. **CI on `df01526`:** run 44825366892 passed. All three jobs succeeded: plugin, bridge (the race-detector tests included) and theme, with the dependency scans. Bundle: `coffer-release-1-20261120-df01526.bundle`, SHA-256 `88e5c267fe6f92c6a190019031aa77310ae81c9b48cf978b4994f312e3272a80`. This note is a local commit, not pushed.
+
+## 2026-11-20 · Phase 09 · Spec change 59 item 4 built (R14); the outage's cause; backups checked; disk use and a retention proposal
+
+**Wyatt:**
+- Approved spec change 59 item 4, narrowed: 502, 503 and 504 count as unreachable and pause the guard's clock; 500 and every 4xx still refuse. Plus the hint, tests first.
+- The 12:23 outage's cause: the Proxmox host's shared storage filled up and every LXC went read-only; he trimmed files and it recovered.
+- New rules (in memory):
+  - `df -h` with `free -m` before each heavy step, and stop above 85% full.
+  - Push exactly what he approves, and ask about anything else (the seven-commit push was fine this time).
+
+**Spec change 59 item 4 (tests first, matrix R14 added as Planned, then Covered):**
+- `syncclient`: `(*Error).SiteDown()` is true for 502, 503 and 504. New hint for `STORAGE_INDEXES_NOT_READY`.
+- `bridgeloop`: `countSend` does both sync paths' counts. A site-down answer is unreachable, and the loop keeps `UnreachableSince` and `UnreachableTotal`. `Status.UnreachableFor(now)`.
+- `selfupdate.Decide`: the refusal rule needs 10 minutes of reachable time. **My addition:** the wallet rule keeps the real clock, so a bridge whose wallet never opens still rolls back at 10 minutes with the site down. I found it while writing the code: the first version paused that too. Test first, red then green.
+- `cmd/xmr-bridge`: `updateHealth` feeds `watchPending`.
+- Tests: 15 R14 subtests across four packages.
+  - An hour of 503 never rolls back, so the version is never refused.
+  - 502 and 504 the same.
+  - 10 minutes of 500 roll back at minute 10.
+  - A 500, 19 minutes of 503, then 500s roll back at minute 29.
+  - The old `TestDecide` cases are unchanged.
+- Mutation checks:
+  - 503 counted as a refusal: 4 subtests fail.
+  - No pause: 4 fail.
+
+**Your follow-up, `ensureCron` and the 503:** it can't happen. 1.5.0 checks index readiness only in the plugin route handler (non-GET) and before scheduled tasks, where it only logs. `plugin:install` and `plugin:activate` pass neither, and `ensureCron` writes `options` and `_emdash_cron_tasks`, never plugin storage. The sandbox runner has no such check. No fix needed.
+
+**Backups and bundles written today** (`~/xmr-pay-dev-data/20261120-backup-check.txt`):
+- All 20 are sound:
+  - 6 bundles: `git bundle verify` ok.
+  - 9 databases: `PRAGMA integrity_check` ok, with the counts each should have.
+  - 2 pnpm lockfile copies: identical to git at `d747a58`.
+  - The site's `package.json` and `package-lock.json` copies parse.
+  - The `counts.mjs` copy passes a syntax check.
+- None is zero-filled.
+- A sweep of every file written from 12:15 to 12:43 found two more zero-filled: `redteam/h1-2026-11-20T192249407Z.txt` (808 bytes; run 2's numbers are also in `emdash150-timing-before.txt`, which is sound) and a Claude session tool-output file. Neither was deleted. Setup-friction's row has the cause.
+
+**Disk use:**
+- Inside the box: 21% of 95 GB. The box sits on a Proxmox thin volume, so its `df` doesn't show the host's shared pool.
+- Largest items: `~/.npm` 1.7G; `~/xmr-pay` 1.6G (`plugin/node_modules` 1.2G); pnpm store 1.3G plus cache 434M; `~/xmr-pay-dev-data` 1.2G (`baseline/` 750M); dev site 1.1G; `~/sites/xmr-cf-spike` 975M; Go build cache 354M; `~/work` 312M; scratchpad 76M (tmpfs).
+- Retention candidates, nothing deleted: `~/xmr-pay-dev-data/retention-candidates-20261120.txt`, 668 MB.
+  - 32 old `before-restore` copies, 546 MB.
+  - 5 setup-test copies.
+  - 1 red-team backup.
+  - 24 old bundles, 45 MB.
+  - `go1.27.3/`, 68 MB.
+
+**Tests:**
+- Bridge on go1.27.4: gofmt and vet clean; 21 packages ok (`~/xmr-pay-dev-data/r14-bridge-tests.txt`); the race detector on the four changed packages ok.
+- Plugin and theme: untouched, not run.
+
+**Commits (local, not pushed):** the bridge change with its tests and matrix row, and this docs commit. **Not pushed:** waiting for Wyatt's approval of exactly these.
+
+**Next step:**
+- Wyatt: approve the push of these commits (and `d9a9172`, the CI note), and rule on the retention proposal.
+- Then step 2 (build and sign), once the release key's public half exists.

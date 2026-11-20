@@ -54,6 +54,16 @@ describe("tip checkout", () => {
 		expect(h.http.requests()).toEqual([]); // no price needed
 	});
 
+	it("[T07] [RT-40] a stored speed that isn't one of the three falls back to standard: an inherited name never gives an invoice no confirmation target", async () => {
+		for (const speed of ["toString", "constructor", "__proto__", "hasOwnProperty", "FAST", ""]) {
+			await host?.dispose();
+			await setup(speed === "" ? {} : { speed });
+			await tip();
+			const [inv] = await stored();
+			expect(inv.required, speed).toBe(2);
+		}
+	});
+
 	it("[T06] a fiat amount: converted at the locked rate (ceiling), the fiat kept, the floor still the threshold", async () => {
 		const h = await setup();
 		await h.http.respond(KRAKEN("USD"), kraken("USD", "150.00"));

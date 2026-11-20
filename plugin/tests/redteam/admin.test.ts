@@ -266,3 +266,35 @@ describe("B2: the other buttons pushed around", () => {
 		expect(await r().host.inspect.setting("bridgePublicKey")).toBe(PUBLIC_KEYS.test1);
 	});
 });
+
+// Phase 09's security review (2026-11-14). `unlockTime` is a decimal string of up to 20 digits (protocol.ts); at
+// 500,000,000 and above the admin page reads it as a Unix time and formats it as a date.
+describe("RT-36: a time lock too far ahead to be a date", () => {
+	it("[F04][T11] [RT-36] the admin page still loads when a reversed tip holds a transfer time-locked past the year 275760", async () => {
+		await site();
+		const inv = await tip();
+		const paid = tr("500000000", 10);
+		await r().sync({ height: H0 + 12, snapshots: [{ index: inv.addrIndex, transfers: [paid] }] });
+		expect((await byId(inv.id)).status).toBe("settled");
+		// The same payment, now reported with the largest unlock_time Monero can carry (2^64 - 1): not counted any more.
+		await r().sync({ height: H0 + 13, snapshots: [{ index: inv.addrIndex, transfers: [{ ...paid, unlockTime: "18446744073709551615" }] }] });
+		expect(await byId(inv.id)).toMatchObject({ status: "review", reviewReason: "reversed" });
+		const text = JSON.stringify(await load());
+		expect(text).toContain("Settled payment gone");
+		expect(text).toContain("now not counted: time-locked)");
+		expect(text).not.toContain("time-locked until");
+	});
+
+	it("[F04][T11] [RT-36] the largest unlock time that is a date still shows as one; one second more shows as locked", async () => {
+		await site();
+		for (const [unlockTime, want] of [["8640000000000", "time-locked until +275760-09-13T00:00:00.000Z"], ["8640000000001", "now not counted: time-locked)"], ["99999999999999999999", "now not counted: time-locked)"], ["500000000", "time-locked until 1985-11-05T00:53:20.000Z"], ["499999999", "time-locked until block 499999999"]] as const) {
+			const inv = await tip();
+			const paid = tr("500000000", 10);
+			await r().sync({ height: H0 + 12, snapshots: [{ index: inv.addrIndex, transfers: [paid] }] });
+			await r().sync({ height: H0 + 13, snapshots: [{ index: inv.addrIndex, transfers: [{ ...paid, unlockTime }] }] });
+			expect(JSON.stringify(await load()), unlockTime).toContain(want);
+			// Decide it, so the next one is the only reversed tip on the page.
+			await act("invoice_action", `expire:${inv.id}`);
+		}
+	});
+});

@@ -50,7 +50,7 @@ var manifestJSON = `{"product":"xmr-bridge","version":"0.2.0","date":"2026-10-01
  "files":[{"name":"xmr-bridge-0.2.0-linux-amd64","os":"linux","arch":"amd64","sha256":"` + strings.Repeat("a", 64) + `","size":10}]}`
 
 func TestVerifyManifest(t *testing.T) {
-	t.Run("[T16] the release manifest's signature", func(t *testing.T) {
+	t.Run("[T16][T32] the release manifest's signature", func(t *testing.T) {
 		pub, priv := keyPair(t)
 		other, otherPriv := keyPair(t)
 		m := []byte(manifestJSON)

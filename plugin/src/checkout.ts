@@ -7,7 +7,7 @@ import type { PluginContext } from "emdash/plugin";
 
 import { clientKeyText } from "./clientip";
 import { type MoneroNetwork, subaddressNetwork } from "./core/address";
-import { ATOMIC_PER_XMR, DUST_ATOMIC, GOODS_ENABLED, type Speed, PRESETS, SILENT_MS } from "./core/constants";
+import { ATOMIC_PER_XMR, DUST_ATOMIC, GOODS_ENABLED, type Speed, SILENT_MS, isSpeed } from "./core/constants";
 import { type Invoice, newInvoice } from "./core/invoice";
 import { atomicToXmr, priceToMinor } from "./core/money";
 import { invoiceUri } from "./core/uri";
@@ -245,7 +245,7 @@ export async function handleCheckout(ctx: PluginContext, body: unknown, ip: stri
 	if (bucket && bucket.count >= MAX_PER_CLIENT) return fail("TOO_MANY_OPEN");
 
 	const speedSetting = await ctx.settings.get<string>(SETTING.speed);
-	const speed: Speed = speedSetting !== null && speedSetting in PRESETS ? (speedSetting as Speed) : "standard";
+	const speed: Speed = isSpeed(speedSetting) ? speedSetting : "standard";
 	const currencySetting = await ctx.settings.get<string>(SETTING.currency);
 	const siteCurrency: Currency = isCurrency(currencySetting) ? currencySetting : "USD";
 	const made = input.kind === "tip" ? await tipInvoice(ctx, input, speed, siteCurrency, now) : await productInvoice(ctx, input, speed, siteCurrency, now);

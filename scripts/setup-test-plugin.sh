@@ -1,14 +1,14 @@
 #!/bin/sh
-# Builds the plugin for phase 05's setup test: a normal build, then the install-command placeholder in the built
-# sandbox entry (dist/plugin.mjs) swapped for the dev release's address, so the admin page shows a command the tester
-# can paste as is. The source keeps the placeholder, and release builds come from a clean checkout in CI, so this
-# never reaches a release. A plain `pnpm run build` puts the placeholder back.
+# Builds the plugin for phase 05's setup test: a normal build, then the real install URL (https://get.coffer.party,
+# spec change 58) in the built sandbox entry (dist/plugin.mjs) swapped for the dev release's address, so the admin page
+# shows a command the tester can paste as is. The source keeps the real URL, and release builds come from a clean
+# checkout in CI, so this never reaches a release. A plain `pnpm run build` puts the real URL back.
 #
 #   scripts/setup-test-plugin.sh --base http://<dev box LAN address>:8099
 #   (the same --base as scripts/build-dev-release.sh)
 set -eu
 repo=$(cd "$(dirname "$0")/.." && pwd)
-placeholder="https://REPLACE-RELEASE-HOST.invalid/install.sh"
+placeholder="https://get.coffer.party/install.sh" # the URL that gets swapped out
 base=""
 while [ $# -gt 0 ]; do
 	case "$1" in
@@ -17,7 +17,7 @@ while [ $# -gt 0 ]; do
 	esac
 done
 if ! printf '%s' "$base" | grep -Eq '^https?://[A-Za-z0-9.-]+(:[0-9]{1,5})?$'; then echo "--base is http(s)://<address>[:<port>], no path or trailing slash" >&2; exit 2; fi
-grep -qF "export const INSTALL_URL = \"$placeholder\";" "$repo/plugin/src/admin.ts" || { echo "the placeholder in plugin/src/admin.ts changed; update this script" >&2; exit 1; }
+grep -qF "export const INSTALL_URL = \"$placeholder\";" "$repo/plugin/src/admin.ts" || { echo "the install URL in plugin/src/admin.ts changed; update this script" >&2; exit 1; }
 
 cd "$repo/plugin"
 pnpm run build >/dev/null
@@ -25,7 +25,7 @@ pnpm run build >/dev/null
 pnpm exec emdash-plugin bundle --validate-only >/dev/null
 entry="$repo/plugin/dist/plugin.mjs"
 n=$(grep -cF "$placeholder" "$entry" || true)
-[ "$n" = 1 ] || { echo "expected the placeholder once in dist/plugin.mjs, found $n" >&2; exit 1; }
+[ "$n" = 1 ] || { echo "expected the install URL once in dist/plugin.mjs, found $n" >&2; exit 1; }
 tmp="$entry.tmp.$$"
 # The address passed the check above (no | & \ or spaces), so it's safe as a sed replacement.
 sed "s|$placeholder|$base/install.sh|" "$entry" >"$tmp"
@@ -33,6 +33,6 @@ mv "$tmp" "$entry"
 # The constant now holds the address, and the command (installCommand, curl else wget) is built from it.
 grep -qF -e "\"$base/install.sh\"" -e "\`$base/install.sh\`" "$entry" || { echo "the install URL didn't land in dist/plugin.mjs" >&2; exit 1; }
 grep -qF 'if command -v curl >/dev/null; then curl -fsSL ${' "$entry" || { echo "the install command in dist/plugin.mjs isn't the curl-else-wget one" >&2; exit 1; }
-! grep -qF "$placeholder" "$entry" || { echo "the placeholder is still in dist/plugin.mjs" >&2; exit 1; }
+! grep -qF "$placeholder" "$entry" || { echo "the real install URL is still in dist/plugin.mjs" >&2; exit 1; }
 echo "plugin built for the setup test: the admin page's install command fetches $base/install.sh"
-echo "a plain 'pnpm run build' restores the placeholder"
+echo "a plain 'pnpm run build' restores https://get.coffer.party/install.sh"

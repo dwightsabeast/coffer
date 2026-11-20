@@ -1,7 +1,7 @@
 # @cofferhq/astro
 
-Astro components for Coffer, Monero payments for EmDash: the buyer's `/pay/coffer/<token>` page, and a server-side `isPaid`
-helper for gated content. Not published yet (phase 09); until then the dev site installs it from this folder.
+Astro components for Coffer, Monero payments for EmDash: the tip button and its endpoint, and the buyer's
+`/pay/coffer/<token>` page. Release 1 is tips only: it has nothing to gate content with. Not published yet (phase 09); until then the dev site installs it from this folder.
 
 ## Tips
 
@@ -70,17 +70,6 @@ it's checked on the way: same site only, never another pay page or the admin); o
 
 EmDash's editor toolbar isn't shown on the pay page: the page's Content-Security-Policy would block its styles and
 scripts, so the page tells EmDash to skip it.
-
-## Gated content
-
-```astro
----
-import { isPaid } from "@cofferhq/astro/isPaid";
-if (!(await isPaid(Astro, Astro.url.searchParams.get("token")))) return Astro.redirect("/");
----
-```
-
-True only once the payment has settled, read on the server. Never trust a flag from the browser.
 
 ## What's inside
 

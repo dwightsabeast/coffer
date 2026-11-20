@@ -42,4 +42,23 @@ func TestReleaseBuildHasNoDevValues(t *testing.T) {
 	if !bytes.Contains(dev, []byte(key)) || !bytes.Contains(dev, []byte(url)) {
 		t.Fatal("control failed: the devrelease build should contain both values")
 	}
+	// Spec change 58: the linked release binary polls get.coffer.party, and the placeholder host is gone.
+	if bytes.Contains(release, []byte("REPLACE-RELEASE-HOST")) || bytes.Contains(release, []byte(".pages.dev")) {
+		t.Fatal("the release build contains a placeholder or pages.dev host")
+	}
+	if !bytes.Contains(release, []byte(releaseUpdateURL)) {
+		t.Fatalf("the release build doesn't contain %s", releaseUpdateURL)
+	}
+}
+
+// Spec change 58 (Wyatt, 2026-11-20): installed bridges check https://get.coffer.party/latest for updates.
+const releaseUpdateURL = "https://get.coffer.party/latest"
+
+func TestReleaseBase(t *testing.T) {
+	if devBuild {
+		t.Skip("a devrelease build uses its own release address")
+	}
+	if got := releaseBase(); got != releaseUpdateURL {
+		t.Fatalf("releaseBase() = %q, want %q", got, releaseUpdateURL)
+	}
 }

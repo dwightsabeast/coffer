@@ -6,6 +6,7 @@ import { createPluginRuntimeTestHost, type PluginRuntimeTestHost } from "@emdash
 
 import { type Invoice, newInvoice } from "../../src/core/invoice";
 import { PURGE_MS } from "../../src/housekeeping";
+import { KV } from "../../src/store";
 import { newPairingCode } from "../../src/sync/pairing";
 import { PUBLIC_KEYS, bytesOf, signedHeaders } from "../sync/helpers";
 import { fakeSubaddress } from "../addresses";
@@ -94,6 +95,24 @@ describe("bridge/sync route", () => {
 		expect(await h.inspect.kv.get("state:alerts")).toEqual([expect.objectContaining({ invoiceId: "inv_7", kind: "reversed" })]);
 	});
 
+	it("[P04] a second boot doesn't run plugin:install or plugin:activate again: one cron task, Coffer's KV untouched", async () => {
+		// EmDash 1.5.0 runs them only for a config plugin with no recorded state (installUnrecordedConfigPlugins).
+		// ensureCron sets cronScheduled to true, so a false that survives the restart shows neither hook ran.
+		host = await createPluginRuntimeTestHost();
+		expect(await host.inspect.scheduledTasks()).toHaveLength(1);
+		await host.fixtures.plugin.kv(KV.cronScheduled, false);
+		const before = { kv: await host.inspect.kv.list(), tasks: await host.inspect.scheduledTasks(), state: await host.inspect.pluginState() };
+		await host.restart();
+		expect(await host.inspect.kv.get(KV.cronScheduled)).toBe(false);
+		expect(await host.inspect.kv.list()).toEqual(before.kv);
+		expect(await host.inspect.scheduledTasks()).toEqual(before.tasks);
+		expect(await host.inspect.pluginState()).toEqual(before.state);
+		// The marker works: an activate that did run sets it back.
+		await host.actions.plugin.activate();
+		expect(await host.inspect.kv.get(KV.cronScheduled)).toBe(true);
+		expect(await host.inspect.scheduledTasks()).toHaveLength(1);
+	});
+
 	it("pairs through the route and stores the key", async () => {
 		host = await createPluginRuntimeTestHost();
 		const { code, state } = await newPairingCode(Date.now());
@@ -134,10 +153,38 @@ describe("housekeeping and the backup cron", () => {
 		expect(((await h.inspect.storage.get("invoices", "inv_9")) as Invoice).buyer).toEqual({ email: "b@example.invalid" });
 	});
 
+	it("[P04] [RT-41] an invoice that never became final loses its buyer data 30 days after its window, whatever its status", async () => {
+		const h = await paired();
+		const old = Date.now() - PURGE_MS - 3_600_000;
+		// Never covered by a sync again (the wallet host was removed), and held at confirming: neither has a finalAt.
+		await claimedInvoice(h, 8, { status: "new", expiresAt: old, pendingExpiry: true, buyer: { note: "left open" } });
+		await claimedInvoice(h, 9, { status: "confirming", expiresAt: old, buyer: { note: "held" } });
+		// Final, but not for 30 days yet: kept, as before.
+		await claimedInvoice(h, 10, { status: "review", expiresAt: old, finalAt: Date.now() - 1000, buyer: { note: "in review" } });
+		// An open invoice inside its 30 days: kept.
+		await claimedInvoice(h, 11, { status: "new", expiresAt: Date.now() - PURGE_MS + 3_600_000, buyer: { note: "recent" } });
+		await sync({});
+		const buyer = async (n: number) => ((await h.inspect.storage.get("invoices", `inv_${n}`)) as Invoice).buyer;
+		expect(await buyer(8)).toBeUndefined();
+		expect(await buyer(9)).toBeUndefined();
+		expect(await buyer(10)).toEqual({ note: "in review" });
+		expect(await buyer(11)).toEqual({ note: "recent" });
+		expect(((await h.inspect.storage.get("invoices", "inv_8")) as Invoice).status).toBe("new");
+	});
+
 	it("[P04] activation and the first admin page load schedule the backup cron; it purges too", async ({ task }) => {
+		// Since EmDash 1.5.0 (#4358) a sandboxed config plugin with no recorded state gets plugin:install and
+		// plugin:activate once at boot, and a new test host has no recorded state, so the cron is there before any admin
+		// load. The admin load's fallback is keyed off the cronScheduled flag: clear it (a site whose activation never
+		// ran) and the load schedules again, without a second task.
 		host = await createPluginRuntimeTestHost();
-		expect(await host.inspect.scheduledTasks()).toEqual([]);
+		const atStart = await host.inspect.scheduledTasks();
+		Object.assign(task.meta, { atStart });
+		expect(atStart).toEqual([expect.objectContaining({ name: "housekeeping", schedule: "0 * * * *" })]);
+		expect(await host.inspect.kv.get(KV.cronScheduled)).toBe(true);
+		await host.fixtures.plugin.kv(KV.cronScheduled, false);
 		await host.admin.loadPage("/payments");
+		expect(await host.inspect.kv.get(KV.cronScheduled)).toBe(true);
 		const afterAdmin = await host.inspect.scheduledTasks();
 		Object.assign(task.meta, { afterAdmin });
 		expect(afterAdmin).toEqual([expect.objectContaining({ name: "housekeeping", schedule: "0 * * * *" })]);

@@ -83,3 +83,5 @@ export const PRESETS = {
 } as const satisfies Record<string, readonly [number, number, number]>;
 
 export type Speed = keyof typeof PRESETS;
+/** One of the three speeds by its own name: never an inherited one such as "toString" (RT-40), which `in` would accept. */
+export const isSpeed = (v: unknown): v is Speed => typeof v === "string" && Object.hasOwn(PRESETS, v);

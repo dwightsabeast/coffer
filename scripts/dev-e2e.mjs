@@ -12,9 +12,8 @@
 //   Options: --site <loopback URL> (default http://localhost:4321), --db <path> (default ~/sites/xmr-dev-site/data.db)
 //
 // KV shortcut: the admin page stores only a SHA-256 hash of its code, so a script can't read one back. Instead this
-// script makes a code and writes its hash into the plugin's KV row in the dev site's database (the sandbox runner keeps
-// a sandboxed plugin's KV in _plugin_storage, collection "__kv"), exactly what the admin page would store. No plugin
-// change. Only for a local dev site: the script refuses any site URL that isn't loopback.
+// script makes a code and writes its hash into the plugin's KV in the dev site's database (since EmDash 1.5.0 the
+// options row plugin:coffer:<key>; lib.mjs, kvSet), exactly what the admin page would store. No plugin change. Only for a local dev site: the script refuses any site URL that isn't loopback.
 //
 // The fake bridge signs with an Ed25519 key generated in memory for this run and never written anywhere. Pool
 // addresses are fakes in the right format (stagenet's subaddress byte, made-up keys, a zero checksum) that no wallet would
@@ -28,7 +27,7 @@ import { randomBytes } from "node:crypto";
 import { writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 
-import { DEFAULT_DB, DEFAULT_SITE, KEY_OPTION, PLUGIN, RUN_KV, b64url, cleanupCofferRows, fakeAddress, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders as signWith, syncBody as bodyOf, writePairingCode, answerProbes, handoutWait, HANDOUT_WAIT_MS } from "./redteam/lib.mjs";
+import { DEFAULT_DB, DEFAULT_SITE, KEY_OPTION, PLUGIN, RUN_KV, b64url, cleanupCofferRows, fakeAddress, kvGet, kvName, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders as signWith, syncBody as bodyOf, writePairingCode, answerProbes, handoutWait, HANDOUT_WAIT_MS } from "./redteam/lib.mjs";
 
 const PRODUCT = "test-sticker";
 const FAKE_HEIGHT = 1_000_000;
@@ -57,7 +56,7 @@ function leftovers() {
 	for (const { collection, n } of db.prepare("SELECT collection, count(*) AS n FROM _plugin_storage WHERE plugin_id = ? AND collection IN ('pool', 'invoices') GROUP BY collection").all(PLUGIN)) {
 		found.push(`${n} ${collection} row(s)`);
 	}
-	const kv = db.prepare(`SELECT id, data FROM _plugin_storage WHERE plugin_id = ? AND collection = '__kv' AND id IN (${RUN_KV.map(() => "?").join(",")})`).all(PLUGIN, ...RUN_KV);
+	const kv = db.prepare(`SELECT substr(name, ${kvName("").length + 1}) AS id, value AS data FROM options WHERE name IN (${RUN_KV.map(() => "?").join(",")})`).all(...RUN_KV.map(kvName));
 	for (const { id, data } of kv) {
 		if (id !== "state:pairing") {
 			found.push(`KV ${id}`);
@@ -156,7 +155,7 @@ try {
 	check(`pair ${handCode ? "(admin page code)" : "(KV shortcut)"}, 10 addresses: ok, 10 free`, r.data?.ok === true && r.data.poolFree === 10, show(r));
 	r = await sync(syncBody({ pair: { code, publicKey: newKey().publicB64 } }), newKey());
 	check("the same code again, another key: refused", r.code !== null && r.data?.ok !== true, show(r));
-	check("pairing code burned in KV", JSON.parse(db.prepare("SELECT data FROM _plugin_storage WHERE plugin_id = ? AND collection = '__kv' AND id = 'state:pairing'").get(PLUGIN).data).used === true, "used: true");
+	check("pairing code burned in KV", kvGet(db, "state:pairing")?.used === true, "used: true");
 
 	// 5. Signed syncs: top-up, then forged, tampered and stale requests changing nothing.
 	const topUp = Array.from({ length: POOL_TARGET - 10 }, (_, i) => ({ index: i + 11, address: fakeAddress(i + 11) }));

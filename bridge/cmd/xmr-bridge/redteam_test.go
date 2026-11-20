@@ -74,7 +74,7 @@ func TestRedteamNodeCheckNothingChecked(t *testing.T) {
 // on the dev box. The test binary is built by the same toolchain as the bridge in the same place (this box, CI), so
 // it checks that toolchain. It's a floor for today's advisories, not a substitute for running govulncheck (T28).
 func TestRedteamToolchainFloor(t *testing.T) {
-	t.Run("[T28] [RT-28] the bridge is built with go1.27.3 or later (known standard-library fixes)", func(t *testing.T) {
+	t.Run("[T28] [RT-28] [RT-39] the bridge is built with go1.27.4 or later (known standard-library fixes)", func(t *testing.T) {
 		v := runtime.Version()
 		m := regexp.MustCompile(`^go(\d+)\.(\d+)(?:\.(\d+))?$`).FindStringSubmatch(v)
 		if m == nil {
@@ -82,11 +82,11 @@ func TestRedteamToolchainFloor(t *testing.T) {
 		}
 		n := func(s string) int { i, _ := strconv.Atoi(s); return i }
 		got := [3]int{n(m[1]), n(m[2]), n(m[3])}
-		floor := [3]int{1, 27, 3}
+		floor := [3]int{1, 27, 4}
 		for i := range got {
 			if got[i] != floor[i] {
 				if got[i] < floor[i] {
-					t.Fatalf("built with %s; go1.27.3 or later has the fixes for GO-2026-6809 and GO-2026-6611", v)
+					t.Fatalf("built with %s; go1.27.4 or later has the fixes for GO-2026-6809, GO-2026-6611 and GO-2026-6859", v)
 				}
 				return
 			}

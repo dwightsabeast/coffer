@@ -9,7 +9,7 @@
 // cleans up its own rows and key. Back up data.db first (the caller does). PASS/FAIL per check; exit 1 on any FAIL.
 // C5's wall check prints "KNOWN RT-13" (not counted as a FAIL) only for RT-13's exact result; see isKnownRt13Drip.
 
-import { DEFAULT_DB, DEFAULT_SITE, cleanupCofferRows, fakeAddress, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders, syncBody, writePairingCode, handoutWait, HANDOUT_WAIT_MS, C5_WALL_MS, isKnownRt13Drip } from "./lib.mjs";
+import { DEFAULT_DB, DEFAULT_SITE, cleanupCofferRows, fakeAddress, kvGet, loopbackUrl, newKey, openSiteDb, route as routeOn, send, signedHeaders, syncBody, writePairingCode, handoutWait, HANDOUT_WAIT_MS, C5_WALL_MS, isKnownRt13Drip } from "./lib.mjs";
 
 const args = process.argv.slice(2);
 const value = (name, fallback) => {
@@ -71,8 +71,8 @@ try {
 		else perClientCode = r.code;
 	}
 	check("L2: 8 tips from one spoofed IP aren't cut by a per-client cap on Node", ok === 8, `${ok}/8 ok${perClientCode ? `, first refusal ${perClientCode}` : ""}`);
-	const kvRow = db.prepare("SELECT data FROM _plugin_storage WHERE plugin_id = 'coffer' AND collection = '__kv' AND id = 'state:buckets'").get();
-	check("L2: no per-client buckets were stored from spoofed headers", kvRow === undefined, kvRow ? "state:buckets exists" : "none");
+	const kvRow = kvGet(db, "state:buckets");
+	check("L2: no per-client buckets were stored from spoofed headers", kvRow === null, kvRow ? "state:buckets exists" : "none");
 
 	// --- C5: a slow drip body against bridge/sync, with the site's liveness measured alongside ---
 	// A ReadableStream that sends a byte, waits, and would keep going past the 30 s wall. While it drips, poll status.

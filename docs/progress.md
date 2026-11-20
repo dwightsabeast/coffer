@@ -6011,7 +6011,7 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 - **Code reading, 1.4.0 against 1.5.0** (notes: `~/xmr-pay-dev-data/emdash150-reading.md`). Every function a checklist row names is byte-identical. The exceptions:
   - `readSiteInfo`: only the title source changed; the URL order is the same.
   - KV: it moved to `options`, through `createKVAccess` (#4277).
-  - New behavior around it: the 503 while indexes sync (#4095), install and activate on every boot (#4358), partial unique indexes (#4715), Cloudflare's default of 30 calls (#4712).
+  - New behavior around it: the 503 while indexes sync (#4095), install and activate once per unrecorded config plugin, which I first wrote as "every boot" (#4358; corrected in the next entry), partial unique indexes (#4715), Cloudflare's default of 30 calls (#4712).
   - 1.5.0's uninstall with "delete data" also deletes `plugin:coffer:` options.
 - **`plugin/`** (`a9a5d6f`): `emdash` 1.5.0, `plugin-cli` 0.13.6 and `plugin-test` 0.2.12. The floor to `>=1.5.0 <2.0.0` (manifest test red first). `[P04]` rewritten: the cron exists at host start; clearing `cronScheduled` shows the admin-load fallback; a mutation check makes it fail without the fallback. `admin.ts`'s stale comment fixed.
 - **Dev scripts** (`c2d664d`, tests first): `lib.mjs` gains `kvName`, `kvGet` and `kvSet`; the pairing shortcut and the cleanup use `options`; `dev-e2e`, `round1-live` and `backlog-live` read through `kvGet`. **Found and fixed:** on 1.5.0, `setup-test-reset.mjs` would have left Coffer's pairing state behind, since it deleted only `plugin:coffer:settings:%`.
@@ -6044,3 +6044,44 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 **Commits (local, not pushed):** `de12b35`, `a9a5d6f`, `c2d664d`, `4d077aa` and this docs commit.
 
 **Next step:** step 2 (build and sign), once Wyatt has the release key's public half. Before the first publish: REV-7's ruling, the report's **[at the tag]** generator script, and `SECURITY.md`.
+
+## 2026-11-20 · Phase 09 · The 1.5.0 check's closing questions (Wyatt), one correction, REV-7 ruled; pushed
+
+**The bundle from the entry above:** `coffer-release-1-20261120-3a88092.bundle`, SHA-256 `5a893d614d2a740b0198cf89151b06fc057af123f51b3c1790245bf45c380b0b`.
+
+**Wyatt asked for five explicit results before closing the check, then a push.**
+
+1. **Duplicate inserts after migration 095, and D2b.**
+   - On a copy of the migrated dev database (rolled back), each of the three duplicates was refused by its unique index: `addrIndex` in `pool`, `token` in `invoices`, `subaddress` in `invoices`.
+   - The same values under another plugin, and `addrIndex` in Coffer's `invoices`, were accepted (the new scoping). Lookups use the unique indexes (`~/xmr-pay-dev-data/150-dup-inserts.txt`).
+   - Through Coffer: the 17 `[P02]` files, 240 passed and 3 expected fail. The D2b companion ("no two invoices share an address") passes.
+   - `[P02] [RT-09] D2b` is still an expected fail: a stolen-key sync can still add a pool row duplicating a held address. RT-09 is open, Low, and unchanged by 095.
+2. **Two boots.**
+   - Coffer's `plugin:install` and `plugin:activate` both call `ensureCron`: one `housekeeping` cron task (`0 * * * *`) and `state:cronScheduled = true`. Nothing else.
+   - **Correction:** 1.5.0 runs them once per config plugin with no recorded `_plugin_state`, not "on every boot" as I first wrote. Fixed in the checklist, the `[P04]` comment, `admin.ts`'s comment, and the progress line above.
+   - On the dev site they ran once, at the first boot on 1.5.0 (`installed_at` 20:26:02 UTC).
+   - Live: two boots of the built copy changed none of Coffer's rows, not even a KV revision (`150-boots-{0,1,2}.json`).
+   - New test, `[P04] a second boot doesn't run plugin:install or plugin:activate again…`: after `restart()`, a `false` flag survives and KV, cron task and plugin state are unchanged; an `activate()` then flips the flag, which shows the marker works.
+   - Also from the code: if a hook throws, 1.5.0 disables the plugin and its cron tasks.
+3. **The 503 `STORAGE_INDEXES_NOT_READY` window.**
+   - The bridge backs off (15 s, doubling to 5 min), logs "sync failed", and counts the answer as `SiteRefused` with no hint.
+   - **Gap:** during a bridge self-update, 10 minutes of it with no accepted sync roll the update back and the version stays refused. Confirmed with throwaway tests, deleted. Proposal: spec change 59 item 4, Wyatt to decide.
+   - The site raises no alarm of its own: the plugin never runs; the admin page is a POST and gets the 503 too; checkout says "wallet host silent" after 5 minutes.
+   - None seen in any live run.
+4. **`__kv` after uninstall (read only).** No stale row survives "delete data". The only uninstall routes (marketplace and registry) delete all `_plugin_storage` rows for the plugin and every `plugin:coffer:` option after Coffer's hook. A config-registered plugin has no uninstall route. No P row or upstream draft is needed.
+5. **REV-7: Astro's floor stays 7.3.5, by Wyatt's rule.**
+   - GHSA-mh32-jxcr-mh9f (low, dynamic tag names): the theme has no dynamic tags.
+   - GHSA-r3h5-4585-7x3w (moderate, `@astrojs/node`'s `/_image`): neither the theme nor the pay and tip pages use the image service.
+   - Neither touches request handling, headers or origin checks. 7.3.5 is above EmDash 1.5.0's `astro >=6.0.0-beta.0`.
+   - Recorded in `docs/decisions.md` and `docs/security-review.md`. `pnpm audit --prod --audit-level high` passes in `plugin/` and `theme/`; the theme's dev tree has other highs (`zod`, `body-parser`, `undici`), none shipped.
+
+**Test results:**
+- Plugin: typecheck, validate, bundle 76.7 KB; default 47 files, 546 passed (545 plus the new test), 7 expected fail, 1 skipped; switch on 6 files, 102 passed, 1 skipped (`~/xmr-pay-dev-data/150-plugin-tests-2.txt`).
+- `sync-route.test.ts`: 12 passed (11 before, plus the new test).
+- `[P02]` files: 240 passed, 3 expected fail.
+
+**Matrix:** P04's test list gains the new test. No row's conditions changed.
+
+**Open for Wyatt:** spec change 59 item 4 (the update guard); why the box went down.
+
+**Next step:** step 2 (build and sign), once the release key's public half exists.

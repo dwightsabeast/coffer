@@ -2061,7 +2061,8 @@ Evidence:
   - The first run: 31 PASS, 1 FAIL. `/404.html` answered HTTP 307 with `Location: /404`, Pages' `.html` rule, while every other file answered 200 with no redirect, the binaries included. The script now checks `404.html` only as the body of a missing file, and fails any other `.html` file in the upload folder.
   - The second run: 32 PASS, 0 FAIL. Missing paths, at the top and inside `0.0.0/`, got a 404 with `404.html`; the root is a 404.
   - Headers on `install.sh` and the binaries: `content-type: application/octet-stream`, `cache-control: public, max-age=0, must-revalidate`.
-  - Plain `http://get.coffer.party/install.sh` answers 200 instead of redirecting to https. No Coffer path uses http (every URL is https; curl runs with `--proto =https`), so this is a recommendation only: turn on Always Use HTTPS for the zone (Wyatt's Cloudflare settings).
+  - Plain `http://get.coffer.party/install.sh` answered 200 instead of redirecting to https. No Coffer path uses http (every URL is https; curl runs with `--proto =https`).
+  - **Wyatt turned on Always Use HTTPS for `coffer.party` (2026-11-20).** The check now expects every http path to answer exactly 301 to the same https path. The third run: 47 PASS, 0 FAIL, every http path (the root, a missing file and all 13 files) answering 301 to its https twin.
 Proposal:
 1. **Layout:**
    ```text

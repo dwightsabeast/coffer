@@ -115,6 +115,56 @@ async function check({ base, folder, repo, out }, ...extra) {
 
 const fails = (stdout) => stdout.split("\n").filter((l) => l.startsWith("FAIL"));
 
+/** The http side (Cloudflare's Always Use HTTPS): answers every path with respond(path), by default a 301 to base/path. */
+async function httpSide(t, base, respond = (p) => ({ status: 301, headers: { location: `${base}/${p}` } })) {
+	const server = createServer((req, res) => {
+		const r = respond(new URL(req.url, "http://x").pathname.replace(/^\//, ""));
+		res.writeHead(r.status, r.headers ?? {});
+		res.end(r.body ?? "");
+	});
+	await new Promise((r) => server.listen(0, "127.0.0.1", r));
+	t.after(() => server.close());
+	return `http://127.0.0.1:${server.address().port}`;
+}
+
+test("[T32] http:// answers every path with a 301 to the same path at the https base", async (t) => {
+	const s = await setup(t);
+	const http = await httpSide(t, s.base);
+	const r = await check(s, "--http", http);
+	assert.equal(r.code, 0, r.stdout);
+	for (const p of ["install.sh", "1.0.1/xmr-bridge-1.0.1-linux-amd64", "latest/release.json", "404.html"]) {
+		assert.match(r.stdout, new RegExp(`PASS http:// /${p.replaceAll(".", "\\.")} -> 301 ${s.base}/${p.replaceAll(".", "\\.")}\\n`));
+	}
+	assert.match(r.stdout, /PASS http:\/\/ \/ -> 301 /);
+	assert.match(r.stdout, /PASS http:\/\/ \/[0-9a-f]{12}-not-here -> 301 /);
+});
+
+test("[T32] http:// that serves the file, uses another status, or redirects anywhere else fails", async (t) => {
+	const s = await setup(t);
+	const http = await httpSide(t, s.base, (p) => {
+		if (p === "install.sh") return { status: 200, body: "#!/bin/sh\n" };
+		if (p === "latest/release.json") return { status: 302, headers: { location: `${s.base}/${p}` } };
+		if (p === "1.0.1/xmr-bridge-1.0.1-linux-amd64") return { status: 301, headers: { location: "https://elsewhere.example/1.0.1/xmr-bridge-1.0.1-linux-amd64" } };
+		if (p === "1.0.0/release.json") return { status: 301, headers: { location: `${s.base}/` } };
+		return { status: 301, headers: { location: `${s.base}/${p}` } };
+	});
+	const r = await check(s, "--http", http);
+	assert.equal(r.code, 1);
+	const f = fails(r.stdout).join("\n");
+	assert.match(f, /FAIL http:\/\/ \/install\.sh: HTTP 200 \(want 301 to /);
+	assert.match(f, /FAIL http:\/\/ \/latest\/release\.json: HTTP 302, Location: .* \(want 301 to /);
+	assert.match(f, /FAIL http:\/\/ \/1\.0\.1\/xmr-bridge-1\.0\.1-linux-amd64: HTTP 301, Location: https:\/\/elsewhere\.example/);
+	assert.match(f, /FAIL http:\/\/ \/1\.0\.0\/release\.json: HTTP 301, Location: http:\/\/127\.0\.0\.1:\d+\/ \(want/);
+	assert.equal(fails(r.stdout).length, 4, f);
+});
+
+test("--http must be a plain http address with no path", async (t) => {
+	const s = await setup(t);
+	const r = await check(s, "--http", "https://get.coffer.party");
+	assert.equal(r.code, 2);
+	assert.match(r.stderr, /--http must be http:\/\//);
+});
+
 test("a correct upload passes every check, and the output file holds the same lines", async (t) => {
 	const s = await setup(t);
 	const r = await check(s);

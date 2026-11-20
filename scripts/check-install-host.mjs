@@ -2,6 +2,7 @@
 // Checks the install host against Wyatt's upload folder (phase 09, spec change 58; docs/install-host.md).
 //
 //   node scripts/check-install-host.mjs --base https://get.coffer.party --folder <upload folder> [--out <file>] [--repo <dir>]
+//   [--http <http://address>]   (tests only: where the http side is; by default http://<the base's host>)
 //
 // Read-only: GET requests to --base, nothing else. One PASS, FAIL or WARN line per check; exit 1 on any FAIL, 2 on bad
 // arguments. Lines also go to --out (default ~/xmr-pay-dev-data/install-host-check-output.txt).
@@ -14,6 +15,8 @@
 //    404 with 404.html (not Pages' single-page-app fallback; 404.html itself isn't fetched by name, since Pages redirects
 //    .html paths, and no other .html file may be uploaded); install.sh and the newest binaries also download with
 //    `wget --max-redirect=0` (install.sh's wget path) and `curl -fsSL --proto =<scheme> --max-redirs 0`.
+//    Plain http (Cloudflare's Always Use HTTPS, Wyatt 2026-11-20): every path answers exactly 301 to the same path at
+//    the https base, and nothing else (no file served, no other status, no other target).
 // 3. The repo: a WARN for every tracked file that mentions a *.pages.dev address (the install URL is get.coffer.party).
 import { execFile } from "node:child_process";
 import { createHash, randomBytes } from "node:crypto";
@@ -28,7 +31,7 @@ const VERSION = /^(\d+)\.(\d+)\.(\d+)$/;
 const SELF = ["scripts/check-install-host.mjs", "scripts/check-install-host.test.mjs"];
 
 function usage(msg) {
-	process.stderr.write(`check-install-host: ${msg}\nusage: node scripts/check-install-host.mjs --base https://<host> --folder <upload folder> [--out <file>] [--repo <dir>]\n`);
+	process.stderr.write(`check-install-host: ${msg}\nusage: node scripts/check-install-host.mjs --base https://<host> --folder <upload folder> [--out <file>] [--repo <dir>] [--http <http://address>]\n`);
 	process.exit(2);
 }
 
@@ -36,7 +39,7 @@ const args = { out: join(homedir(), "xmr-pay-dev-data", "install-host-check-outp
 for (let i = 2; i < process.argv.length; i += 2) {
 	const k = process.argv[i];
 	const v = process.argv[i + 1];
-	if (!["--base", "--folder", "--out", "--repo"].includes(k) || v === undefined) usage(`unknown or incomplete argument ${k}`);
+	if (!["--base", "--folder", "--out", "--repo", "--http"].includes(k) || v === undefined) usage(`unknown or incomplete argument ${k}`);
 	args[k.slice(2)] = v;
 }
 if (!args.base || !args.folder) usage("--base and --folder are required");
@@ -44,6 +47,11 @@ if (!/^https:\/\/[A-Za-z0-9.-]+(:\d{1,5})?$/.test(args.base) && !/^http:\/\/(127
 	usage("--base must be https://<host> (http only on loopback, for tests), with no path or trailing slash");
 }
 const base = args.base;
+if (args.http !== undefined && !/^http:\/\/([A-Za-z0-9.-]+|\[::1\])(:\d{1,5})?$/.test(args.http)) {
+	usage("--http must be http://<host>[:<port>], with no path or trailing slash");
+}
+// The http side: by default the base's own host on port 80. A loopback base (tests) has none unless --http names one.
+const httpBase = args.http ?? (base.startsWith("https://") ? `http://${new URL(base).hostname}` : undefined);
 const scheme = base.slice(0, base.indexOf(":"));
 const folder = resolve(args.folder);
 if (!existsSync(folder) || !statSync(folder).isDirectory()) usage(`no folder ${folder}`);
@@ -194,6 +202,22 @@ for (const p of [`${randomBytes(6).toString("hex")}-not-here`, ...(newest ? [`${
 	const r = await get("");
 	if (r.status === 404) say("PASS", "the root / is a 404 (no index page)");
 	else say("WARN", `the root / answers HTTP ${r.status}${r.location ? `, Location: ${r.location}` : ""}`);
+}
+if (httpBase) {
+	for (const p of ["", `${randomBytes(6).toString("hex")}-not-here`, ...new Set([...all, ...listedHash.keys()])]) {
+		const want = `${base}/${p}`;
+		let r;
+		try {
+			const res = await fetch(`${httpBase}/${p}`, { redirect: "manual", signal: AbortSignal.timeout(60_000) });
+			await res.arrayBuffer();
+			r = { status: res.status, location: res.headers.get("location") };
+		} catch (e) {
+			r = { status: 0, error: e.cause?.code ?? e.message };
+		}
+		if (r.status === 301 && r.location === want) say("PASS", `http:// /${p} -> 301 ${want}`);
+		else if (r.status === 0) say("FAIL", `http:// /${p}: no answer (${r.error})`);
+		else say("FAIL", `http:// /${p}: HTTP ${r.status}${r.location ? `, Location: ${r.location}` : ""} (want 301 to ${want})`);
+	}
 }
 const tools = ["install.sh", ...(newest ? [`${newest}/xmr-bridge-${newest}-linux-amd64`, `${newest}/xmr-bridge-${newest}-linux-arm64`] : [])].filter(has);
 const tmp = mkdtempSync(join(tmpdir(), "check-install-host-"));

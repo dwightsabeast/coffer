@@ -87,6 +87,7 @@ It sends only GET requests to the host and writes `~/xmr-pay-dev-data/install-ho
   - Every file, and every file `versions.json` lists for any version, is served with HTTP 200 and no redirect. Its bytes must match `versions.json`, or the folder for files it doesn't list.
   - A missing file gets a 404 with `404.html`. `404.html` itself isn't fetched by name, because Pages redirects it.
   - `install.sh` and the newest binaries also download with `wget --max-redirect=0` and with `curl --max-redirs 0`.
+  - Plain http (Always Use HTTPS, on since 2026-11-20): every path, the root and a missing file included, answers exactly 301 to the same path on https. A served file, another status or another target fails.
 - **The repo:** a WARN for any tracked file that mentions a `*.pages.dev` address.
 
 Tests: `node --test scripts/check-install-host.test.mjs`, against a local server that plays the host.

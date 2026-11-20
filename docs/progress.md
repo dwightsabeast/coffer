@@ -6085,3 +6085,5 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 **Open for Wyatt:** spec change 59 item 4 (the update guard); why the box went down.
 
 **Next step:** step 2 (build and sign), once the release key's public half exists.
+
+**Pushed** (Wyatt's go-ahead): `de12b35` to `df01526`, seven commits. That's the five approved plus the two answering his closing questions. **CI on `df01526`:** run 44825366892 passed. All three jobs succeeded: plugin, bridge (the race-detector tests included) and theme, with the dependency scans. Bundle: `coffer-release-1-20261120-df01526.bundle`, SHA-256 `88e5c267fe6f92c6a190019031aa77310ae81c9b48cf978b4994f312e3272a80`. This note is a local commit, not pushed.

@@ -6143,3 +6143,38 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 **Next step:**
 - Wyatt: approve the push of these commits (and `d9a9172`, the CI note), and rule on the retention proposal.
 - Then step 2 (build and sign), once the release key's public half exists.
+
+## 2026-11-20 · Phase 09 · Pushed exactly the three; CI green; the retention pass freed 2.6 GB
+
+**Wyatt:** push exactly `d9a9172`, `6c46aee` and `56168ff`; the retention rule approved; the thin-volume note for setup-friction.
+
+**Pushed:** `df01526..56168ff`, checked first to be exactly those three (`git push origin 56168ff:release-1`). **CI on `56168ff`:** run 44831170030 passed. All three jobs succeeded: plugin, theme and bridge, the race-detector tests included, with the dependency scans.
+
+**Retention pass** (the list: `~/xmr-pay-dev-data/retention-deleted-20261120.txt`):
+- Deleted all 64 approved candidates from `retention-candidates-20261120.txt`:
+  - 32 old `before-restore` copies and 5 setup-test copies;
+  - 1 red-team backup and 24 old bundles;
+  - `go1.27.3/` (the Go in use is `/usr/local/go`, 1.27.4);
+  - the zero-filled `redteam/h1-2026-11-20T192249407Z.txt` (the outage note above names it; its numbers are in `emdash150-timing-before.txt`).
+- Then `pnpm store prune` (17 packages, 251 files, 346 MB) and `npm cache clean --force` (`npm cache verify`: 0 entries).
+- **Freed:**
+
+  | Area | Freed |
+  | --- | --- |
+  | `~/xmr-pay-dev-data` | 667.0 MB |
+  | `~/.npm` | 1,588.4 MB |
+  | pnpm store | 331.3 MB |
+  | pnpm cache | 86.6 MB |
+  | **The filesystem** | **2,629.5 MB** (19.7 GB used to 17.1 GB, 21% to 19%) |
+
+- **Kept:** `baseline/` 52 files, 33 red-team backups, 23 bundles. The newest bundle still verifies.
+- After the prune: plugin and theme typechecks pass, and the dev site's `emdash` is still 1.5.0.
+- On a thin volume, the host pool gets the space back only after a trim on the host (Wyatt's).
+
+**Setup-friction:**
+- The thin-volume note: the box's own disk check can't see the host pool; the host-side check is `lvs` Data%, Wyatt's to watch.
+- The retention rule as approved.
+
+**Commits:** this entry and the setup-friction note are one local commit, not pushed.
+
+**Next step:** step 2 (build and sign), once the release key's public half exists.

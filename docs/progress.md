@@ -6230,3 +6230,18 @@ The two keys are different.
 3. `govulncheck -mode binary`;
 4. `release.json`, which Wyatt signs offline with key 1;
 5. the GitHub release page with both fingerprints.
+
+## 2026-11-23 · Phase 09, step 2 · Pushed exactly the two; CI green on `761793d`; bundle
+
+**Pushed:** `56168ff..761793d` (`git push origin 761793d:release-1`). I checked first that `origin/release-1..HEAD` was exactly `a251735` and `761793d`, as Wyatt approved.
+
+**CI on `761793d`:** run 45271713478 passed. Every job succeeded: plugin, theme and bridge, the race-detector tests included (`~/xmr-pay-dev-data/ci-761793d.txt`).
+
+**Bundle** (made after `761793d`; a bundle can't hold its own hash):
+- `~/xmr-pay-dev-data/bundles/coffer-release-1-2026-11-23-761793d.bundle`, 2,362,039 bytes;
+- SHA-256 `e97d9b015c82a251e7f955933c320fd641705abdec77b12a5bb8151a7283fed6`;
+- `git bundle verify`: okay, head `761793d`, complete history.
+
+**Commits:** this entry is one local commit, not pushed.
+
+**Next step:** step 2 continues with the CI release build for both CPUs, with provenance. Then Wyatt's rebuild and hash match, `govulncheck -mode binary`, and `release.json` for Wyatt to sign offline with key 1.

@@ -107,7 +107,25 @@ The install command does three things you can do yourself: download the program,
 
    **Check:** it prints the file's name and `OK`.
 
-3. **Check the release's signature (optional).** The install command checks the checksum only, so it trusts the place it downloaded from. The signature ties `release.json`, and the checksums inside it, to Coffer's release key. The public key is `coffer-release.pub.pem` at the release address. Download it into the same folder, and compare its fingerprint with the one on Coffer's release page on GitHub: a key from the same place as the download proves nothing by itself. Then run these one at a time:
+3. **Check the release's signature (optional).** The install command checks the checksum only, so it trusts the place it downloaded from. The signature ties `release.json`, and the checksums inside it, to Coffer's release key. The public key is `coffer-release.pub.pem` at the release address. Download it into the same folder, and compare its fingerprint with the one on Coffer's release page on GitHub: a key from the same place as the download proves nothing by itself. To see the fingerprint:
+
+   ```sh
+   openssl pkey -pubin -in coffer-release.pub.pem -outform DER | sha256sum
+   ```
+
+   **Check:** it prints the fingerprint of release key 1:
+
+   ```text
+   531183cd4dea6af723656e2196aa6826a7d2c3dc0d9877bfb92b7887e16c3192
+   ```
+
+   Coffer has a second release key, used only if key 1 is lost: `coffer-release-next.pub.pem`, in the `installer` folder of Coffer's repository on GitHub. Its fingerprint:
+
+   ```text
+   392a98064028199f53223cb8c7fe22d318ea3182661c316279778778239c27fa
+   ```
+
+   Releases are signed with key 1. Use key 2 in its place only if the GitHub release page says the release is signed with key 2. Then run these one at a time:
 
    ```sh
    { printf 'xmr-bridge-release-v1\n'; cat release.json; } > release.message

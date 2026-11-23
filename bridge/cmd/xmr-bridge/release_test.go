@@ -8,6 +8,13 @@ import (
 	"testing"
 )
 
+// The pins Wyatt confirmed on 2026-11-23 (base64 of each release key's 32 raw bytes; docs/release-key.md). Kept
+// here as literals, apart from release_release.go, so the test doesn't check the code against itself.
+const (
+	releasePin1 = "7XWKYjyY4eqgnqBZr2Pijp+sQeUhojuOtX/QK1D2kS0="
+	releasePin2 = "zjnFM+HXXikCTnB+/7urbd2XSUPpJBwph8Q6culnp0I="
+)
+
 // A release build must not contain the dev public key or the dev release address, even when the dev values are
 // passed to the linker (a normal build has nowhere to put them). A devrelease build with the same values must
 // contain both: the control that shows the check would notice.
@@ -41,6 +48,16 @@ func TestReleaseBuildHasNoDevValues(t *testing.T) {
 	}
 	if !bytes.Contains(dev, []byte(key)) || !bytes.Contains(dev, []byte(url)) {
 		t.Fatal("control failed: the devrelease build should contain both values")
+	}
+	// Release keys 1 and 2 are in the linked release binary, and not in the devrelease one (which pins only the
+	// dev key set at build time).
+	for _, pin := range []string{releasePin1, releasePin2} {
+		if !bytes.Contains(release, []byte(pin)) {
+			t.Fatalf("the release build doesn't pin %s", pin)
+		}
+		if bytes.Contains(dev, []byte(pin)) {
+			t.Fatalf("the devrelease build contains release pin %s", pin)
+		}
 	}
 	// Spec change 58: the linked release binary polls get.coffer.party, and the placeholder host is gone.
 	if bytes.Contains(release, []byte("REPLACE-RELEASE-HOST")) || bytes.Contains(release, []byte(".pages.dev")) {

@@ -6178,3 +6178,55 @@ A failing result hasn't been seen on a GitHub runner. No throwaway pull request 
 **Commits:** this entry and the setup-friction note are one local commit, not pushed.
 
 **Next step:** step 2 (build and sign), once the release key's public half exists.
+
+## 2026-11-23 · Phase 09, step 2 · Release keys 1 and 2 pinned; public keys in `installer/`; fingerprints in install.md
+
+**Wyatt:**
+- Made release keys 1 and 2 offline. Only the public halves came back, to `~/xmr-pay-dev-data/release-key/`.
+- Confirmed both fingerprints against his paper copies.
+- Declined the signing and check scripts. Asked for one commit with the light update to `docs/release-key.md`, then a push of `a251735` and this commit.
+
+**The section 3 checks** (`docs/release-key.md`), on each file. The folder held only the two `.pub.pem` files, with no `PRIVATE` marker. Each file:
+- opens as a public key, and fails as a private key;
+- is Ed25519, with a 44-byte DER form;
+- is none of RFC 8032 test keys 1–3.
+
+The two keys are different.
+
+| Key | DER SHA-256 fingerprint | Pin |
+| --- | --- | --- |
+| 1, `coffer-release.pub.pem` | `531183cd4dea6af723656e2196aa6826a7d2c3dc0d9877bfb92b7887e16c3192` | `7XWKYjyY4eqgnqBZr2Pijp+sQeUhojuOtX/QK1D2kS0=` |
+| 2, `coffer-release-next.pub.pem` | `392a98064028199f53223cb8c7fe22d318ea3182661c316279778778239c27fa` | `zjnFM+HXXikCTnB+/7urbd2XSUPpJBwph8Q6culnp0I=` |
+
+**Built (tests first, red, then green):**
+- `TestReleaseKeysPinned` (`[T16][T32]`) in `release_release_test.go`:
+  - `releaseKeys()` returns exactly keys 1 and 2, in that order, and they differ;
+  - each equals the key in its committed `installer/*.pem`;
+  - each file's fingerprint is hard-coded as Wyatt confirmed it;
+  - neither key is an RFC 8032 test key.
+  - It was red with "releaseKeys() has 0 keys, want 2".
+- `TestReleaseBuildHasNoDevValues`: the linked release binary holds both pins, and the `devrelease` binary holds neither. It was red with "the release build doesn't pin 7XWK…".
+- `release_release.go`: two base64 constants, with a comment giving each key's file and fingerprint. A pin that doesn't decode to 32 bytes panics.
+- The PEMs were copied byte for byte (SHA-256 compared with the sources). `.gitignore` ignores `*.pem` (the secrets guard), so the two files were added with `git add -f` by exact path; the guard is unchanged.
+- `docs/install.md`, "Doing it by hand" step 3: the fingerprint command and both fingerprints. Key 2's file is in the repository's `installer` folder, used only if the release page says so.
+- Matrix: T16 and T32 name the new test.
+- `docs/release-key.md`: committed with the light update, and its Debian Live line now says Wyatt made the keys there (the diff is in `~/xmr-pay-dev-data/release-key-md.diff`).
+
+**Tests** (`~/xmr-pay-dev-data/keypin-bridge-tests.txt`, go1.27.4):
+- gofmt clean; `go vet ./...` and `go vet -tags devrelease ./cmd/xmr-bridge/` clean.
+- `go test ./...`: 21 packages ok.
+- `-race` on `./cmd/xmr-bridge/` ok.
+- The static release build holds each pin once.
+- Mutation checks:
+  - keys swapped in `releaseKeys()`: fails ("pinned key 1 isn't installer/coffer-release.pub.pem");
+  - one character of key 2 changed: fails.
+- `node --test scripts/repo-name.test.mjs` passes. Plugin and theme are untouched and weren't run.
+
+**Not covered:** no release has been signed with either key. 1.0.0's `release.json` gets the OpenSSL check and the `VerifyManifest` check on its real files.
+
+**Next step:** step 2 continues:
+1. the CI release build for both CPUs, with provenance;
+2. Wyatt's rebuild and hash match;
+3. `govulncheck -mode binary`;
+4. `release.json`, which Wyatt signs offline with key 1;
+5. the GitHub release page with both fingerprints.

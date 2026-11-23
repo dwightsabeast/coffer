@@ -2116,3 +2116,50 @@ Proposal:
    - **Approved for release 1, narrowed (Wyatt, 2026-11-20):** 502, 503 and 504 count as unreachable, and unreachable time pauses the update guard's clock instead of counting toward the 10 minutes. 500 and every 4xx still count as the site refusing, so a broken update that crashes the plugin's handler still rolls back. The `xmr-bridge status` hint for `STORAGE_INDEXES_NOT_READY` is added. **Built the same day, tests first** (matrix R14). One addition, mine: the wallet rule keeps the real clock, so a bridge whose wallet never opens still rolls back at 10 minutes even while the site is down.
 Effect on the admin budget: none for a new install. An existing site on 1.4.0 follows EmDash's own upgrade steps.
 Effect on the trust contract: none.
+
+## 60. The admin copy refreshes itself from the release the service verified, through a root-owned timer  (status: accepted, 2026-11-23, Wyatt: fix before 1.0.0, mechanism approved with four changes)
+Found in: the open self-update admin-copy question (phase 07b, live evidence 2026-11-02, `docs/progress.md`); ruled before 1.0.0's release build.
+Spec says:
+- Bridge service, updates: the service updates its own binary in the data folder, signed with the pinned release key.
+- The installer puts a root-owned copy at `/usr/local/bin/xmr-bridge` for `status`, `pair` and `uninstall`, so root never runs a file the service account can write.
+- The spec says nothing about updating that copy.
+
+Evidence:
+- A self-update replaces only `/var/lib/xmr-bridge/bin/xmr-bridge`. The admin copy stays at the installed version (the dev box's stayed at `0.0.202610082327-dev.0d66a34` through every self-update, 2026-11-02).
+- Today the only refresh is re-running the installer, which needs a new pairing code.
+- `selfupdate.PrepareBridge` verifies `release.json`, its signature and the binary in memory, and keeps none of it on disk except the binary.
+- **Wyatt's reason for fixing it now:** the refresh has to be in what the first install puts down, or 1.0.0 installs never get it.
+
+Proposal (accepted):
+1. **Two new root-owned units, installed by `install` and removed by `uninstall`:**
+   - `xmr-bridge-refresh.timer`: 15 minutes after boot, then every 6 hours, with a random delay of up to 30 minutes, `Persistent=true`.
+   - `xmr-bridge-refresh.service`: a oneshot, run as root, of `/usr/local/bin/xmr-bridge refresh-admin`. It takes no config: `/etc/xmr-bridge/config` is chowned to the service user, so root uses only the fixed install layout (found while building, 2026-11-23).
+   - Its hardening: `PrivateNetwork=yes`, `ProtectSystem=strict` with `ReadWritePaths=/usr/local/bin /etc/xmr-bridge`, `ReadOnlyPaths=/var/lib/xmr-bridge`, `CapabilityBoundingSet=CAP_DAC_READ_SEARCH`, `PrivateDevices=yes`, `TimeoutStartSec=2min`, and the main unit's other protections.
+2. **The service keeps what it verified.** When it swaps in a bridge update, it also writes the exact verified `release.json` and `.sig` bytes as `bin/release.json` and `bin/release.json.sig`.
+3. **`refresh-admin`** (also run by hand as `sudo xmr-bridge refresh-admin`). Each step refuses and changes nothing on failure:
+   1. **Reading the three files:** it reads `bin/release.json`, `bin/release.json.sig` and `bin/xmr-bridge` once each into memory, with size caps.
+      - The path is walked from `/` one component at a time: folders with `O_NOFOLLOW|O_DIRECTORY`, the file with `O_NOFOLLOW|O_NONBLOCK`.
+      - Every fd must be on the data folder's filesystem.
+      - The file must be a regular file before anything is read.
+      - This matches `openat2`'s `RESOLVE_NO_SYMLINKS|RESOLVE_NO_MAGICLINKS|RESOLVE_NO_XDEV`, with the standard library only and on any kernel. A FIFO can't block the open (Wyatt's changes 1 and 2).
+   2. **The signature:** it checks the signature with the admin copy's own `releaseKeys()`.
+   3. **The version:** lower than its own is refused; equal does nothing.
+   4. **The binary:** the bytes in memory must match the signed entry for this CPU, in size and SHA-256.
+   5. **Readiness:** a pending update, or the version on the service's refused list, stops the refresh. These files can only stop a refresh, never start one.
+   6. **The swap, each write a temp file with `fsync` and `rename`, then `fsync` of the folder:**
+      1. the verified release goes to `/etc/xmr-bridge/admin-release.json` and its `.sig`;
+      2. the verified bytes replace `/usr/local/bin/xmr-bridge`;
+      3. the new hash replaces `admin-binary.sha256`.
+      - `ownAdminCopy` also accepts a binary matching this CPU's entry in a validly signed `admin-release.json`. So a crash between steps never leaves a copy that `uninstall` refuses.
+      - The next refresh rewrites a hash file that doesn't match (Wyatt's change 3).
+4. **`status`** prints this copy's version and the service's, and when the service is newer, how to refresh now. The service's version comes from a new `version` field in its status file, for display only. (`pair` doesn't print this line; `status` is where an admin looks.)
+5. **Installing again** removes the releases kept by earlier self-updates and refreshes (`bin/release.json`, `admin-release.json` and their signatures), since it replaces both binaries.
+
+Why a timer:
+- It needs no admin action (the admin budget).
+- Root's schedule decides when it runs, not the service's writes, as a path unit's would.
+- It needs no network: no root HTTPS client and no new host.
+
+Effect on the trust contract: none (bridge and installer only).
+Effect on the admin budget: none. The units come with the one install command, and nothing needs upkeep.
+Matrix: T33 (tampered binary), T34 (bad signature), T35 (older version), T36 (a file swapped after the check, path tricks, FIFOs, a crash between swap steps).

@@ -103,6 +103,8 @@ type Options struct {
 	Now     func() time.Time
 	// Extra is merged into the status file (wallet-rpc's state).
 	Extra func() any
+	// Version is written into the status file (spec change 60).
+	Version string
 	// CrossCheck, when set, adjusts confirmations of mined transfers (spec change 13).
 	CrossCheck CrossChecker
 	// Updates, when set, describes the update state for the status file.
@@ -144,7 +146,10 @@ type Status struct {
 	UnreachableSince time.Time     `json:"unreachableSince,omitzero"`
 	UnreachableTotal time.Duration `json:"unreachableTotal,omitempty"`
 	Updates          string        `json:"updates,omitempty"`
-	WalletRPC        any           `json:"walletRpc,omitempty"`
+	// Version is the running bridge's version, for the admin copy's status line only (spec change 60): root never
+	// decides anything from it.
+	Version   string `json:"version,omitempty"`
+	WalletRPC any    `json:"walletRpc,omitempty"`
 	// CatchUp is set while the wallet is being caught up to the site's pool (spec change 15).
 	CatchUp *CatchUp `json:"catchUp,omitempty"`
 	// PoolCheck is the last check of the site's pool against this wallet (spec change 46); nil until one.
@@ -1479,6 +1484,7 @@ func (l *Loop) writeStatus() {
 	if l.o.Updates != nil {
 		st.Updates = l.o.Updates()
 	}
+	st.Version = l.o.Version
 	data, _ := json.MarshalIndent(st, "", "  ")
 	if err := writeAtomic(filepath.Join(l.runDir(), "status.json"), append(data, '\n')); err != nil {
 		l.o.Log.Error("writing status", "err", err)

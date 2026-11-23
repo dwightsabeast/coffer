@@ -89,6 +89,7 @@ func defaultStartBridge(ctx context.Context, cfg config.Config, log *slog.Logger
 	loop, err := bridgeloop.New(bridgeloop.Options{
 		CrossCheck: cc,
 		Updates:    func() string { return r.updateText.get() },
+		Version:    version,
 		Wallet:     func(ctx context.Context) (bridgeloop.Wallet, error) { return sup.WaitReady(ctx) },
 		Site:       siteClient(cfg),
 		LoadKey: func() (ed25519.PrivateKey, error) {

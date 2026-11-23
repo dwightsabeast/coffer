@@ -28,6 +28,13 @@ const (
 	walletRPCRuns = 3                // or not fail this many times
 )
 
+// The size caps on release.json, its signature and a binary, shared with adminrefresh (spec change 60).
+const (
+	MaxManifest  = maxManifest
+	MaxSignature = maxSignature
+	MaxBinary    = maxBinary
+)
+
 // MoneroSource finds and installs Monero's wallet-rpc (*monerodl.Fetcher).
 type MoneroSource interface {
 	Latest(ctx context.Context) (monerodl.Release, error)
@@ -93,6 +100,9 @@ type Prepared struct {
 	Version  string
 	Previous string
 	staged   string // bin/xmr-bridge.new, or the wallet-rpc staging folder
+	// manifest and sig are the bridge release's exact verified bytes, kept as bin/release.json and bin/release.json.sig
+	// when the update is applied (spec change 60: the admin copy checks the same release itself).
+	manifest, sig []byte
 }
 
 // PrepareBridge checks for a newer signed bridge release that has waited out the delay and isn't refused; it
@@ -153,7 +163,7 @@ func (u *Updater) PrepareBridge(ctx context.Context) (*Prepared, error) {
 	if err := os.Rename(tmp.Name(), u.bin(bridgeName+".new")); err != nil {
 		return nil, err
 	}
-	return &Prepared{Kind: KindBridge, Version: man.Version, Previous: u.Current, staged: u.bin(bridgeName + ".new")}, nil
+	return &Prepared{Kind: KindBridge, Version: man.Version, Previous: u.Current, staged: u.bin(bridgeName + ".new"), manifest: m, sig: sig}, nil
 }
 
 // PrepareWalletRPC checks Monero's release (verified by monerodl) for a version newer than installed that has
@@ -194,6 +204,16 @@ func (p *Prepared) Apply(f Files, now time.Time) error {
 		if err := os.Rename(p.staged, bin(bridgeName)); err != nil {
 			os.Rename(bin(bridgeName+".prev"), bin(bridgeName))
 			return err
+		}
+		// After the binary: a crash before these leaves the previous release.json, which doesn't match the new binary,
+		// so the admin copy's refresh refuses it (spec change 60). Never the other way round.
+		if p.manifest != nil {
+			if err := writeAtomic(bin("release.json"), p.manifest); err != nil {
+				return err
+			}
+			if err := writeAtomic(bin("release.json.sig"), p.sig); err != nil {
+				return err
+			}
 		}
 	case KindWalletRPC:
 		backup := filepath.Join(f.DataDir, "wallet", "backup")
@@ -239,6 +259,27 @@ func Rollback(f Files, p Pending) error {
 	errs = append(errs, f.Refuse(p.Kind, p.Version))
 	f.ClearPending()
 	return errors.Join(errs...)
+}
+
+// writeAtomic replaces path with data (mode 600) through a temp file in the same folder.
+func writeAtomic(path string, data []byte) error {
+	tmp, err := os.CreateTemp(filepath.Dir(path), ".tmp-*")
+	if err != nil {
+		return err
+	}
+	defer os.Remove(tmp.Name())
+	if _, err := tmp.Write(data); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		return err
+	}
+	return os.Rename(tmp.Name(), path)
 }
 
 func copyFile(from, to string) error {

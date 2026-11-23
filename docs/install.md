@@ -157,6 +157,8 @@ The install command does three things you can do yourself: download the program,
 
 After the first install, the wallet host checks every update's signature itself before installing it, waits 48 hours after a release, and never installs an older version.
 
+The `xmr-bridge` command you run with `sudo` catches up within 6 hours after an update, from the release the wallet host already checked; it checks that release's signature again itself first. `status` shows both versions.
+
 ## Looking after it
 
 There is nothing to do regularly. Two commands tell you what's going on, both on the wallet host.
@@ -185,7 +187,7 @@ sudo cat /var/lib/xmr-bridge/log/install.log
   sudo xmr-bridge uninstall
   ```
 
-  Add `--delete-data` to also delete the view-only wallet, the wallet host's key and its settings. Your shop wallet and its funds are never on the wallet host.
+  This also removes the 6-hourly catch-up of the `xmr-bridge` command. Add `--delete-data` to also delete the view-only wallet, the wallet host's key and its settings. Your shop wallet and its funds are never on the wallet host.
 
 ## What Coffer can and can't do with your money
 

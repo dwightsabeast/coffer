@@ -531,7 +531,7 @@ func TestUninstall(t *testing.T) {
 		t.Fatal(err)
 	}
 	var out strings.Builder
-	if err := Uninstall(opts.Paths, false, sys, &out); err != nil {
+	if err := Uninstall(opts.Paths, nil, false, sys, &out); err != nil {
 		t.Fatal(err)
 	}
 	p := opts.Paths
@@ -552,7 +552,7 @@ func TestUninstall(t *testing.T) {
 	}
 
 	out.Reset()
-	if err := Uninstall(opts.Paths, true, sys, &out); err != nil {
+	if err := Uninstall(opts.Paths, nil, true, sys, &out); err != nil {
 		t.Fatal(err)
 	}
 	for _, path := range []string{p.DataDir(), p.EtcDir()} {
@@ -586,7 +586,7 @@ func TestUninstallLeavesAChangedAdminCopy(t *testing.T) {
 	}
 	os.WriteFile(opts.Paths.Link(), []byte("replaced by someone"), 0o755)
 	var out strings.Builder
-	if err := Uninstall(opts.Paths, false, sys, &out); err != nil {
+	if err := Uninstall(opts.Paths, nil, false, sys, &out); err != nil {
 		t.Fatal(err)
 	}
 	if b, _ := os.ReadFile(opts.Paths.Link()); string(b) != "replaced by someone" {
@@ -602,7 +602,7 @@ func TestUninstallChecksStateFormat(t *testing.T) {
 	}
 	os.WriteFile(filepath.Join(opts.Paths.DataDir(), "run", "update-state.json"), []byte(`{"format":99}`), 0o600)
 	var out strings.Builder
-	err := Uninstall(opts.Paths, false, sys, &out)
+	err := Uninstall(opts.Paths, nil, false, sys, &out)
 	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "re-run the installer") {
 		t.Fatalf("got %v", err)
 	}

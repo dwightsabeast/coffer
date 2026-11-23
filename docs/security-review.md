@@ -392,3 +392,19 @@ From `df01526` to this commit.
 | **`selfupdate.Decide`**: the refusal rule needs 10 minutes of reachable time; the wallet rule keeps the real clock | `TestDecide` (unchanged cases), `TestDecideR14`, `TestR14UpdateGuard` against the loop; two mutation checks | A bridge update can't be rolled back and refused because of 502, 503 or 504. A 500 or a 4xx window still rolls it back, and a wallet that never opens still does at 10 minutes. Downgrade and signature checks are untouched (T16, T26) |
 | **`cmd/xmr-bridge` `updateHealth`** | `TestUpdateHealthR14` | `watchPending` passes the unreachable time, an ongoing outage included |
 
+
+### The admin copy's refresh (2026-11-23, spec change 60)
+
+From `7c19338` to this commit. A new root code path: it gets the same scrutiny as the installer.
+
+| Change | Checked | Result |
+| --- | --- | --- |
+| **`internal/adminrefresh`**: `refresh-admin`, run as root, replaces `/usr/local/bin/xmr-bridge` with the release the service verified | T33–T36 tests (red first); three mutation checks: no version check, re-reading the binary after the check, plain `os.ReadFile` | **Root acts only on bytes it read once and verified itself,** against the copy's compiled-in keys, never a key from a file. **The path is walked component by component** with `O_NOFOLLOW`, every fd stays on the data folder's filesystem, and the file is opened `O_NONBLOCK` and `fstat`ed as a regular file before any read. **A swap after the check changes nothing:** the installed bytes are the verified ones from memory. Each mutation fails its tests. With `os.ReadFile`, the FIFO cases hang until their 5 s limit |
+| **The service's files** (`run/update-pending`, `run/refused`, `run/status.json`) | T35 tests | They can only stop a refresh, never start one. The status file's new `version` field is display only |
+| **`/etc/xmr-bridge/config`** | Read from `install.go`: it's chowned to the service user | **Found while building: root must not trust it,** so `refresh-admin` takes no config and uses the fixed install layout. `TestRefreshAdminNeedsRoot` refuses `--config` |
+| **The swap order** (kept release, then binary, then hash file; temp file, `fsync`, `rename`, folder `fsync` each) | `[T36] crash between swap steps`, in `adminrefresh` and `installer` | After a crash at either step, `uninstall` still recognizes the copy (`Recognized`: the recorded hash, or this CPU's file of a kept release signed with a pinned key). The next run refreshes or repairs. A kept release signed by a key the copy doesn't pin isn't used (mutation check) |
+| **The units** (`xmr-bridge-refresh.service`, `.timer`) | `TestRefreshUnits` | Root, but `PrivateNetwork=yes`, `ProtectSystem=strict` with only `/usr/local/bin` and `/etc/xmr-bridge` writable, the data folder read-only, `CapabilityBoundingSet=CAP_DAC_READ_SEARCH`, `PrivateDevices=yes`, `TimeoutStartSec=2min`, the main unit's syscall filter. Root's schedule (every 6 h), never the service's |
+| **`selfupdate.Apply`** keeps the verified `release.json` and `.sig` | `TestBridgeUpdateKeepsVerifiedRelease`: the host changes its files after the check, and the kept bytes are still the verified ones | Written after the binary, so a crash between leaves a mismatch the refresh refuses |
+| **`install`** drops releases kept by earlier updates and refreshes; **`uninstall`** stops and removes the timer and service | `TestInstallDropsKeptReleases` (mutation check), `TestInstallSetsUpRefresh` | As intended |
+
+**Not covered yet:** the live check on `coffer-test`: a dev 1.0.0 install, a self-update to 1.0.1, the refresh, and a refusal on the real system.

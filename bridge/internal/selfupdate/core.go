@@ -180,6 +180,12 @@ func (f Files) Pending() (Pending, bool) {
 	if err != nil {
 		return Pending{}, false
 	}
+	return ParsePending(raw)
+}
+
+// ParsePending reads an update-pending file's bytes, for a reader that opens the file itself (adminrefresh, which as
+// root must never follow a symlink the service could have put there).
+func ParsePending(raw []byte) (Pending, bool) {
 	var p Pending
 	for _, line := range strings.Split(string(raw), "\n") {
 		k, v, _ := strings.Cut(line, "=")
@@ -228,6 +234,11 @@ func (f Files) Refuse(kind, v string) error {
 // Refused reports whether v is a refused version, or older than one: only a newer version clears a refusal.
 func (f Files) Refused(kind, v string) bool {
 	raw, _ := os.ReadFile(f.path("refused"))
+	return RefusedIn(raw, kind, v)
+}
+
+// RefusedIn is Refused over a refused file's bytes, for a reader that opens the file itself (adminrefresh).
+func RefusedIn(raw []byte, kind, v string) bool {
 	for _, line := range strings.Split(string(raw), "\n") {
 		k, r, ok := strings.Cut(line, "=")
 		if ok && k == kind && !Newer(v, r) {

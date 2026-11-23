@@ -91,6 +91,42 @@ func TestBridgeUpdate(t *testing.T) {
 	}
 }
 
+// Spec change 60: a bridge update keeps the exact release.json and signature it verified next to the binary, so the
+// root-owned admin copy can check the same release itself (adminrefresh).
+func TestBridgeUpdateKeepsVerifiedRelease(t *testing.T) {
+	r := newRelease(t)
+	r.publish("0.2.0", t0.Add(-49*time.Hour), "0.2.0")
+	u, d := updater(t, r, "0.1.0")
+	p, err := u.PrepareBridge(context.Background())
+	if err != nil || p == nil {
+		t.Fatalf("%+v %v", p, err)
+	}
+	// The host changes its files after the check: what's kept is what was verified, not a second download.
+	verified, verifiedSig := r.files["release.json"], r.files["release.json.sig"]
+	r.publish("0.3.0", t0.Add(-49*time.Hour), "0.3.0")
+	if err := p.Apply(Files{DataDir: d}, t0); err != nil {
+		t.Fatal(err)
+	}
+	if read(t, d, "bin/release.json") != string(verified) || read(t, d, "bin/release.json.sig") != string(verifiedSig) {
+		t.Fatal("bin/release.json and its signature aren't the verified bytes")
+	}
+	if _, err := VerifyManifest([]byte(read(t, d, "bin/release.json")), []byte(read(t, d, "bin/release.json.sig")), u.Keys); err != nil {
+		t.Fatalf("the kept release doesn't verify: %v", err)
+	}
+}
+
+func TestParseOnBytes(t *testing.T) {
+	if p, ok := ParsePending([]byte("kind=bridge\nversion=1.0.1\nprevious=1.0.0\nat=1795000000\n")); !ok || p.Version != "1.0.1" {
+		t.Fatalf("%+v %v", p, ok)
+	}
+	if _, ok := ParsePending(nil); ok {
+		t.Fatal("an empty pending file is a pending update")
+	}
+	if !RefusedIn([]byte("bridge=1.0.1\n"), KindBridge, "1.0.0") || RefusedIn([]byte("bridge=1.0.1\n"), KindBridge, "1.0.2") {
+		t.Fatal("RefusedIn")
+	}
+}
+
 func TestBridgeNothingToDo(t *testing.T) {
 	for name, c := range map[string]struct {
 		version, reports, current string

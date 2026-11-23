@@ -29,6 +29,7 @@ const usage = `usage:
   xmr-bridge run --config <file>
   xmr-bridge pair --config <file> --code <one-time code>   (--code - reads it from stdin)
   xmr-bridge status --config <file>
+  xmr-bridge refresh-admin   (as root; run by xmr-bridge-refresh.timer)
   xmr-bridge notify --pid <bridge pid> [txid]   (run by monero-wallet-rpc's --tx-notify)
 `
 
@@ -60,6 +61,8 @@ func realMain(ctx context.Context, args []string, stdout, stderr io.Writer) int 
 		return cmdPair(ctx, args[1:], stdout, stderr)
 	case "status":
 		return cmdStatus(args[1:], stdout, stderr)
+	case "refresh-admin":
+		return cmdRefreshAdmin(args[1:], stdout, stderr)
 	default:
 		fmt.Fprint(stderr, usage)
 		return 2

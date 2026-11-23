@@ -139,6 +139,13 @@ func cmdStatus(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprintf(stdout, "Last sync:  unknown (%v)\n", err)
 		return 1
 	}
+	// Spec change 60: this copy and the service can differ for up to 6 hours after a self-update.
+	if st.Version != "" {
+		fmt.Fprintf(stdout, "Version:    %s (this copy); the service runs %s\n", version, st.Version)
+		if selfupdate.Newer(st.Version, version) {
+			fmt.Fprintln(stdout, "            This copy refreshes itself within 6 hours. To do it now: sudo xmr-bridge refresh-admin")
+		}
+	}
 	now := time.Now()
 	// While the wallet catches up to the site's addresses (spec change 15), the sync loop waits for it: a quiet
 	// status file is expected then, not a sign of a stopped bridge.

@@ -60,7 +60,7 @@ func cmdInstall(ctx context.Context, args []string, stdout, stderr io.Writer) in
 	}
 	defer closeTTY()
 	log := slog.New(slog.NewTextHandler(stderr, &slog.HandlerOptions{Level: slog.LevelWarn}))
-	opts := installer.Options{Paths: installer.Paths{Root: "/"}, Site: *site, Code: pairCode, Node: *node, RestoreHeight: *restore,
+	opts := installer.Options{Paths: installer.Paths{Root: "/"}, Keys: releaseKeys(), Site: *site, Code: pairCode, Node: *node, RestoreHeight: *restore,
 		NoAutoUpdate: *noUpdate, AllowSameMachine: *sameMachine, Exe: exe}
 	if err := installer.Install(ctx, opts, sys, tty, installSteps(log)); err != nil {
 		if errors.Is(err, installer.ErrCancelled) { // the installer has said so on the terminal
@@ -153,7 +153,7 @@ func cmdUninstall(args []string, stdout, stderr io.Writer) int {
 		fmt.Fprint(stderr, usage)
 		return 2
 	}
-	if err := installer.Uninstall(installer.Paths{Root: "/"}, *deleteData, installer.RealSystem(), stdout); err != nil {
+	if err := installer.Uninstall(installer.Paths{Root: "/"}, releaseKeys(), *deleteData, installer.RealSystem(), stdout); err != nil {
 		fmt.Fprintf(stderr, "xmr-bridge: %v\n", err)
 		return 1
 	}

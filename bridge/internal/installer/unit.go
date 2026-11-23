@@ -55,3 +55,63 @@ AmbientCapabilities=
 WantedBy=multi-user.target
 `
 }
+
+// RefreshServiceText is the admin copy's refresh (spec change 60): a oneshot run as root by the timer. Root reads the
+// service's files but never writes them, makes no network request, and can write only its own two folders.
+func RefreshServiceText() string {
+	return `[Unit]
+Description=Refresh the xmr-bridge admin copy from the release the service verified
+Documentation=https://github.com/dwightsabeast/coffer
+
+[Service]
+Type=oneshot
+ExecStart=` + linkPath + ` refresh-admin
+TimeoutStartSec=2min
+UMask=0022
+
+NoNewPrivileges=yes
+PrivateNetwork=yes
+ProtectSystem=strict
+ReadWritePaths=/usr/local/bin ` + etcDir + `
+ReadOnlyPaths=` + dataDir + `
+CapabilityBoundingSet=CAP_DAC_READ_SEARCH
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+RestrictAddressFamilies=AF_UNIX
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallErrorNumber=EPERM
+MemoryDenyWriteExecute=yes
+ProtectProc=invisible
+AmbientCapabilities=
+`
+}
+
+// RefreshTimerText runs the refresh 15 minutes after boot and every 6 hours, on root's schedule only.
+func RefreshTimerText() string {
+	return `[Unit]
+Description=Refresh the xmr-bridge admin copy every 6 hours
+Documentation=https://github.com/dwightsabeast/coffer
+
+[Timer]
+OnBootSec=15min
+OnUnitActiveSec=6h
+RandomizedDelaySec=30min
+Persistent=true
+Unit=` + RefreshServiceName + `
+
+[Install]
+WantedBy=timers.target
+`
+}

@@ -7,6 +7,7 @@ package installer
 
 import (
 	"context"
+	"crypto/ed25519"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -18,10 +19,12 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/dwightsabeast/coffer/bridge/internal/adminrefresh"
 	"github.com/dwightsabeast/coffer/bridge/internal/config"
 	"github.com/dwightsabeast/coffer/bridge/internal/moneroaddr"
 	"github.com/dwightsabeast/coffer/bridge/internal/noderpc"
@@ -76,6 +79,8 @@ type Options struct {
 	NoAutoUpdate     bool
 	AllowSameMachine bool   // development only, stagenet only
 	Exe              string // the running bridge binary
+	// Keys are the running binary's release keys: a refreshed admin copy is recognized through a release they signed.
+	Keys []ed25519.PublicKey
 }
 
 const tries = 3
@@ -266,7 +271,7 @@ func install(ctx context.Context, o Options, sys System, tty Prompter, st Steps,
 	if prevErr == nil && prev.Address != addr {
 		return errors.New("this machine already hosts a wallet for another address. Run xmr-bridge uninstall --delete-data first (it deletes the old view-only wallet)")
 	}
-	if err := checkAdminCopy(p); err != nil {
+	if err := checkAdminCopy(p, o.Keys); err != nil {
 		return err
 	}
 
@@ -307,6 +312,8 @@ func install(ctx context.Context, o Options, sys System, tty Prompter, st Steps,
 	if err := copyBinary(o.Exe, p.Binary()); err != nil {
 		return fmt.Errorf("installing the bridge binary: %w", err)
 	}
+	// The release a self-update kept describes the binary just replaced (spec change 60).
+	removeFiles(filepath.Join(p.BinDir(), "release.json"), filepath.Join(p.BinDir(), "release.json.sig"))
 	if err := os.WriteFile(p.Guard(), []byte(selfupdate.GuardScript), 0o755); err != nil {
 		return fmt.Errorf("installing the update guard: %w", err)
 	}
@@ -331,6 +338,8 @@ func install(ctx context.Context, o Options, sys System, tty Prompter, st Steps,
 	if err := os.WriteFile(p.AdminHash(), []byte(sum+"\n"), 0o644); err != nil {
 		return err
 	}
+	// So is the release a refresh kept for the copy just replaced.
+	removeFiles(p.Refresh().AdminRelease(), p.Refresh().AdminReleaseSig())
 	if err := config.Save(p.Config(), cfg); err != nil {
 		return err
 	}
@@ -410,7 +419,15 @@ func install(ctx context.Context, o Options, sys System, tty Prompter, st Steps,
 	if err := os.WriteFile(p.Unit(), []byte(UnitText()), 0o644); err != nil {
 		return err
 	}
+	for path, text := range map[string]string{p.RefreshService(): RefreshServiceText(), p.RefreshTimer(): RefreshTimerText()} {
+		if err := os.WriteFile(path, []byte(text), 0o644); err != nil {
+			return err
+		}
+	}
 	if err := sys.Systemctl("daemon-reload"); err != nil {
+		return err
+	}
+	if err := sys.Systemctl("enable", "--now", RefreshTimerName); err != nil {
 		return err
 	}
 	if existed {
@@ -582,7 +599,7 @@ func serviceUser(sys System) (int, int, error) {
 
 // ownAdminCopy reports whether the file at the admin copy's place is this installer's: the admin copy it recorded,
 // or the symlink the 3f layout used.
-func ownAdminCopy(p Paths) bool {
+func ownAdminCopy(p Paths, keys []ed25519.PublicKey) bool {
 	fi, err := os.Lstat(p.Link())
 	if err != nil {
 		return false
@@ -591,17 +608,19 @@ func ownAdminCopy(p Paths) bool {
 		t, _ := os.Readlink(p.Link())
 		return t == binaryPath
 	}
-	want, err := os.ReadFile(p.AdminHash())
-	if err != nil || !fi.Mode().IsRegular() {
-		return false
+	// The recorded hash, or (after a crash between the refresh's swap steps) the release kept in /etc (spec change 60).
+	return adminrefresh.Recognized(p.Refresh(), keys, runtime.GOARCH)
+}
+
+func removeFiles(paths ...string) {
+	for _, path := range paths {
+		os.Remove(path)
 	}
-	got, err := fileHash(p.Link())
-	return err == nil && got == strings.TrimSpace(string(want))
 }
 
 // checkAdminCopy refuses to replace a file at the admin copy's place that isn't this installer's.
-func checkAdminCopy(p Paths) error {
-	if _, err := os.Lstat(p.Link()); errors.Is(err, os.ErrNotExist) || ownAdminCopy(p) {
+func checkAdminCopy(p Paths, keys []ed25519.PublicKey) error {
+	if _, err := os.Lstat(p.Link()); errors.Is(err, os.ErrNotExist) || ownAdminCopy(p, keys) {
 		return nil
 	}
 	return fmt.Errorf("%s already exists and isn't this installer's; move it away and run the installer again", p.Link())
@@ -652,20 +671,24 @@ func copyBinary(from, to string) error {
 
 // Uninstall stops and removes the service and the symlink. The data folder (wallet, key) and the config stay unless
 // deleteData is set; then they and the service user go too.
-func Uninstall(p Paths, deleteData bool, sys System, out io.Writer) error {
+func Uninstall(p Paths, keys []ed25519.PublicKey, deleteData bool, sys System, out io.Writer) error {
 	if sys.Euid() != 0 {
 		return errors.New("uninstalling needs root: run it with sudo")
 	}
 	if err := selfupdate.CheckFormat(p.DataDir()); err != nil {
 		return err
 	}
-	sys.Systemctl("disable", "--now", ServiceName) // not loaded is fine
-	if err := os.Remove(p.Unit()); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+	sys.Systemctl("disable", "--now", RefreshTimerName) // not loaded is fine
+	sys.Systemctl("disable", "--now", ServiceName)
+	for _, unit := range []string{p.Unit(), p.RefreshService(), p.RefreshTimer()} {
+		if err := os.Remove(unit); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
 	}
 	sys.Systemctl("daemon-reload")
-	if ownAdminCopy(p) {
+	if ownAdminCopy(p, keys) {
 		os.Remove(p.Link())
+		removeFiles(p.Refresh().AdminRelease(), p.Refresh().AdminReleaseSig())
 	}
 	if !deleteData {
 		fmt.Fprintf(out, "The service is removed. Kept %s (the view-only wallet and the bridge key) and %s.\n", dataDir, etcDir)

@@ -6270,3 +6270,67 @@ The two keys are different.
 - there is no bridge release workflow.
 
 **Next step:** Wyatt's answers on the open blockers and the branch and tag. Then the plan for the CI release build.
+
+## 2026-11-23 · Phase 09 · Part A: the admin copy refreshes itself (spec change 60), built and tested; the live check waits on Wyatt
+
+**Wyatt:**
+- Fix the self-update admin copy before 1.0.0. The refresh has to be in what the first install puts down.
+- He approved the timer mechanism with four changes:
+  - no symlink anywhere on the path, `bin/` included;
+  - FIFOs and devices refused without blocking, plus a `TimeoutStartSec`;
+  - a crash between the swap and the hash file still recognized by `uninstall`;
+  - nested actions in `attest-build-provenance` checked (that is Part C).
+- Second nodes: ship with mainnet https-only (3 nodes, 3 operators) and stagenet on http. That's Part B.
+- Two tags on one ship commit. Build from `release-1`, fast-forward `main`, no merge button.
+- Stop points: I ask before each push; Wyatt creates and pushes the tags; nothing is signed or uploaded until `rebuild-release.sh` is all PASS.
+
+**Confirmed for Wyatt:**
+- The mainnet list has 3 operators: `monerodevs.org`, `cakewallet.com` and `its-a-node.org`.
+- Plugin and bridge are matched by the sync body's protocol version `v` (1), never by the release number. The release number is only in the User-Agent, which the plugin never reads.
+
+**Built (`5f1b784`, tests first):** spec change 60, matrix T33–T36, and the security-review delta "The admin copy's refresh".
+- `internal/adminrefresh` (`refresh-admin`, run as root by the new root-owned `xmr-bridge-refresh.timer`, every 6 h):
+  - it reads `bin/release.json`, its `.sig` and `bin/xmr-bridge` once each into memory;
+  - the path is walked from `/` component by component (`O_NOFOLLOW|O_DIRECTORY`, every fd on the data folder's filesystem); the file is opened `O_NONBLOCK` and `fstat`ed as regular before any read;
+  - it verifies with the copy's own `releaseKeys()`, refuses an older version and a binary that doesn't match, and lets the pending and refused files only stop a refresh;
+  - the swap: the kept release to `/etc`, then the binary, then the hash file, each with temp, `fsync`, `rename` and a folder `fsync`;
+  - `Recognized()` lets `uninstall` accept the copy after a crash between steps, and the next run repairs the hash file.
+- `selfupdate.Apply` keeps the verified `release.json` and `.sig`.
+- **Installer:**
+  - the refresh unit: root, `PrivateNetwork=yes`, `ProtectSystem=strict` writing only `/usr/local/bin` and `/etc/xmr-bridge`, `CAP_DAC_READ_SEARCH` only, `PrivateDevices`, `TimeoutStartSec=2min`;
+  - `install` enables the timer and drops releases kept by earlier updates; `uninstall` removes both units.
+- **Found while building:** `/etc/xmr-bridge/config` is chowned to the service user, so `refresh-admin` takes no config and uses the fixed layout.
+- `status` prints `Version: <this copy> (this copy); the service runs <x>`, with the `refresh-admin` hint when the copy is older. `pair` doesn't print it; `status` is where an admin looks.
+
+**Tests** (`~/xmr-pay-dev-data/adminrefresh-bridge-tests.txt`, go1.27.4):
+- `adminrefresh`: 48 subtests. T33–T36 were red first (the package didn't exist). The T36 cases:
+  - a swap after the check;
+  - `bin/` as a symlink to a valid signed newer release;
+  - the data folder through a symlink, and each of the three files as a symlink;
+  - another filesystem;
+  - a FIFO at four paths, each within 5 s;
+  - a folder, a socket;
+  - a crash after step 1 and after step 2.
+- Mutation checks, each failing as it should:
+  - no version check: 2 T35 subtests fail;
+  - re-reading the binary after the check: T36 fails;
+  - `os.ReadFile`: 6 path subtests fail, and the FIFO cases hang until their 5 s limit;
+  - `install` keeping stale releases fails `TestInstallDropsKeptReleases`;
+  - `uninstall` without keys fails `TestUninstallRecognizesARefreshedCopy`.
+- New tests in `selfupdate`, `installer` and `cmd`: the kept release (red first), the units, install and uninstall, the status versions, root only, and no `--config`.
+- The full bridge check:
+  - gofmt clean; `go vet ./...` and `-tags devrelease` clean;
+  - `go test ./...`: 22 packages ok;
+  - `-race` on the five changed packages ok;
+  - `-tags devrelease` tests ok;
+  - the static build ok; `refresh-admin` as non-root exits 1.
+- Plugin and theme are untouched and weren't run.
+
+**Not covered yet: the live check on `coffer-test`.**
+- The plan: dev 1.0.0, a self-update to a signed dev 1.0.1, the T33 refusal on the real system, the refresh, `status` showing 1.0.1, and uninstall.
+- It needs Wyatt for the tunnel route, CT 107, the tester wallet, signing two dev releases and the `sudo` steps.
+- The order: `~/xmr-pay-dev-data/60-live-organizer.md`. The script: `60-refresh-live.sh`, shown to Wyatt before he runs it. Root never runs a file the service user can write; the service's version comes from its status file.
+
+**Commits (local, not pushed):** `5f1b784` and this entry. With `7c19338`, all three wait for Wyatt's push approval.
+
+**Next step:** the live check, with Wyatt. Then Part B (the manifest and version commit), then Part C.

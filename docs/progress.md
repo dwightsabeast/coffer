@@ -6245,3 +6245,28 @@ The two keys are different.
 **Commits:** this entry is one local commit, not pushed.
 
 **Next step:** step 2 continues with the CI release build for both CPUs, with provenance. Then Wyatt's rebuild and hash match, `govulncheck -mode binary`, and `release.json` for Wyatt to sign offline with key 1.
+
+## 2026-11-23 · Phase 09 · CI green on `2351c8e`; the release-1 blockers checked before the release build
+
+**Pushed:** `2351c8e` alone (`761793d..2351c8e`), as Wyatt approved. **CI on `2351c8e`:** run 45286026813 passed. Every job succeeded: plugin, theme and bridge, the race-detector tests included (`~/xmr-pay-dev-data/ci-2351c8e.txt`).
+
+**The release-1 blockers** (Wyatt's list; each commit checked to be in `2351c8e`'s history):
+
+| Blocker | State | Commits |
+| --- | --- | --- |
+| RT-20 | Fixed; live check passed 2026-11-06 | `de558a1`, `b5ddfb1`, `d381cbe` |
+| RT-05 | Fixed (spec change 52) | `2346103` |
+| RT-07 | Fixed; live `c6` 3 of 3 | `c05c815`, `c2f2c27` |
+| RT-15 | Closed as Low with a wording change (Wyatt), no plugin code | `52574d8` |
+| The six Lows | RT-02 and RT-03, RT-10, RT-14, RT-22 (live check passed), RT-23 (the admin page's part is after release 1) | `2760e35`, `e4aa96b`, `8127934`, `8d65052`, `3691c2c`, `f1e7819` |
+| EmDash 1.4.0 checklist | Done, then superseded by 1.5.0 (the floor) | 1.4.0: `0f59384`, `99bffb4`, `c911d43`, `5b4b9f5`. 1.5.0: `a9a5d6f`, `4d077aa`, `3a88092` |
+| HTTPS-only second-node list | **Partly done.** Mainnet is https-only (live 6/6). Stagenet still uses http (one verifying certificate), and "grow the list" is still open | `1162b8f`, `1df3c4d` |
+| Install host serves `install.sh` as a download | **The host is done; the real file isn't uploaded.** The probe passed (32 PASS, 0 FAIL) and http answers 301. The URL is in the code. 1.0.0's `install.sh` and binaries go up after the build | `8f206dd`, `5cb0196`, `4900bde` |
+
+**`2351c8e` isn't the commit 1.0.0 ships from.** What it still lacks:
+- `plugin/package.json` and `theme/package.json` are at 0.1.0;
+- the manifest has no `keywords`, no admin-page `icon`, and no `release.artifacts` icon;
+- `.github/workflows/emdash-release.yml` isn't generated yet (Wyatt's `release setup`);
+- there is no bridge release workflow.
+
+**Next step:** Wyatt's answers on the open blockers and the branch and tag. Then the plan for the CI release build.

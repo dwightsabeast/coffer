@@ -6395,3 +6395,26 @@ The two keys are different.
 **Commits (local, not pushed):** `7c19338`, `5f1b784`, `d758c29`, `4f6d26c` and this one. All wait for Wyatt's push approval.
 
 **Next step:** after the push and green CI, Part C: Wyatt runs `pnpm exec emdash-plugin release setup` in `plugin/`, then the release workflow, the reproducibility check and `rebuild-release.sh`.
+
+## 2026-11-24 · Phase 09 (release 1) · Part C step 1: the plugin's release workflow
+
+**CI on the Part B push:** run 45313653657 green on `758dd87` (plugin, theme, bridge, the race-detector tests). Wyatt approved pushing the five commits `7c19338`, `5f1b784`, `d758c29`, `4f6d26c`, `758dd87`; `origin/release-1` was `2351c8e` before.
+
+**`emdash-plugin release setup`** (Wyatt, from `plugin/`; For every release, Require provenance) wrote `.github/workflows/emdash-release.yml`. Review and hardening (Wyatt approved both actions, pinned by SHA, 2026-11-24):
+- The generated tag pattern `"*@*"` also matched `xmr-bridge@*`. Now `coffer@*`, with a step that refuses any tag that isn't `coffer@X.Y.Z`. The manual dispatch was removed.
+- `emdash-cms/emdash/apps/release-action@main` is now pinned to `4a38041a9c8ad8c00387bade212225ab0d17a183`, the last commit to change it.
+- The generated install ran at the repository root, which has no `package.json`, with the third-party `pnpm/action-setup` at pnpm 11. Now it runs in `plugin/` with corepack at `packageManager` (12.8.1), as `ci.yml` does. `checkout` and `setup-node` are at `ci.yml`'s pins, with no cache.
+- `pnpm dlx @emdash-cms/plugin-cli@0.13.6` is now `pnpm exec emdash-plugin` from the lockfile.
+- `id-token` and `attestations` are on the job only. CI's plugin checks run on the tagged commit before prepare. The job summary records the bundle's and `backend.js`'s SHA-256.
+- **Nested actions, checked at their source:**
+  - `attest-build-provenance` `977bb373` (v3.0.0, composite) calls `…/predicate` `864457a5` (predicate@2.0.0) and `actions/attest` `daf44fb9` (v3.0.0). Both are full SHAs matching their tags, node24, with no `uses:`.
+  - The EmDash action is node24 with no `uses:`.
+  - Each pinned commit has its built `dist/index.js`.
+- **Tried locally:**
+  - `release prepare coffer@1.0.0` from `plugin/` wrote `plugin-directory=plugin` and `bundle-file=.emdash-release/coffer-1.0.0.tar.gz` (`README.md`, `backend.js`, `manifest.json`); `backend.js` SHA-256 `b3d26f5da3eb6afe964ad8f5d22db7d01958eca26cd5a6ba626e284293640739` from that dev-box build.
+  - `xmr-bridge@1.0.0` is refused ("No emdash-plugin.jsonc for xmr-bridge"), and `coffer@1.0.1` too ("Tag version 1.0.1 does not match").
+  - The file parses with `yaml` 2.9.1 (strict, unique keys).
+- **Not covered:** the workflow hasn't run on GitHub; the EmDash action's 575 KB `dist/index.js` wasn't code-reviewed, only its definition and pins.
+- `docs/decisions.md`: the CI-hardening amendment row, which lists each pin. `.gitignore`: `.emdash-release/`. CLAUDE.md: a plugin-release row.
+
+**Next step:** Wyatt approves the push. Then Part C step 2, `scripts/assemble-release.sh`, and step 3, `bridge-release.yml`. Wyatt's `emdash-plugin logout` on the dev box comes once release setup is committed and working.

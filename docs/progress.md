@@ -6479,3 +6479,16 @@ It signs and publishes nothing.
 - **Not covered:** the workflow hasn't run on GitHub. Its first run is Wyatt's `xmr-bridge@1.0.0` tag, after step 4.
 
 **Next step:** step 4, `ci.yml`'s `0.0.0-repro` build with each SHA-256 as a `::notice::`, a fresh-clone rebuild on the dev box to compare, and matrix row T37.
+
+## 2026-11-24 · Phase 09 (release 1) · Part C step 4: the reproducibility check (code)
+
+- **Push:** `79886d9` (Wyatt approved), `0c75192..79886d9`. CI on `0c75192` and `79886d9` was still running at this commit.
+- **Matrix row T37** (written before the step): release binaries only from CI at the tagged commit, which is `main`'s head, with provenance. Nothing is signed or uploaded until an independent rebuild matches byte for byte. Layers CI and Manual. Partial until the CI-against-dev-box match and the release rebuild.
+- **`ci.yml`, bridge job, "[T37] Reproducibility build":**
+  - It fetches the pushed commit itself into a fresh folder outside the workspace: the pull request's head SHA, or `github.sha` on a push to `main`.
+  - It never builds the checkout, because on a pull request that is GitHub's merge commit, whose ID and time would be embedded in the binaries and never match.
+  - It runs that commit's `scripts/release-build.sh 0.0.0-repro` and prints each binary's SHA-256 and the commit as a `::notice::`.
+- **The step's commands run locally on `79886d9`:** fetched by SHA from GitHub, built clean, `vcs.revision=79886d9cf4befb86f6adbbe6722908d5c971c058`, `vcs.modified=false`; amd64 `e0d3686c0e9dec955e525da2a9b8d4e20d019c1e15ad103fcf283a951fc38c11`, arm64 `212ba09162cef86d4d1cd6743ce066e39f17edb4e6ef7317e30ec894eb11182b`.
+- `ci.yml` parses (strict YAML).
+
+**Next step:** after the push, read the step's notices for this commit through the public check-run API. Rebuild the same commit on the dev box from a fresh GitHub fetch and compare both SHA-256s. If they match, T37's first half is done; then step 5, `scripts/rebuild-release.sh`.

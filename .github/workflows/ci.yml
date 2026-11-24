@@ -1,6 +1,7 @@
 # Plugin checks on every push to main and every pull request: typecheck, manifest validation, tests, bundle caps.
 # Bridge checks (2026-10-04): gofmt, vet, tests, tests with the race detector, a static build. Go from actions/setup-go (GitHub's own), cache off;
 # GOTOOLCHAIN=local so Go never fetches another toolchain.
+# Reproducibility (T37, phase 09): the release build of the pushed commit at 0.0.0-repro, its SHA-256s as notices.
 # Theme checks (2026-10-16, phase 06): typecheck and tests, including the QR round trip through ZBar's zbarimg (zbar-tools
 # from the runner's signed Ubuntu archive; never shipped, CI only). COFFER_REQUIRE_ZBAR=1 makes a missing zbarimg fail.
 # Dependency scans (T28; Wyatt, 2026-10-31): govulncheck v1.9.0 on bridge/ in source mode, and
@@ -113,6 +114,23 @@ jobs:
         run: go test -race -count=1 ./...
       - name: Static build
         run: go build -trimpath -o "$RUNNER_TEMP/xmr-bridge" ./cmd/xmr-bridge && file "$RUNNER_TEMP/xmr-bridge" | grep -q 'statically linked'
+      # T37: the release build of the pushed commit itself (a pull request's checkout is GitHub's merge commit, whose
+      # ID and time would be in the binaries), fetched fresh outside the workspace as Wyatt's rebuild does, through the
+      # one build script. Each SHA-256 is a notice, read through the public check-run API and matched on the dev box.
+      - name: "[T37] Reproducibility build (0.0.0-repro, both CPUs, scripts/release-build.sh)"
+        working-directory: ${{ runner.temp }}
+        env:
+          REPO: ${{ github.repository }}
+          COMMIT: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          git init -q repro-src
+          git -C repro-src fetch -q --depth 1 "https://github.com/$REPO.git" "$COMMIT"
+          git -C repro-src checkout -q --detach FETCH_HEAD
+          [ "$(git -C repro-src rev-parse HEAD)" = "$COMMIT" ]
+          sh repro-src/scripts/release-build.sh 0.0.0-repro "$RUNNER_TEMP/repro"
+          for f in "$RUNNER_TEMP"/repro/xmr-bridge-0.0.0-repro-linux-*; do
+            echo "::notice title=repro $(basename "$f")::$(sha256sum "$f" | cut -d ' ' -f 1) $COMMIT"
+          done
       - name: Install govulncheck v1.9.0 (T28; the Go team's scanner, fetched through sum.golang.org, then checked against the module hash recorded here)
         env:
           GOBIN: ${{ runner.temp }}/gobin

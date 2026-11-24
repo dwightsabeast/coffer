@@ -407,4 +407,4 @@ From `7c19338` to this commit. A new root code path: it gets the same scrutiny a
 | **`selfupdate.Apply`** keeps the verified `release.json` and `.sig` | `TestBridgeUpdateKeepsVerifiedRelease`: the host changes its files after the check, and the kept bytes are still the verified ones | Written after the binary, so a crash between leaves a mismatch the refresh refuses |
 | **`install`** drops releases kept by earlier updates and refreshes; **`uninstall`** stops and removes the timer and service | `TestInstallDropsKeptReleases` (mutation check), `TestInstallSetsUpRefresh` | As intended |
 
-**Not covered yet:** the live check on `coffer-test`: a dev 1.0.0 install, a self-update to 1.0.1, the refresh, and a refusal on the real system.
+**Live check (2026-11-24, `coffer-test`, dev 1.0.0 to 1.0.1): 0 FAIL.** The service updated itself and committed; a 1.0.0 file in the service's place was refused with root's files unchanged; the refresh installed the signed 1.0.1 file; `status` showed 1.0.1 for both; `uninstall` removed the units and the refreshed copy. **Not covered live:** path tricks, FIFOs and crashes (Go tests only).

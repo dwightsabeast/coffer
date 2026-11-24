@@ -6334,3 +6334,35 @@ The two keys are different.
 **Commits (local, not pushed):** `5f1b784` and this entry. With `7c19338`, all three wait for Wyatt's push approval.
 
 **Next step:** the live check, with Wyatt. Then Part B (the manifest and version commit), then Part C.
+
+## 2026-11-24 · Phase 09 (release 1) · Spec change 60's live check on `coffer-test`: 0 FAIL
+
+**The run** (Wyatt at the container; `coffer-test` from `blank`, amd64):
+- Dev releases 1.0.0 and 1.0.1 built from `d758c29` (clean tree), each signed by Wyatt with the dev key and checked with the public key only (`check-dev-signature.sh`: `Signature Verified Successfully`).
+  - 1.0.0 amd64 `9b8659b4e5eb179f599ced5930331ca91a194ac888f0947e511f45ed10848688`.
+  - 1.0.1 amd64 `dbabd01c8d576e912f333c72b40b68dfc2f7bda43cdcfcbafe0c1d18e26a6131`.
+- Wyatt installed 1.0.0 with the admin page's command on `dev.wyattdilley.com` (a fresh tester invite) and run A's node. The served release then switched to 1.0.1 at 02:00:39 UTC; the container fetched the 1.0.1 binary at 02:01:45.
+- `60-refresh-live.sh` (shown to Wyatt first), every line PASS, `done: 0 FAIL`:
+  - `[INSTALL]`, `[UNIT]`: the admin copy was 1.0.0, the timer enabled, and the unit had all seven hardening lines and no `User=`.
+  - `[UPDATE]`: the service ran a committed 1.0.1, and its binary matched the kept `bin/release.json`.
+  - `[STATUS]`: before the refresh, `Version:    1.0.0 (this copy); the service runs 1.0.1` and the refresh hint.
+  - `[T33]`: with 1.0.0's file in the service's place, `refused: the service's bin/xmr-bridge doesn't match release 1.0.1 for linux/amd64`; the SHA-256 of the admin copy, `admin-binary.sha256` and `admin-release.json` unchanged; the service binary restored.
+  - `[REFRESH]`, `[T36]`: `refreshed /usr/local/bin/xmr-bridge from 1.0.0 to 1.0.1`; the admin copy is the signed amd64 file, root:root 755; the hash file and `/etc/xmr-bridge/admin-release.json` follow. A second run: `nothing to do`.
+  - `[STATUS]`: `Version:    1.0.1 (this copy); the service runs 1.0.1`.
+  - `[UNINSTALL]`: the timer, the refresh service and the refreshed admin copy removed; the data kept.
+- Seen on the way, not a fault: `systemctl list-timers` showed the timer's first run at 02:00:04, at install (`Persistent=true`, boot more than 15 minutes earlier). With the admin copy and the service both at 1.0.0 then, it had nothing to do.
+- Script quirk (local file only): the journal lines come from `journalctl --since` with whole seconds, so runs in the same second repeat earlier lines in the output. The PASS/FAIL checks don't read those lines.
+
+**Matrix:** T33 and T36 are now Covered (Go and live). T36's path tricks, FIFOs and crashes stay Go-only. `docs/security-review.md`'s delta records the live result.
+
+**After:**
+- The built copy and the release server stopped; ports 4321, 4322 and 8099 free.
+- `60-before.db` restored (sha256 `ccc1c42f764511c2a4fa9052781e63005f3f90d8fdc1783a0608242cf0a57e64`); the state it replaced is in `~/xmr-pay-dev-data/baseline/data.db.before-restore-20261124T020736785Z`. The tester account went with the restore, so the passkey Wyatt registered for it no longer has an account.
+- `pnpm run build` put `https://get.coffer.party/install.sh` back in `plugin/dist/plugin.mjs`. The dev site's own `dist/` still holds the patched build until its next `npm run build`.
+- The dev box's bridge synced again with its own key at 02:10:00 UTC (the dev site started briefly, then stopped).
+- The invite file deleted. Kept locally: `dev-release-1.0.0/`, `dev-release-1.0.1/`, `60-refresh-live-output.txt`.
+- **Wyatt:** roll `coffer-test` back to `blank` and take the `dev.wyattdilley.com` route down.
+
+**Commits (local, not pushed):** `7c19338`, `5f1b784`, `d758c29` and this entry's commit.
+
+**Next step:** Part B, the manifest and version commit (tests first), then ask before pushing all of them together.

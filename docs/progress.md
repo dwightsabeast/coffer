@@ -6492,3 +6492,16 @@ It signs and publishes nothing.
 - `ci.yml` parses (strict YAML).
 
 **Next step:** after the push, read the step's notices for this commit through the public check-run API. Rebuild the same commit on the dev box from a fresh GitHub fetch and compare both SHA-256s. If they match, T37's first half is done; then step 5, `scripts/rebuild-release.sh`.
+
+## 2026-11-24 · Phase 09 (release 1) · Part C step 4: the reproducibility check matches
+
+- **Push:** `e575c4e` (Wyatt approved), `79886d9..e575c4e`.
+- **CI's "[T37] Reproducibility build" on `e575c4e`**, read from the bridge job's notices through the public check-run API, against a fresh fetch from GitHub rebuilt on the dev box (go1.27.4, `vcs.revision=e575c4e6b968e4820a1a7c40823ec2e3d4e4c68d`, `vcs.modified=false`). **Both CPUs are byte-identical:**
+  - amd64: CI and dev box `2b76ae6c9fce3c3382ae289baad5a143c7d2a2cb483efb48f0fba7064dde573d`;
+  - arm64: CI and dev box `ef8175e3962b4d00ed5004212039d7ed3e2e33ef8fbc3f0ca98bcc79278132f6`.
+  - Evidence: `~/xmr-pay-dev-data/repro-e575c4e/` (`ci-read-output.txt`, `dev-box-sha256.txt`, `go-version-m.txt`).
+- **T37:** the CI-against-dev-box half holds; the release rebuild (step 5) is pending.
+- **CI at the time of reading (03:37 UTC):** `79886d9` and `e575c4e` had bridge and theme green, with the plugin jobs still running.
+- **Snag, mine:** the final results weren't read because the unauthenticated GitHub API limit (60 calls an hour) ran out at about 03:36 UTC, so the two `ci-status.py` watchers for `79886d9` and `e575c4e` failed with HTTP 403. Several watchers polling every 20 s used it up. From now on, one watcher at a time.
+
+**Next step:** read the plugin jobs' results after the limit resets (04:14 UTC); step 5, `scripts/rebuild-release.sh`.

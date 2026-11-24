@@ -118,7 +118,7 @@ Each entry gives the claim's ID in the test matrix (`docs/security-matrix.md`). 
 - **What you'd see:** if no second node answers, tips wait, and Health says so.
 - **Limits:**
   - The list of second nodes is short.
-  - On the test network, the second nodes use plain http.
+  - On the test network, the second nodes use plain http. Use the test network only for tests, never for real tips.
   - Give a node on your own network by its address, not by a name. Only then does Coffer treat the node as yours.
 
 ### A full break-in on your site's server (T15)

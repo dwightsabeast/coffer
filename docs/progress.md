@@ -6366,3 +6366,32 @@ The two keys are different.
 **Commits (local, not pushed):** `7c19338`, `5f1b784`, `d758c29` and this entry's commit.
 
 **Next step:** Part B, the manifest and version commit (tests first), then ask before pushing all of them together.
+
+## 2026-11-24 · Phase 09 (release 1) · Part B: the manifest and version commit
+
+**Plugin (tests first: the new manifest test was red on the version, then green):**
+- `plugin/package.json` version `1.0.0`. The manifest declares no `version`, so the two can't disagree.
+- `emdash-plugin.jsonc` (spec change 41 item 8, decisions row 91; no trust-contract effect):
+  - `keywords: ["monero", "xmr", "payments", "tips", "privacy"]`;
+  - `"icon": "coins"` on the `/payments` page;
+  - `release.artifacts.icon: { "file": "./images/coffer-icon.png" }`.
+- `plugin/tests/manifest.test.ts`: "release 1.0.0: version, keywords, the admin page's icon and the listing icon". The trust-contract test is unchanged.
+- Checks:
+  - typecheck clean; `validate`: "Manifest is valid";
+  - `bundle --validate-only`: 76.7 KB across 3 files, as before; the icon isn't in the tarball; the built manifest says `coffer@1.0.0` with the page icon `coins`;
+  - `pnpm test`: default 47 files, 547 passed (546 plus the new test), 7 expected fail, 1 skipped; switch on 6 files, 102 passed, 1 skipped (`~/xmr-pay-dev-data/partb-plugin-tests.txt`).
+
+**Second nodes (Wyatt's ruling, 2026-11-23):**
+- `crosscheck/operators_test.go`: "[T14] the mainnet list has at least three operators, all https": every mainnet node https, one operator each, at least three, and with any one as the configured node, at least two other operators remain. Green from the start (the list already meets it). Mutation checks, each failing it: a node dropped; a node made http; a second host of one operator.
+- `crosscheck.go`'s comment: stagenet is a test network only; release 1 ships with the three operators; growing the list is a 1.x item.
+- `docs/security-report.md`, T14's limits: "Use the test network only for tests, never for real tips." (Wyatt chose this wording, 2026-11-24.)
+- Matrix row T14 notes the release-1 floor.
+- Bridge: gofmt clean, `go vet ./...` clean, `go test ./...` 22 packages ok (`~/xmr-pay-dev-data/partb-bridge-tests.txt`).
+
+**Docs:** `docs/decisions.md` has the release 1.0.0 rulings row (second nodes, the two tags, the branch, the admin copy, the stop points) and "Grow the HTTPS second-node list" on the after-release list. `docs/phases/09-release.md`: five boxes ticked (the node list moved to after release 1, the admin copy fixed, the passkey browser, the repository public, spec change 56's scan).
+
+**Not run:** the theme (untouched).
+
+**Commits (local, not pushed):** `7c19338`, `5f1b784`, `d758c29`, `4f6d26c` and this one. All wait for Wyatt's push approval.
+
+**Next step:** after the push and green CI, Part C: Wyatt runs `pnpm exec emdash-plugin release setup` in `plugin/`, then the release workflow, the reproducibility check and `rebuild-release.sh`.

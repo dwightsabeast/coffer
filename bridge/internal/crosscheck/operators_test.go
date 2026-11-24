@@ -40,6 +40,32 @@ func TestMainnetList(t *testing.T) {
 			t.Fatalf("mainnet list %v", got)
 		}
 	})
+	// Release-1 ruling (Wyatt, 2026-11-23): ship with the mainnet list https only, as long as it has at least three
+	// independent operators; growing it is a 1.x item. Independent here means the code's operator rule (a host's last
+	// two labels), so with any one of them as the configured node, two other operators remain.
+	t.Run("[T14] the mainnet list has at least three operators, all https (release-1 ruling, 2026-11-23)", func(t *testing.T) {
+		list := DefaultNodes("mainnet")
+		ops := map[string]bool{}
+		for _, u := range list {
+			if !strings.HasPrefix(u, "https://") {
+				t.Errorf("%s isn't https", u)
+			}
+			ops[operatorOf(u)] = true
+		}
+		if len(ops) < 3 || len(ops) != len(list) {
+			t.Fatalf("%d operators for %d nodes: %v", len(ops), len(list), ops)
+		}
+		for _, u := range list {
+			c := New(u, "mainnet", list, nil)
+			others := map[string]bool{}
+			for _, s := range c.seconds {
+				others[operatorOf(s)] = true
+			}
+			if len(others) < 2 || others[operatorOf(u)] {
+				t.Errorf("configured %s: second-node operators %v", u, others)
+			}
+		}
+	})
 	t.Run("[T14] on mainnet a plain-http second node is never used, whatever the list says", func(t *testing.T) {
 		c := New("https://shop-node.example:18081", "mainnet", []string{"http://plain.example:18081", "https://tls.example:18089"}, nil)
 		if len(c.seconds) != 1 || c.seconds[0] != "https://tls.example:18089" {

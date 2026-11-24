@@ -110,3 +110,16 @@ it("the listing's Security section is declared, fits the registry's limits and l
 	expect(securitySection).toContain("https://github.com/dwightsabeast/coffer/blob/coffer%401.0.0/docs/security-report.md");
 	expect(securitySection).toContain("https://github.com/dwightsabeast/coffer/security/advisories/new");
 });
+
+// Phase 09, release 1.0.0: spec change 41 item 8 (listing and release metadata only; no trust-contract effect) and
+// decisions row 91 (the admin page's sidebar icon is `coins`). The version comes from package.json; the manifest
+// declares none, so the two can't disagree.
+it("release 1.0.0: version, keywords, the admin page's icon and the listing icon (spec change 41 item 8)", () => {
+	const m = JSON.parse(manifestSource.replace(/^\s*\/\/.*$/gm, ""));
+	expect(JSON.parse(packageSource).version).toBe("1.0.0");
+	expect(m.version).toBeUndefined();
+	expect(m.keywords).toEqual(["monero", "xmr", "payments", "tips", "privacy"]);
+	expect(m.admin.pages).toEqual([{ path: "/payments", label: "Monero payments", icon: "coins" }]);
+	expect(m.admin.widgets).toEqual([{ id: "xmr-status", title: "Monero payments", size: "half" }]);
+	expect(m.release?.artifacts).toEqual({ icon: { file: "./images/coffer-icon.png" } });
+});

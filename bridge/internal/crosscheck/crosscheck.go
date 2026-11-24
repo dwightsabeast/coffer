@@ -44,11 +44,13 @@ type Report struct {
 	Checked int `json:"checked,omitempty"`
 }
 
-// defaults are public nodes per network (spec change 13, open question 12). Stagenet: checked from the dev box on
-// 2026-10-04 (get_info nettype and get_block at height 2221449 agreeing with the local node); kept with its http nodes,
-// since only stagenet.xmr.kernal.eu has a certificate that verifies (2026-11-02). Mainnet (Wyatt, 2026-11-02): https
-// only, one host per operator, each probed read-only on 2026-11-02 (synchronized, restricted, get_block by height, the
-// same block hash at a common height, a certificate that verifies). Growing it is on the release checklist.
+// defaults are public nodes per network (spec change 13, open question 12). Stagenet, a test network only, never for
+// real tips: checked from the dev box on 2026-10-04 (get_info nettype and get_block at height 2221449 agreeing with the
+// local node); kept with its http nodes, since only stagenet.xmr.kernal.eu has a certificate that verifies
+// (2026-11-02). Mainnet (Wyatt, 2026-11-02): https only, one host per operator, each probed read-only on 2026-11-02
+// (synchronized, restricted, get_block by height, the same block hash at a common height, a certificate that
+// verifies). Release 1 ships with these three operators, the floor a test holds (Wyatt, 2026-11-23); growing the list
+// is a 1.x item (docs/decisions.md).
 var defaults = map[string][]string{
 	"stagenet": {
 		"https://stagenet.xmr.kernal.eu:38089",

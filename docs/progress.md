@@ -6418,3 +6418,25 @@ The two keys are different.
 - `docs/decisions.md`: the CI-hardening amendment row, which lists each pin. `.gitignore`: `.emdash-release/`. CLAUDE.md: a plugin-release row.
 
 **Next step:** Wyatt approves the push. Then Part C step 2, `scripts/assemble-release.sh`, and step 3, `bridge-release.yml`. Wyatt's `emdash-plugin logout` on the dev box comes once release setup is committed and working.
+
+## 2026-11-24 · Phase 09 (release 1) · Part C step 2: `scripts/assemble-release.sh`
+
+- **Push:** `ce0b570` (Wyatt approved), `758dd87..ce0b570`.
+- **`scripts/assemble-release.sh <out> <version> <base> <curl-proto> [<date>]`:**
+  - writes `install.sh` (filled from `installer/install.sh`), the unsigned `release.json` and `SHA256SUMS` around two binaries already built, so dev and real releases share one layout;
+  - takes a base with a path, as a real release needs (`https://get.coffer.party/<version>`);
+  - holds every value to a charset with no quote, backslash, `|` or `&`;
+  - refuses an http base with `=https`.
+  - `build-dev-release.sh` now calls it.
+- **Tests first** (`scripts/assemble-release.test.mjs`, 16 tests, fake binaries only):
+  - the three files compared byte for byte with values computed in the test, for a real-release shape and a dev shape;
+  - the default date;
+  - 13 refusals, each checking its own message and that nothing was written.
+  - Red without the script: 16 of 16 failed, once each refusal checked its own message. The first version only checked for an error, and 13 refusal tests passed with no script at all.
+- **Before and after:**
+  - assembling today's dev 1.0.1 binaries, with that release's base and date, gave `install.sh`, `release.json` and `SHA256SUMS` identical to what the old script wrote;
+  - a dev 1.0.2 built by the old script, then by the refactored one, from the same tree: both binaries and `install.sh` identical; `release.json` and `SHA256SUMS` differ only by the date.
+- All script tests: 85 passed, 0 failed (`node --test scripts/*.test.mjs scripts/redteam/*.test.mjs`).
+- `~/xmr-pay-dev-data/dev-release/` now holds that unsigned dev 1.0.2; the signed 1.0.0 and 1.0.1 are kept in their own folders.
+
+**Next step:** Part C step 3, `.github/workflows/bridge-release.yml`.

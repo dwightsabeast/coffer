@@ -2,7 +2,8 @@
 # Builds a development release of the wallet host (phase 03, sessions 3f-2 and 3g): xmr-bridge for linux/amd64 and
 # linux/arm64 with the devrelease build tag (the dev public key and the loopback release address set at build time),
 # an install.sh filled with their SHA-256s, and an unsigned release.json for Wyatt to sign
-# (scripts/sign-dev-release.sh). Stagenet testing only; real releases (https, the real key) come from CI in phase 09.
+# (scripts/sign-dev-release.sh), the last three through scripts/assemble-release.sh. Stagenet testing only; real
+# releases (https, the real key) come from CI (.github/workflows/bridge-release.yml).
 #
 #   scripts/build-dev-release.sh [--version <x.y.z[-suffix]>] [--break crash|badsig] [--base http://<address>:<port>]
 #   serve:  tmux new -d -s release 'cd ~/xmr-pay-dev-data/dev-release && python3 -m http.server 8099 --bind 127.0.0.1'
@@ -41,14 +42,6 @@ for arch in amd64 arm64; do
 		-ldflags "-X main.version=$version -X main.devReleaseKey=$pub -X main.devReleaseURL=$base -X main.devBreak=$breakmode" \
 		-o "$out/xmr-bridge-$version-linux-$arch" ./cmd/xmr-bridge)
 done
-sum() { sha256sum "$1" | cut -d ' ' -f 1; }
-size() { wc -c <"$1" | tr -d ' '; }
-a="$out/xmr-bridge-$version-linux-amd64"
-r="$out/xmr-bridge-$version-linux-arm64"
-sed -e "s|__RELEASE_BASE__|$base|" -e "s|__VERSION__|$version|" -e "s|__SHA256_AMD64__|$(sum "$a")|" \
-	-e "s|__SHA256_ARM64__|$(sum "$r")|" -e "s|__CURL_PROTO__|=http,https|" "$repo/installer/install.sh" >"$out/install.sh"
-if grep -q '__[A-Z0-9_]*__' "$out/install.sh"; then echo "a placeholder was left in install.sh" >&2; exit 1; fi
-printf '{"product":"xmr-bridge","version":"%s","date":"%s","files":[{"name":"%s","os":"linux","arch":"amd64","sha256":"%s","size":%s},{"name":"%s","os":"linux","arch":"arm64","sha256":"%s","size":%s}]}\n' \
-	"$version" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$(basename "$a")" "$(sum "$a")" "$(size "$a")" "$(basename "$r")" "$(sum "$r")" "$(size "$r")" >"$out/release.json"
-(cd "$out" && sha256sum xmr-bridge-* install.sh release.json >SHA256SUMS)
+# install.sh, release.json and SHA256SUMS: the same script real releases use (bridge-release.yml), so both match.
+"$repo/scripts/assemble-release.sh" "$out" "$version" "$base" "=http,https"
 echo "dev release $version${breakmode:+ (deliberately broken: $breakmode)} in $out; release.json is unsigned until Wyatt runs scripts/sign-dev-release.sh"

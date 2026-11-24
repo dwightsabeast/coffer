@@ -1,0 +1,130 @@
+# The bridge's release build (phase 09, Part C; Wyatt's plan of 2026-11-23). On an xmr-bridge@X.Y.Z tag only (the
+# plugin's coffer@* tags are emdash-release.yml's), from the tagged commit, which must be main's head:
+# - the bridge checks (gofmt, vet, tests, which include the pinned release keys, TestReleaseKeysPinned);
+# - both binaries through scripts/release-build.sh, the one place the build's command, flags and environment are
+#   written, which Wyatt's scripts/rebuild-release.sh runs too;
+# - govulncheck v1.9.0 on both binaries (binary mode; the same exit rule as CI, T28);
+# - install.sh, the unsigned release.json and SHA256SUMS through scripts/assemble-release.sh, with the release's own
+#   version folder https://get.coffer.party/<version> and https only; plus the public key coffer-release.pub.pem;
+# - build provenance for the binaries, install.sh and release.json, and the folder as a 7-day artifact.
+# Nothing is signed or published here: Wyatt rebuilds and compares first (scripts/rebuild-release.sh), then signs
+# release.json offline and uploads by hand (docs/install-host.md).
+# Hardening as ci.yml (decisions, "CI hardening", with the 2026-11-24 amendment): read-only token except the job's
+# id-token and attestations, no persisted git credentials, no cache, GitHub's own actions pinned to full SHAs. Nested
+# actions (checked at their source, 2026-11-24): attest-build-provenance 977bb373 calls predicate 864457a5 and
+# actions/attest daf44fb9; setup-go, checkout and upload-artifact call none.
+name: "Bridge release build"
+
+on:
+  push:
+    tags:
+      - "xmr-bridge@*"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bridge-release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: "Build, scan and attest xmr-bridge"
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # Signs the build provenance (Sigstore through GitHub's OIDC token).
+      attestations: write # Stores the attestations on the repository.
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - name: "Check the tag is xmr-bridge@X.Y.Z"
+        id: tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          printf '%s' "$TAG" | grep -Eqx 'xmr-bridge@[0-9]+\.[0-9]+\.[0-9]+' || { echo "::error::tag $TAG isn't xmr-bridge@X.Y.Z"; exit 1; }
+          echo "version=${TAG#xmr-bridge@}" >>"$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: "The tagged commit is main's head (main is fast-forwarded to the ship commit before tagging)"
+        env:
+          REPO: ${{ github.repository }}
+        run: |
+          head=$(git rev-parse HEAD)
+          [ "$head" = "$GITHUB_SHA" ] || { echo "::error::checked out $head, the tag is $GITHUB_SHA"; exit 1; }
+          main=$(git ls-remote "https://github.com/$REPO.git" refs/heads/main | cut -f 1)
+          [ "$main" = "$head" ] || { echo "::error::main is at $main, the tag at $head: fast-forward main to the ship commit first"; exit 1; }
+
+      - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          # bridge/go.mod's go line, the one Go pin (RT-28); release-build.sh checks it exactly.
+          go-version-file: bridge/go.mod
+          cache: false
+
+      - name: "Bridge checks: gofmt, vet, tests"
+        working-directory: bridge
+        env:
+          GOFLAGS: -mod=readonly
+        run: |
+          test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+          go vet ./...
+          go test -count=1 ./...
+
+      - name: "Build both binaries (scripts/release-build.sh)"
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: sh scripts/release-build.sh "$VERSION" "$RUNNER_TEMP/release"
+
+      - name: "Install govulncheck v1.9.0 (T28; checked against the module hash recorded here, as in ci.yml)"
+        env:
+          GOBIN: ${{ runner.temp }}/gobin
+        run: |
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          go version -m "$GOBIN/govulncheck" | grep -F "$(printf 'golang.org/x/vuln\tv1.9.0\th1:12VaqnI9kJfqwRoPptxoqsUhQtdfrSbdksT7X/KY/sc=')"
+
+      - name: "govulncheck on both binaries (exit 3: a vulnerability the binary calls; any other failure isn't a pass)"
+        run: |
+          for f in "$RUNNER_TEMP"/release/xmr-bridge-*-linux-*; do
+            status=0
+            "$RUNNER_TEMP/gobin/govulncheck" -mode binary "$f" || status=$?
+            case "$status" in
+              0) ;;
+              3) echo "::error::govulncheck found a vulnerability that $(basename "$f") calls"; exit 1 ;;
+              *) echo "::error::govulncheck could not finish on $(basename "$f") (exit $status)"; exit 1 ;;
+            esac
+          done
+
+      - name: "install.sh, release.json and SHA256SUMS (scripts/assemble-release.sh), and the release public key"
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          sh scripts/assemble-release.sh "$RUNNER_TEMP/release" "$VERSION" "https://get.coffer.party/$VERSION" =https
+          cp installer/coffer-release.pub.pem "$RUNNER_TEMP/release/"
+          {
+            echo "### xmr-bridge $VERSION (unsigned)"
+            echo '```'
+            cat "$RUNNER_TEMP/release/SHA256SUMS"
+            sha256sum "$RUNNER_TEMP/release/coffer-release.pub.pem" | sed "s|$RUNNER_TEMP/release/||"
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: "Build provenance"
+        uses: actions/attest-build-provenance@977bb373ede98d70efdf65b84cb5f73e068dcc2a # v3.0.0
+        with:
+          subject-path: |
+            ${{ runner.temp }}/release/xmr-bridge-*-linux-*
+            ${{ runner.temp }}/release/install.sh
+            ${{ runner.temp }}/release/release.json
+
+      - name: "The release folder, as an artifact for Wyatt's rebuild check (7 days)"
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: xmr-bridge-${{ steps.tag.outputs.version }}
+          path: ${{ runner.temp }}/release/
+          if-no-files-found: error
+          retention-days: 7

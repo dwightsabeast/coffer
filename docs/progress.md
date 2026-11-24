@@ -6440,3 +6440,42 @@ The two keys are different.
 - `~/xmr-pay-dev-data/dev-release/` now holds that unsigned dev 1.0.2; the signed 1.0.0 and 1.0.1 are kept in their own folders.
 
 **Next step:** Part C step 3, `.github/workflows/bridge-release.yml`.
+
+## 2026-11-24 · Phase 09 (release 1) · Part C step 3: `bridge-release.yml` and `scripts/release-build.sh`
+
+**CI:** run 45318078795 green on `ce0b570` (plugin, theme, bridge, race-detector tests). It was the only run on that push, so `emdash-release.yml` didn't fire on a branch push. `0c75192` was pushed (Wyatt approved); its CI was still running at this commit.
+
+**`scripts/release-build.sh <version> <out>`**, the one place the release build's command, flags and environment live (`bridge-release.yml`, step 4's reproducibility check and `rebuild-release.sh` all run it):
+- `GOTOOLCHAIN=local CGO_ENABLED=0 GOFLAGS=-mod=readonly GOOS=linux GOAMD64=v1 GOARM64=v8.0 GOENV=off GOWORK=off`, with `GOEXPERIMENT` and `GOFIPS140` unset, and `go build -trimpath -buildvcs=true -ldflags "-X main.version=<v>"`, amd64 then arm64.
+- It refuses:
+  - a Go other than `bridge/go.mod`'s exact version;
+  - a repository with any change, untracked files included, so `vcs.modified` stays false;
+  - an output folder that is relative, inside the repository, or not empty;
+  - a version other than x.y.z or `0.0.0-repro`.
+- **Tests first** (`scripts/release-build.test.mjs`, 10): a throwaway git repository and a stand-in `go` that logs each call.
+  - The exact command and environment are checked, with a caller environment set to break the build.
+  - Each refusal checks its message and that nothing was built.
+  - Red: 10 of 10 with no script. Mutation checks, each failing a test: `GOENV=off` dropped, the unset dropped, untracked files ignored, the Go version check skipped, `-buildvcs=true` dropped.
+- **Real run** in a throwaway clone: go1.27.4, `CGO_ENABLED=0`, `GOAMD64=v1`, `GOARM64=v8.0`, `vcs.modified=false`. A second build was identical, but it used the build cache; step 4's CI-against-dev-box comparison is the real check.
+
+**`.github/workflows/bridge-release.yml`** (`xmr-bridge@X.Y.Z` tags only):
+1. the tag's form, and the tagged commit as `main`'s head on GitHub;
+2. pinned checkout, and `setup-go` from `go.mod` with no cache;
+3. gofmt, vet and `go test`, which include `TestReleaseKeysPinned`;
+4. `release-build.sh`;
+5. govulncheck v1.9.0 (hash-checked) in binary mode on both binaries, with CI's exit rule;
+6. `assemble-release.sh` with `https://get.coffer.party/<version>` and `=https`, plus `coffer-release.pub.pem`;
+7. `SHA256SUMS` in the job summary;
+8. provenance for the binaries, `install.sh` and `release.json`;
+9. `upload-artifact`, kept 7 days.
+
+It signs and publishes nothing.
+- **Approved by Wyatt (2026-11-24):** `actions/upload-artifact` `cf430e030ddbb5b0abf93d22962f4752f3646cd9` (v7.0.2; node24, no `uses:`, its `dist` present). `docs/decisions.md` has the amendment row. CLAUDE.md has a bridge-release row.
+- **Checked locally:**
+  - strict YAML parse;
+  - every `uses:` in `.github/workflows/` is a full SHA;
+  - govulncheck v1.9.0 `-mode binary` on both CPUs' trial binaries: exit 0, "No vulnerabilities found";
+  - script tests 95 passed, 0 failed.
+- **Not covered:** the workflow hasn't run on GitHub. Its first run is Wyatt's `xmr-bridge@1.0.0` tag, after step 4.
+
+**Next step:** step 4, `ci.yml`'s `0.0.0-repro` build with each SHA-256 as a `::notice::`, a fresh-clone rebuild on the dev box to compare, and matrix row T37.

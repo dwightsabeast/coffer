@@ -6533,3 +6533,15 @@ PASS/FAIL lines go to the terminal and `~/xmr-pay-dev-data/release-<version>/reb
 **Not covered:** attestation verification (`gh attestation verify`); there's no `gh` on this box. The artifact's provenance is checked by EmDash's release service for the plugin, but for the bridge only by the rebuild match.
 
 **Next step:** Wyatt approves the push of `60a27bd` and this commit. Then the ship sequence: CI green on the ship commit, Wyatt fast-forwards `main`, and he tags `xmr-bridge@1.0.0`.
+
+## 2026-11-24 · Phase 09 (release 1) · CI green on the ship candidate `2e3c410`; its reproducibility check matches
+
+- **Push:** `60a27bd` and `2e3c410` (Wyatt approved), `e575c4e..2e3c410`.
+- **CI, read once the API limit reset (04:14 UTC, `ci-read.py`, check runs):** bridge, plugin and theme all `success` on `79886d9`, `e575c4e` and `2e3c410`.
+- **T37 on `2e3c410`:** CI's notices against a fresh-fetch rebuild on the dev box (go1.27.4, `vcs.revision=2e3c410aa9280ab346941bf6a909a23f435976fb`, `vcs.modified=false`). Both CPUs byte-identical:
+  - amd64 `0c8149cc30460cf7c88565acc983fdbbe9dbf5d7fd7b072d9e12bbdc136767c7`;
+  - arm64 `6fc6213195ff79e40bf17230af257194b3c3fc974c573f436f38a6c6b9338197`.
+  - Evidence: `~/xmr-pay-dev-data/repro-2e3c410/`.
+- **`2e3c410` is the ship commit candidate.** This entry's commit sits after it on `release-1` and is never part of `main` before the tags.
+
+**Next step (Wyatt):** fast-forward `main` to `2e3c410` (`git push origin 2e3c410aa9280ab346941bf6a909a23f435976fb:main`), then tag and push `xmr-bridge@1.0.0` on it. Then download CI's artifact, unzip it into `~/xmr-pay-dev-data/release-1.0.0/artifact`, and run `scripts/rebuild-release.sh 1.0.0 2e3c410aa9280ab346941bf6a909a23f435976fb ~/xmr-pay-dev-data/release-1.0.0/artifact`.

@@ -6505,3 +6505,31 @@ It signs and publishes nothing.
 - **Snag, mine:** the final results weren't read because the unauthenticated GitHub API limit (60 calls an hour) ran out at about 03:36 UTC, so the two `ci-status.py` watchers for `79886d9` and `e575c4e` failed with HTTP 403. Several watchers polling every 20 s used it up. From now on, one watcher at a time.
 
 **Next step:** read the plugin jobs' results after the limit resets (04:14 UTC); step 5, `scripts/rebuild-release.sh`.
+
+## 2026-11-24 · Phase 09 (release 1) · Part C step 5: `scripts/rebuild-release.sh`
+
+**`scripts/rebuild-release.sh <version> <full commit sha> <CI artifact folder>`**, Wyatt's check before he signs (dev box, no sudo):
+1. a fresh `git clone` of `https://github.com/dwightsabeast/coffer.git`, with `xmr-bridge@<version>` as the given commit and `main` as the tagged commit;
+2. `go version` exactly `bridge/go.mod`'s version on `linux/amd64`, as CI's runner;
+3. both binaries from the commit's own `release-build.sh`;
+4. the artifact holds exactly the six release files, each binary is byte-for-byte the rebuild, and `SHA256SUMS` and `release.json` list the rebuilt sha256 (and size);
+5. the commit's own `assemble-release.sh`, run on the rebuilt binaries with CI's release date, gives `install.sh`, `release.json` and `SHA256SUMS` byte for byte;
+6. `coffer-release.pub.pem` is the commit's own and has release key 1's fingerprint.
+
+PASS/FAIL lines go to the terminal and `~/xmr-pay-dev-data/release-<version>/rebuild-output.txt`; exit 0 only with no FAIL. `REBUILD_REPO_URL` exists for the tests only, and any other repository is a FAIL line.
+
+**Tests first** (`scripts/rebuild-release.test.mjs`, 18): a local bare repository as GitHub, a stand-in `go` whose output depends on the commit, and the artifact made as `bridge-release.yml` makes it.
+- **Cases:**
+  - a matching artifact, where every check passes apart from the one test-only "not GitHub" line;
+  - a changed binary, `install.sh`, `release.json` or key; an extra or missing file;
+  - the wrong commit; a tag off `main`; a tag on another commit than the artifact's;
+  - a commit whose own key file isn't key 1; another Go release; another host; a missing tag;
+  - four usage errors.
+- **Red:** 17 of 17 failed before the script existed (the commit-key case was added later). Two expectations of mine were wrong and were corrected before the script was written: a changed binary fails only the binary comparison, since the listings still name the rebuilt bytes; and the missing-tag message is read from the terminal.
+- **Mutation checks**, each failing a test: no binary `cmp`, no `main` check, no tag check, no `ASSEMBLE` `cmp`, no file-list check, no fingerprint check. The last first slipped through: it got its test, the commit-key case.
+- **Real run against GitHub** (no tag yet): `[CLONE] PASS cloned https://github.com/dwightsabeast/coffer.git`, then `[TAG] FAIL no tag xmr-bridge@1.0.0`, exit 1, as it should.
+- All script tests: 113 passed, 0 failed.
+
+**Not covered:** attestation verification (`gh attestation verify`); there's no `gh` on this box. The artifact's provenance is checked by EmDash's release service for the plugin, but for the bridge only by the rebuild match.
+
+**Next step:** Wyatt approves the push of `60a27bd` and this commit. Then the ship sequence: CI green on the ship commit, Wyatt fast-forwards `main`, and he tags `xmr-bridge@1.0.0`.

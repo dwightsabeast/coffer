@@ -6749,3 +6749,5 @@ Wyatt's choice: finish the security report and README before the GitHub Release,
 **Local files for the next session** (all in `~/xmr-pay-dev-data/`): `release-1.0.0/` (artifact, `signed/`, `SIGN-1.0.0.txt`, `RELEASE-NOTES-xmr-bridge-1.0.0.md`, rebuild and check outputs), `install-host-upload/` (the one upload folder), `install-host-kit/`, `npm-placeholder/`, `report-1.0.0/`, `mainnet-trial/`, and `ci-*.txt`.
 
 **To resume:** `Continue phase 09 (release 1). Read docs/progress.md's last entry, then plan the next step.`
+
+- **After the handoff, CI on `532cdc3`:** run 45664388976 `success`. `scripts` (its first run), `theme`, `plugin` and `bridge` (with the race detector) all passed. Four artifacts: `test-results-bridge` (52,679 bytes), `-plugin` (24,552), `-theme` (4,063), `-scripts` (3,910). Step 1 of the next steps is now only the push of `9b76f08`, `7b3465f` and this commit.

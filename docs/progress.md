@@ -6623,3 +6623,12 @@ Wyatt's choices: staged publishing (he approves each version on npmjs.com with 2
 - **Open:** npm makes `0.0.0-stage` when `npm stage publish` runs for a package that doesn't exist yet, so something was staged for `@cofferhq/astro` from Wyatt's account at 16:14:57 UTC. Not from the dev box (`npm whoami`: ENEEDAUTH; no `.npmrc` with a token), not from the workflow (no tag), not from `npm-placeholder.ps1` (it runs `npm publish`, never `stage`). What was staged, and whether it's still waiting, can be seen only when logged in (npmjs.com, Staged Packages). It must not be approved. A staged 1.0.0 there would also clash with CI's 1.0.0.
 
 **Next step:** Wyatt checks Staged Packages and rejects anything staged; then deprecate `0.0.0-stage`. Part 2 (the trusted publisher) only after that.
+
+## 2026-11-25 · Phase 09 (release 1) · Step 5 part 1, closed: the stage queue is empty
+
+- **Wyatt:** npmjs.com shows no staged packages for `@cofferhq/astro`.
+- **npm's pages** (npm-stage, npm-publish, the staged-publishing page, the 2026-05-22 and 2026-09-18 changelogs, read 2026-11-25): only `npm stage publish` is said to create `0.0.0-stage`. A plain `npm publish` is shown as a direct publish (a session token prompts for 2FA) and is never said to stage. Approved and rejected versions leave the Staged Packages list. Whether `0.0.0-stage` ever leaves the version list is not stated.
+- **Reading:** the timestamps fit 0.0.1 being staged (16:14:57 UTC, which made the stand-in) and approved with 2FA (16:16:34 UTC). **Cause (Wyatt):** he ran an npm command himself around 09:15 his time (16:15 UTC), which explains the staged first publish; `npm-placeholder.ps1` itself runs only `npm publish`. **What's verified either way:** the only live versions are npm's empty `0.0.0-stage` and 0.0.1, which is our tarball (integrity `sha512-ub0t…zzqA==`) and deprecated; nothing is waiting in the queue. Not a blocker for part 2.
+- **Script fix for next time:** none needed for 1.0.0 (the placeholder is a one-off). Lesson: a re-runnable script should append to its output file, never replace it, so a first run's evidence survives a second.
+
+**Next step:** Wyatt approves pushing the seven local commits and opens a pull request from `release-1` for CI. Once it's green, part 2 (the trusted publisher) and part 3 (`main`, the tag, the approval) on the same day, inside npm's 2-day window.

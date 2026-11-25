@@ -126,7 +126,7 @@ Phase 09, release. Read docs/phases/09-release.md and docs/progress.md, then pla
 - `bundle` packs a root-level `icon.png` and anything in `screenshots/` into the tarball, where they count toward the 128 KB per-file and 256 KB total caps. Keep declared listing images in another folder, such as `images/`. Check the bundle's headroom before deciding whether to also pack a small `icon.png` (256×256 is the recommended size).
 - References: https://docs.emdashcms.com/plugins/creating-plugins/manifest/ and https://docs.emdashcms.com/plugins/creating-plugins/publishing/
 
-**5. Theme package:** publish `@cofferhq/astro` from GitHub Actions with npm trusted publishing (OIDC, with provenance), never a stored npm token: npm restricts publishing with tokens that bypass 2FA from January 2027. The first publish of a scoped package needs `npm publish --access public`. The EmDash registry listing stays `@<atmosphere-handle>/coffer`; the npm scope covers only the theme kit (`docs/decisions.md`, 2026-10-16).
+**5. Theme package** (in 1.0.0; the first publish is a placeholder by hand, then CI: `docs/decisions.md`, 2026-11-25)**:** publish `@cofferhq/astro` from GitHub Actions with npm trusted publishing (OIDC, with provenance), never a stored npm token: npm restricts publishing with tokens that bypass 2FA from January 2027. The first publish of a scoped package needs `npm publish --access public`. The EmDash registry listing stays `@<atmosphere-handle>/coffer`; the npm scope covers only the theme kit (`docs/decisions.md`, 2026-10-16).
 
 **6. Registry setup test:** once the listing shows publicly (step 4), repeat phase 05's timed run from the real registry click with the published install command, on stagenet. Announce only after it passes.
 

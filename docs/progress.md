@@ -6545,3 +6545,26 @@ PASS/FAIL lines go to the terminal and `~/xmr-pay-dev-data/release-<version>/reb
 - **`2e3c410` is the ship commit candidate.** This entry's commit sits after it on `release-1` and is never part of `main` before the tags.
 
 **Next step (Wyatt):** fast-forward `main` to `2e3c410` (`git push origin 2e3c410aa9280ab346941bf6a909a23f435976fb:main`), then tag and push `xmr-bridge@1.0.0` on it. Then download CI's artifact, unzip it into `~/xmr-pay-dev-data/release-1.0.0/artifact`, and run `scripts/rebuild-release.sh 1.0.0 2e3c410aa9280ab346941bf6a909a23f435976fb ~/xmr-pay-dev-data/release-1.0.0/artifact`.
+
+## 2026-11-25 · Phase 09 (release 1) · The 1.0.0 rebuild check: 0 FAIL; T37 Covered
+
+- **State found:** Wyatt fast-forwarded `main` to `2e3c410` and pushed `xmr-bridge@1.0.0` on it. `bridge-release.yml` run 45502956358 passed every step. Its artifact `xmr-bridge-1.0.0` (zip SHA-256 `50daefc681950537d47a37d87d5edea2c96e61a171933c3beae657c8f1f549e7`, matching GitHub's digest; the artifact expires 2026-12-01) was downloaded to `~/xmr-pay-dev-data/release-1.0.0/`.
+- **Unzipped** into `artifact/`: the six expected files only, plain names. Nothing in it was run.
+- **`scripts/rebuild-release.sh 1.0.0 2e3c410aa9280ab346941bf6a909a23f435976fb ~/xmr-pay-dev-data/release-1.0.0/artifact`: 16 PASS, 0 FAIL, exit 0** (clone, tag, main, go1.27.4 linux/amd64, build, file list, both binaries byte-identical, `SHA256SUMS` and `release.json` entries, `install.sh`/`release.json`/`SHA256SUMS` reassembled identical, key 1's fingerprint `531183cd…3192`). Output: `~/xmr-pay-dev-data/release-1.0.0/rebuild-output.txt`.
+  - amd64 `2cef2d12d60eaffdcd6fdb9fac7b305df9fa3f7ba4e864db30e2b81efb703287` (11,740,911 bytes)
+  - arm64 `61f24d766d600ccb1b59905b8c5b411816988808eb683399d53061e62231cee2` (10,891,004 bytes)
+  - `release.json` SHA-256 `e6160c58a4ef0c72ec986f3874a627544f91168b3c2326064ca6caf0f227c396` (this is the file Wyatt signs).
+  - These differ from the `0.0.0-repro` hashes for the same commit, as expected: the version is stamped into the binary.
+- **Matrix:** T37 Partial → Covered. Not covered: attestation verification (no `gh` here).
+
+**Left before 1.0.0, in order:**
+1. `pnpm audit --prod` on the plugin as released (07b F5; CI's govulncheck in binary mode already ran on both binaries).
+2. Wyatt signs `release.json` offline with key 1 and hands back `release.json.sig` only.
+3. Wyatt uploads the 1.0.0 folder, with the signature, to `get.coffer.party` (`docs/install-host.md`). Test the published command on a machine with wget and no curl.
+4. A GitHub Release for `xmr-bridge@1.0.0` (Wyatt approves).
+5. `coffer@1.0.0` on `2e3c410` (Wyatt): the first real `emdash-release.yml` run, the repo connection and passkey approval, the labeler watch, then `emdash-plugin logout` on the dev box.
+6. `@cofferhq/astro` on npm: there's no publish workflow yet and no trusted publishing on npm. Wyatt decides whether it stays in 1.0.
+7. The registry setup test (phase 05's timed run from the real registry click, stagenet). No announcement before it passes.
+8. The mainnet tips trial on wyattdilley.com, when Wyatt decides (checklist and rollback plan from Claude).
+
+**Next step:** step 1 above, then the signing handoff for Wyatt.

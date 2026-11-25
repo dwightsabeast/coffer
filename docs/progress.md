@@ -6717,3 +6717,35 @@ Wyatt's choice: finish the security report and README before the GitHub Release,
 - Not covered: nothing here was tried on mainnet; the sheet is for Wyatt to run.
 
 **Next step:** Wyatt fast-forwards `main` to `c3f0801`; CI on `532cdc3`; the GitHub Release; the theme's parts 2 and 3; `coffer@1.0.0`; the registry setup test; then the trial when Wyatt chooses.
+
+## 2026-11-25 · Phase 09 (release 1) · Handoff: where 1.0.0 stands, and the exact next steps
+
+**Done today (2026-11-25):**
+- Bridge 1.0.0: the CI artifact's rebuild check (0 FAIL, T37 Covered); `TestLiveSignedRelease` (T16), then Wyatt's offline signature, which passed it and OpenSSL; the `get.coffer.party` upload, live check 52 PASS, 0 FAIL (T32's note).
+- The theme package stays in 1.0.0: `theme/package.json` publishable (T38), `theme-release.yml` (staged, tag `cofferhq-astro@X.Y.Z`); the npm placeholder 0.0.1 published and deprecated by Wyatt.
+- Release notes for `xmr-bridge@1.0.0` (draft, local). The security report finished for 1.0.0 (results by ID from a clean run of `2e3c410`: 1,410 tests, 1,388 passed, 7 expected failures, 15 skipped, 0 failed) and README's release-1 status, both approved and committed.
+- CI: each job saves its test results (`test-results-<job>`, 30 days); a new `scripts` job runs the script tests in CI.
+- The mainnet trial checklist and rollback plan (local).
+
+**State at wrap-up:**
+- `origin/main` = `2e3c410`. `origin/release-1` = `532cdc3`; local `release-1` is ahead by `9b76f08` and this entry's commit (docs, plus a test cleanup fix), not pushed. The pull request from `release-1` to `main` is open.
+- Tags: `xmr-bridge@1.0.0` on `2e3c410` (pushed). No `coffer@1.0.0` or `cofferhq-astro@1.0.0` yet.
+- Live: `https://get.coffer.party` serves bridge 1.0.0 (the 0.0.0 probe is gone). npm: `@cofferhq/astro` 0.0.1 (deprecated placeholder) and npm's own `0.0.0-stage`; no trusted publisher set up yet (that starts the 2-day clock). Nothing on the EmDash registry yet. No GitHub Release yet.
+- CI: `c3f0801` green (run 45662656161). `532cdc3`'s run 45664388976 at wrap-up: `scripts` (its first run), `theme` and `bridge` success; `plugin` still running. When it's green, expect **four** artifacts, `test-results-plugin`, `-theme`, `-bridge` and `-scripts`, each with `run.txt`. Earlier today I said five; it's four. Downloading an artifact needs a GitHub login, so the dev box can only list them; Wyatt can download them from the run page.
+- **Corrections:** the `752c7ac` entry above and the `53edbbb` commit message say the generator has 7 test cases; it has **6 tests**. The Go middle-level case was added as an assertion inside an existing test. Its tests now remove their temporary folders (they left `srr-*` folders behind).
+- Nothing is running on the dev box: no dev site, built copy or release server, no tmux session. The scratch clone of the tag is deleted; its inputs and results are in `~/xmr-pay-dev-data/report-1.0.0/`.
+
+**Exact next steps for 1.0.0, in order** (each a stop point for Wyatt):
+1. Wyatt approves pushing `9b76f08` and this entry's commit to `release-1`. Then check run 45664388976 finished green, and list its four artifacts.
+2. Wyatt fast-forwards `main` to a green `release-1` commit: `c3f0801` (`git push origin c3f0801c3b988bab1464bfb8e63fb726b18e95c7:main`) or a later one whose CI is green. The theme tag goes on whatever `main`'s head is then.
+3. **GitHub Release** `xmr-bridge@1.0.0` (Wyatt): the notes `~/xmr-pay-dev-data/release-1.0.0/RELEASE-NOTES-xmr-bridge-1.0.0.md`, the seven files from his upload folder's `1.0.0/`, set as latest.
+4. **The theme package, parts 2 and 3 on one day** (`~/xmr-pay-dev-data/npm-placeholder/NPM-STEPS.txt`): the trusted publisher (stage publish only), then "disallow tokens"; the `cofferhq-astro@1.0.0` tag on `main`'s head; compare the job summary's integrity with the staged version on npmjs.com; approve with 2FA. Then Claude checks the published version (integrity, provenance, files) and T38's remaining conditions.
+5. **The plugin:** Wyatt tags `coffer@1.0.0` on `2e3c410` and pushes it; approves the repo connection and the release with his passkey; Claude watches `emdash-plugin info @dwightsabeast.tngl.sh/coffer --version 1.0.0 --watch` for the labeler's approval. Then **`emdash-plugin logout` on the dev box** (required, phase 09 step 4).
+6. **The registry setup test** (phase 09 step 6): phase 05's timed run from the real registry click with the published install command, on stagenet, including an install on a machine with wget and no curl (spec change 21's open item). Claude prepares the organizer first. No announcement before it passes.
+7. **The mainnet tips trial** (phase 09 step 7), when Wyatt chooses: `~/xmr-pay-dev-data/mainnet-trial/MAINNET-TRIAL.md`.
+
+**Still open, not blocking:** spec change 59 item 1 (a sentence in `docs/install.md` for admins coming from EmDash 1.4) is on "Still to decide"; T38 stays Partial until the first theme release; bridge attestations aren't verified on the dev box (no `gh`); deprecating npm's `0.0.0-stage` is optional.
+
+**Local files for the next session** (all in `~/xmr-pay-dev-data/`): `release-1.0.0/` (artifact, `signed/`, `SIGN-1.0.0.txt`, `RELEASE-NOTES-xmr-bridge-1.0.0.md`, rebuild and check outputs), `install-host-upload/` (the one upload folder), `install-host-kit/`, `npm-placeholder/`, `report-1.0.0/`, `mainnet-trial/`, and `ci-*.txt`.
+
+**To resume:** `Continue phase 09 (release 1). Read docs/progress.md's last entry, then plan the next step.`

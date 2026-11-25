@@ -1,18 +1,24 @@
 // Tests for scripts/security-report-results.mjs: results grouped by matrix ID for the security report's appendix.
 // Fixtures stand in for the three reporters' outputs (scripts/report/vitest-reporter.mjs, scripts/report/node-reporter.mjs,
 // and `go test -json`).
-import { test } from "node:test";
+import { after, test } from "node:test";
 import assert from "node:assert/strict";
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const script = fileURLToPath(new URL("./security-report-results.mjs", import.meta.url));
 
+const made = [];
+after(() => {
+	for (const d of made) rmSync(d, { recursive: true, force: true });
+});
+
 function fixtures() {
 	const dir = mkdtempSync(join(tmpdir(), "srr-"));
+	made.push(dir);
 	const vitest = [
 		{ file: "tests/a.test.ts", name: "sync > [T03] a forged report is refused", state: "passed", fails: false },
 		{ file: "tests/a.test.ts", name: "sync > [T03] [T04] an old report is refused", state: "passed", fails: false },

@@ -6657,3 +6657,14 @@ Wyatt's choices: staged publishing (he approves each version on npmjs.com with 2
 **Next step:** the CI result on `e9bf2f7`; then the GitHub Release for `xmr-bridge@1.0.0` (binaries, `SHA256SUMS`, `release.json`, `release.json.sig`, the key fingerprint; Wyatt creates it); `coffer@1.0.0`; the theme's parts 2 and 3.
 
 - **CI on `e9bf2f7`** (the new pull request from `release-1`): run 45654065960 `success`; bridge (race-detector tests included), theme and plugin all `success`. This is the first CI run on `e3e4952`'s `TestSignedReleaseCheck` and the theme's `[T38]` package tests. `0294d5a` and `6bea4ea` (docs only) are local, not pushed.
+
+## 2026-11-25 · Phase 09 (release 1) · Release notes for `xmr-bridge@1.0.0` (draft for Wyatt)
+
+- **`~/xmr-pay-dev-data/release-1.0.0/RELEASE-NOTES-xmr-bridge-1.0.0.md`:** what the program is; install through the admin page (with `docs/install.md` at the tag linked); the wallet host's needs; what it works with (plugin 1.0.0, EmDash 1.5.0 or later, sync protocol v1); the seven files with size and SHA-256 (from the upload folder); release key 1's and key 2's fingerprints; three ways to check (the signature by hand, `gh attestation verify` for the four attested files, a rebuild with `scripts/release-build.sh` at the tag); how updates are checked; security (the report, stagenet only, no outside review, the two main limits, the private report link). Every hash, size and fingerprint was copied from command output, not typed.
+  - Corrected while checking claims against the code: `install.sh` checks the program's SHA-256 (not every file's); `rebuild-release.sh` needs CI's artifact, so the notes give the public rebuild with `release-build.sh` (an absolute, empty output folder).
+- **Found, open for release 1:**
+  - **The security report is still a draft** in the tagged tree (`docs/security-report.md`: "Draft. Not published", with the commit, CI run and the appendix of results by ID still marked **[at the tag]**). The notes link the copy on `main`, so the report needs finishing in a commit on `main` before or soon after the release goes public.
+  - **README's status** at the tag still says "In development, not ready for use. Nothing here has been released." It needs a status update on `main`.
+  - The notes name the plugin as `@dwightsabeast.tngl.sh/coffer`, which isn't on the registry until `coffer@1.0.0` is approved.
+
+**Next step:** Wyatt reviews the notes and decides the order: finish the security report and README first, or publish the GitHub Release and edit its link later.

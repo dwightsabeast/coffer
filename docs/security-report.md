@@ -1,13 +1,13 @@
 # Coffer security report: release 1 (tips)
 
-> **Draft. Not published.** Written on 2026-11-15 from `docs/security-review.md` and `docs/security-matrix.md`.
-> When the release gets its tag, CI's results replace each **[at the tag]** mark.
+> Written on 2026-11-15 from `docs/security-review.md` and `docs/security-matrix.md`. Updated on 2026-11-25 for the 1.0.0 release, with the results of the tests at the release's commit.
 
 | | |
 | --- | --- |
 | Release | Coffer 1.0.0: tips only. Orders are part of release 2 |
-| Commit | **[at the tag]** |
-| CI run | **[at the tag]** |
+| Commit | `2e3c410aa9280ab346941bf6a909a23f435976fb`, the commit of the 1.0.0 tags |
+| CI run | [45501345050](https://github.com/dwightsabeast/coffer/actions/runs/45501345050): passed |
+| Test results | The appendix gives the result for each ID. [`docs/security-results-1.0.0.md`](security-results-1.0.0.md) names each test. These results come from a run of that commit on the project's development machine. CI passed the same commit but doesn't keep each test's result |
 | Network for the live checks | Monero stagenet (test money). No check ran on mainnet |
 | Review | By the project itself, in two steps: an attack phase and a line-by-line review. No outside review yet |
 
@@ -39,7 +39,7 @@ The report also tells you what we didn't test, and which limits we decided to ac
 
 ## What an attacker could try
 
-Each entry gives the claim's ID in the test matrix (`docs/security-matrix.md`). Use the ID to find the claim's tests. CI adds the results and the test names **[at the tag]**.
+Each entry gives the claim's ID in the test matrix (`docs/security-matrix.md`). Use the ID to find the claim's tests. The appendix gives the results for each ID.
 
 ### A bad update to the plugin (T01)
 
@@ -126,12 +126,13 @@ Each entry gives the claim's ID in the test matrix (`docs/security-matrix.md`). 
 - **Your money:** safe. The view key isn't on that machine. The installer refuses to put the wallet host there.
 - **What they could do:** read tips and notes, and change what your site shows.
 
-### Tampered downloads (T16, T26, T27, T28, T32)
+### Tampered downloads (T16, T26, T27, T28, T32, T37)
 
 - **Monero's wallet program:** before the program runs, the wallet host checks it against the signed list of the Monero project.
 - **Updates to the wallet host:** the wallet host checks each update against Coffer's release key. It waits 48 hours, and it never returns to an older version.
 - **The first install** checks a checksum, not a signature. See "The first install trusts the download site".
 - **A changed download site** can't send code to wallet hosts that are already installed, because they take only signed updates. We check each upload to the download site against the record of what we published.
+- **The release itself (T37):** GitHub's build service builds each release of the wallet host from the tagged code, and it signs a record of the build. Before we sign a release, a second build on another machine must give the same bytes. For 1.0.0, both builds gave the same bytes for each program.
 - **Coffer's own code** contains no third-party runtime packages. On every change, a scan looks for known vulnerabilities in the Go code of the wallet host. The scan also looks for any runtime package in the plugin or the theme.
 
 ## Privacy
@@ -212,7 +213,8 @@ We don't claim that a row in this table is fully proven. Each row says what we t
 | T08 | Hostile text can't run | The tip note | Email fields and refund-address fields don't exist yet. They are part of release 2 |
 | T15 | A break-in on the site's server reaches no key | The scan, and the installer's refusal on the site's machine | A test-network switch for developers refuses a real-money wallet only after it asks for the view key (RT-21). Coffer doesn't offer this switch to admins |
 | T23 | Coffer adds nothing to your site's own pages | Two tests of the pay page and the tip button | We read the code to confirm that Coffer sets its privacy headers only on its own responses. No test checks it |
-| T32 | A person who controls the download site can't control installed wallet hosts | An installed wallet host takes an update only if it has a signature from the key in the wallet host. The update must also be newer than the version that runs now, and match the signed list of files. After every upload, a check compares each published file with the record of what we published. It also confirms that nothing redirects. The check passed on the live site | The check finds a change only when someone runs it. So a change between uploads appears at the next run. A first install trusts the download site (see "The first install trusts the download site"). No signed release is on the site yet |
+| T32 | A person who controls the download site can't control installed wallet hosts | An installed wallet host takes an update only if it has a signature from the key in the wallet host. The update must also be newer than the version that runs now, and match the signed list of files. After every upload, a check compares each published file with the record of what we published. It also confirms that nothing redirects. The check passed on the live site | The check finds a change only when someone runs it. So a change between uploads appears at the next run. A first install trusts the download site (see "The first install trusts the download site"). Since 2026-11-25, release 1.0.0 is on the site, and the check passed for it |
+| T38 | The theme package on npm comes only from the reviewed code, and it goes live only after the owner approves it | The contents of the package and the checks of the release workflow. The workflow uses no npm token, and npm keeps each new version back until the owner approves it | The theme package is published from a later commit than this report. Its code is the same; only its package file, a copy of the license and a test of the package changed. The first release through the workflow checks the npm settings and the build record |
 | P05 | What remote nodes learn | Exactly what Coffer sends to a second node: a block height, never a payment ID | Together, the second nodes can link the IP address of your wallet host to the blocks that hold your payments. If you run your own node, this doesn't happen |
 | R05 | A restart during a payment loses nothing | We killed the site, and separately the wallet host, during a report | An admin's decision and a report can arrive at the same instant. The admin's decision won in every test round. This is a strong sign, not a proof |
 | F01 | Coffer refuses malformed reports | Size, encoding, signature and age | Coffer accepts a correctly signed report with unknown or repeated fields (RT-06). This needs the signing key |
@@ -229,7 +231,12 @@ Release 1 takes tips only. These topics belong to orders, and this report doesn'
 
 ## How we tested Coffer
 
-- **Automated tests** run on every change. They test the plugin, the theme and the wallet host, and they include a race detector. Totals: **[at the tag]**.
+- **Automated tests** run on every change. They test the plugin, the theme and the wallet host, and they include a race detector. At the release's commit: 1,410 tests. 1,388 passed. 7 failed as expected: they are the known limits under "Limits we accepted". 15 were skipped in this run. No test failed. The 15 skipped tests are:
+  - 10 tests of the wallet host that need a live wallet, a node or the network. We ran them by hand during development, and `docs/progress.md` records each run
+  - a comparison with OpenSSL, which needs its own setup
+  - the test of RT-21, an open low-rated finding. Go has no mark for an expected failure, so this test is skipped while RT-21 is open
+  - a check that runs only when the QR decoder is missing
+  - in each of the two plugin runs, the test for the other setting of the release-1 switch
 - **An attack phase** before the release:
   - hostile requests against a site that runs Coffer
   - a hostile node
@@ -250,4 +257,97 @@ Report it privately at https://github.com/dwightsabeast/coffer/security/advisori
 
 ## Appendix: results by ID
 
-**[at the tag]** We generate this section from CI's test output: each ID, its tests, and the result.
+We generated this section from the test results at the release's commit, with `scripts/security-report-results.mjs`. [`docs/security-results-1.0.0.md`](security-results-1.0.0.md) names each test and its result.
+
+How to read it:
+
+- **Passed:** the test ran and the claim held.
+- **Expected failure:** the test describes the correct behavior, and the behavior isn't correct yet. These are the known limits under "Limits we accepted".
+- **Skipped:** the test didn't run in this run. "How we tested Coffer" says why for each one.
+- **No automated test ran:** the claim's evidence isn't a test in these suites. For T37, the evidence is CI's reproducibility build and the rebuild before signing. For P01, it is the data-at-rest scanner, which we ran by hand. The matrix row of each ID gives its evidence.
+
+| | |
+| --- | --- |
+| Commit | `2e3c410aa9280ab346941bf6a909a23f435976fb` |
+| CI run on that commit | [45501345050](https://github.com/dwightsabeast/coffer/actions/runs/45501345050), passed |
+| Where these results come from | A clean clone of that commit on the project's development machine, 2026-11-25: Go 1.27.4, Node 24.21.0, pnpm 12.8.1, each package's committed lockfile. CI's race-detector run isn't included |
+
+**Totals**
+
+| Suite | Passed | Expected failure (known limit) | Skipped (didn't run) | Failed |
+| --- | ---: | ---: | ---: | ---: |
+| plugin | 547 | 7 | 1 | 0 |
+| plugin (release-2 switch on) | 102 | 0 | 1 | 0 |
+| theme | 79 | 0 | 1 | 0 |
+| wallet host (bridge) | 547 | 0 | 12 | 0 |
+| scripts | 113 | 0 | 0 | 0 |
+| **All** | 1388 | 7 | 15 | 0 |
+
+**By ID**
+
+| ID | Passed | Expected failure (known limit) | Skipped (didn't run) | Failed | Note |
+| --- | ---: | ---: | ---: | ---: | --- |
+| T01 | 2 | 0 | 0 | 0 | |
+| T02 | 2 | 0 | 0 | 0 | |
+| T03 | 118 | 0 | 0 | 0 | |
+| T04 | 16 | 0 | 0 | 0 | |
+| T05 | 56 | 1 | 0 | 0 | Known limit: an expected failure is open |
+| T06 | 17 | 0 | 0 | 0 | |
+| T07 | 23 | 0 | 0 | 0 | |
+| T08 | 10 | 0 | 0 | 0 | |
+| T09 | 12 | 0 | 0 | 0 | |
+| T10 | 6 | 0 | 0 | 0 | |
+| T11 | 18 | 0 | 0 | 0 | |
+| T12 | 10 | 0 | 0 | 0 | |
+| T13 | 32 | 0 | 0 | 0 | |
+| T14 | 74 | 0 | 1 | 0 | |
+| R14 | 14 | 0 | 0 | 0 | |
+| T15 | 21 | 0 | 1 | 0 | |
+| T16 | 30 | 0 | 0 | 0 | |
+| T17 | 7 | 0 | 0 | 0 | |
+| T18 | 44 | 0 | 0 | 0 | |
+| T19 | 8 | 0 | 0 | 0 | |
+| T20 | 29 | 0 | 0 | 0 | |
+| T21 | 8 | 1 | 0 | 0 | Known limit: an expected failure is open |
+| T22 | 12 | 0 | 0 | 0 | |
+| T23 | 2 | 0 | 0 | 0 | |
+| T24 | 7 | 0 | 1 | 0 | |
+| T25 | 10 | 0 | 0 | 0 | |
+| T26 | 3 | 0 | 0 | 0 | |
+| T27 | 4 | 0 | 0 | 0 | |
+| T28 | 1 | 0 | 0 | 0 | |
+| T29 | 11 | 0 | 0 | 0 | |
+| T30 | 4 | 0 | 0 | 0 | |
+| T31 | 1 | 0 | 0 | 0 | |
+| T32 | 20 | 0 | 0 | 0 | |
+| T33 | 5 | 0 | 0 | 0 | |
+| T34 | 7 | 0 | 0 | 0 | |
+| T35 | 5 | 0 | 0 | 0 | |
+| T36 | 17 | 0 | 0 | 0 | |
+| T37 | 0 | 0 | 0 | 0 | No automated test ran |
+| P01 | 0 | 0 | 0 | 0 | No automated test ran |
+| P02 | 92 | 1 | 0 | 0 | Known limit: an expected failure is open |
+| P03 | 6 | 0 | 0 | 0 | |
+| P04 | 6 | 1 | 0 | 0 | Known limit: an expected failure is open |
+| P05 | 1 | 0 | 0 | 0 | |
+| R01 | 4 | 0 | 0 | 0 | |
+| R02 | 3 | 0 | 0 | 0 | |
+| R03 | 9 | 0 | 0 | 0 | |
+| R04 | 7 | 0 | 0 | 0 | |
+| R05 | 4 | 0 | 0 | 0 | |
+| R06 | 2 | 0 | 0 | 0 | |
+| R07 | 3 | 0 | 0 | 0 | |
+| R08 | 74 | 0 | 0 | 0 | |
+| R09 | 42 | 0 | 0 | 0 | |
+| R10 | 6 | 0 | 0 | 0 | |
+| R11 | 8 | 0 | 0 | 0 | |
+| R12 | 4 | 0 | 0 | 0 | |
+| R13 | 24 | 0 | 0 | 0 | |
+| F01 | 17 | 3 | 0 | 0 | Known limit: an expected failure is open |
+| F02 | 19 | 0 | 0 | 0 | |
+| F03 | 4 | 0 | 0 | 0 | |
+| F04 | 21 | 0 | 0 | 0 | |
+| F05 | 26 | 0 | 0 | 0 | |
+| F06 | 1 | 0 | 0 | 0 | |
+| F07 | 5 | 0 | 0 | 0 | |
+| F08 | 27 | 0 | 0 | 0 | |

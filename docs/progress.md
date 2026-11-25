@@ -6655,3 +6655,5 @@ Wyatt's choices: staged publishing (he approves each version on npmjs.com with 2
 - **Not covered yet:** the published command on a machine with wget and no curl (spec change 21's open item). The checker downloads with wget from the dev box, but a real install over wget is part of the registry setup test.
 
 **Next step:** the CI result on `e9bf2f7`; then the GitHub Release for `xmr-bridge@1.0.0` (binaries, `SHA256SUMS`, `release.json`, `release.json.sig`, the key fingerprint; Wyatt creates it); `coffer@1.0.0`; the theme's parts 2 and 3.
+
+- **CI on `e9bf2f7`** (the new pull request from `release-1`): run 45654065960 `success`; bridge (race-detector tests included), theme and plugin all `success`. This is the first CI run on `e3e4952`'s `TestSignedReleaseCheck` and the theme's `[T38]` package tests. `0294d5a` and `6bea4ea` (docs only) are local, not pushed.

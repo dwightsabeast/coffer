@@ -6645,3 +6645,13 @@ Wyatt's choices: staged publishing (he approves each version on npmjs.com with 2
 - **Kit for Wyatt:** `~/xmr-pay-dev-data/install-host-kit/`: `UPLOAD-STEPS.txt` (copy, check, back up, upload, send back) and `upload-check.ps1` (all 15 files present with their SHA-256 and no extra file; writes `upload-check-output.txt`). No PowerShell on the dev box, so it isn't syntax-checked here.
 
 **Next step:** Wyatt uploads; then, with his go-ahead, the live check against `https://get.coffer.party` (`docs/install-host.md`, "The check"). CI on `e9bf2f7` was still running at this commit.
+
+## 2026-11-25 · Phase 09 (release 1) · Bridge 1.0.0 is live on `get.coffer.party`: 52 PASS, 0 FAIL
+
+- **Wyatt's copy, before upload** (`upload-check.ps1`, his PC, 09:31 his time): all 15 files PASS with their SHA-256, no extra file, "done: 0 FAIL, 15 files". He backed the folder up and uploaded it to Pages.
+- **The live check** (`node scripts/check-install-host.mjs --base https://get.coffer.party --folder ~/xmr-pay-dev-data/install-host-upload`, Wyatt's go-ahead, 16:40 UTC): **52 PASS, 0 FAIL, 0 WARN, exit 0** (`~/xmr-pay-dev-data/install-host-check-output.txt`). The folder and layout checks passed; every file is served with no redirect and bytes matching the folder; missing files get a 404 with `404.html`, and the root is a 404; plain http answers 301 to the same https path for every path; `install.sh` and both binaries download with `wget --max-redirect=0` and `curl --max-redirs 0`; no tracked file names a `*.pages.dev` address.
+- **The probe is gone:** `/0.0.0/install.sh` and `/latest/xmr-bridge-0.0.0-linux-amd64` answer 404, so the upload replaced the whole site, as `docs/install-host.md` assumed.
+- **Matrix:** T32's note records the first real signed release on the host (still Partial: the check runs only when someone runs it).
+- **Not covered yet:** the published command on a machine with wget and no curl (spec change 21's open item). The checker downloads with wget from the dev box, but a real install over wget is part of the registry setup test.
+
+**Next step:** the CI result on `e9bf2f7`; then the GitHub Release for `xmr-bridge@1.0.0` (binaries, `SHA256SUMS`, `release.json`, `release.json.sig`, the key fingerprint; Wyatt creates it); `coffer@1.0.0`; the theme's parts 2 and 3.

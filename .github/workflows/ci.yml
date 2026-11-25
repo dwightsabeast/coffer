@@ -9,6 +9,8 @@
 # Hardening (Wyatt, 2026-10-03): read-only token, no pull_request_target, no persisted git credentials, frozen
 # lockfile, no dependency cache. Actions are GitHub's own, pinned to commit SHAs; pnpm comes from Node's corepack
 # at the exact version in plugin/package.json ("packageManager"), so there is no third-party setup action.
+# Script tests (2026-11-25, Wyatt): node --test on scripts/*.test.mjs and scripts/redteam/*.test.mjs, Node built-ins only;
+# the runner image's git, curl, wget, openssl and sha256sum. They need no dev-box state (checked with an empty HOME).
 # Test results (2026-11-25, Wyatt): each job saves its suites' results (scripts/report/, the plugin and theme through
 # vitest's reporter API, the bridge as go test -json) and the commit and run, as a 30-day artifact
 # test-results-<job>, for scripts/security-report-results.mjs. For a release, use the run on the push to main: a pull
@@ -112,6 +114,37 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: test-results-theme
+          path: ${{ runner.temp }}/results/
+          if-no-files-found: error
+          retention-days: 30
+
+  scripts:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 24.21.0
+          package-manager-cache: false
+      - name: The tools the script tests call (from the runner image; the tests use Node built-ins only)
+        run: node --version && git --version && curl --version | head -n 1 && wget --version | head -n 1 && openssl version && sha256sum --version | head -n 1
+      - name: Script tests (each result also saved, scripts/report/node-reporter.mjs)
+        run: |
+          mkdir -p "$RUNNER_TEMP/results"
+          node --test --test-reporter=spec --test-reporter-destination=stdout \
+            --test-reporter="$GITHUB_WORKSPACE/scripts/report/node-reporter.mjs" --test-reporter-destination="$RUNNER_TEMP/results/scripts.json" \
+            scripts/*.test.mjs scripts/redteam/*.test.mjs
+      - name: Record which commit and run these results are from
+        env:
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: printf 'commit=%s\ncheckout=%s\nevent=%s\nrun=%s\n' "$HEAD_SHA" "$GITHUB_SHA" "$GITHUB_EVENT_NAME" "$GITHUB_RUN_ID" > "$RUNNER_TEMP/results/run.txt"
+      - name: Save the test results (for the security report; 30 days)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: test-results-scripts
           path: ${{ runner.temp }}/results/
           if-no-files-found: error
           retention-days: 30

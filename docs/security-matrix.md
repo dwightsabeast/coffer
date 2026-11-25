@@ -187,7 +187,7 @@ show me the diff before committing.
 
 The public report is generated from tagged CI output at each release tag, so it can't drift from the tests. The registry listing's `security` section is its plain-language summary (spec change 41, item 5).
 
-- **Generation.** CI saves each suite's results (since 2026-11-25: the `test-results-<job>` artifacts; `scripts/report/vitest-reporter.mjs`, which records `it.fails`, and `go test -json`). `scripts/security-report-results.mjs` (Node built-ins only) groups them by ID with the commit and CI run, and writes the report's appendix and `docs/security-results-<version>.md`. 1.0.0's came from a clean dev-box run of the tagged commit, before CI saved results. The script tests aren't in CI yet.
+- **Generation.** CI saves each suite's results (since 2026-11-25: the `test-results-<job>` artifacts; `scripts/report/vitest-reporter.mjs`, which records `it.fails`, and `go test -json`). `scripts/security-report-results.mjs` (Node built-ins only) groups them by ID with the commit and CI run, and writes the report's appendix and `docs/security-results-<version>.md`. 1.0.0's came from a clean dev-box run of the tagged commit, before CI saved results. The script tests run in CI's `scripts` job.
 - **Per-ID layout.** A plain-language summary first: what could happen, what happens to your money, and what you'd see on the admin page. Then the result and its evidence. Raw results go in an appendix.
 - **Untested rows.** A row that isn't Covered at release isn't claimed as a protection. It's listed under Known limits or Not yet tested.
 - **Outside review.** Findings go in with the date, and the reviewer's name if they agree.

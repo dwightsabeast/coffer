@@ -6695,6 +6695,12 @@ Wyatt's choice: finish the security report and README before the GitHub Release,
   - the bridge's new step: 22 `ok` lines, exit 0; `run.txt` as expected;
   - `go-test-log.py` on a failing test (the test's output shown, exit 1), a compile error (the error shown, exit 1), a missing file (exit 2), and the real 1.0.0 run (exit 0).
 - **Not run:** the plugin's new steps (the same command form as the dev-box run, plus `github-actions`; 10 minutes here); the workflow on GitHub.
-- **Open (Wyatt):** the script tests (`node --test scripts/*.test.mjs scripts/redteam/*.test.mjs`, 119 tests, 14 tagged T32 at the tag) have never run in CI. Adding a `scripts` job would put them in CI and in the results.
+- **Open (Wyatt):** the script tests (`node --test scripts/*.test.mjs scripts/redteam/*.test.mjs`; 113 at the tag, 11 of them tagged T32; 119 now) have never run in CI. Adding a `scripts` job would put them in CI and in the results. (Corrected the same day: this line first said "119 tests, 14 tagged T32 at the tag", mixing today's count with the tag's T32 total across all suites.)
 
 **Next step:** CI on `c3f0801`, then `main` to it; the GitHub Release; the theme's parts 2 and 3; `coffer@1.0.0`. `83c3058` goes to `release-1` with Wyatt's approval; it doesn't need to be on `main` for 1.0.0.
+
+## 2026-11-25 · Phase 09 (release 1) · CI runs the script tests
+
+- **Wyatt:** add the script tests to CI. **`ci.yml`, a `scripts` job:** the pinned checkout and setup-node (Node 24.21.0); a step that prints the versions of the tools the tests call (git, curl, wget, openssl, sha256sum, all from the runner image); `node --test` on `scripts/*.test.mjs scripts/redteam/*.test.mjs` with the spec reporter on the log and `scripts/report/node-reporter.mjs` into `$RUNNER_TEMP/results/scripts.json`; then `run.txt` and the `test-results-scripts` artifact, as in the other jobs. No new action.
+- **Before adding it:** the tests import only Node built-ins and their own scripts, and call `git` and `sh`. The whole suite under `env -i` with an empty `HOME` and no git identity: 119 passed, and the home folder stayed empty, so they need no dev-box state and write nothing there.
+- **The job's test step as written** (stand-in `GITHUB_WORKSPACE` and `RUNNER_TEMP`, the same empty-`HOME` environment, `bash -eo pipefail` as Actions runs it): exit 0, 119 passed; the saved file has 119 passed, 11 tagged T32. Strict YAML parse; every `uses:` a full SHA. Not run on GitHub yet.

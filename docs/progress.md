@@ -6593,3 +6593,24 @@ PASS/FAIL lines go to the terminal and `~/xmr-pay-dev-data/release-<version>/reb
 - **npm facts used** (npm's docs, read 2026-11-25): trusted publishing needs npm 11.5.1+ and Node 22.14+, `id-token: write`, a `repository.url` that exactly matches GitHub, a cloud-hosted runner, and the workflow's file name. Provenance comes automatically. A new trusted publisher must publish within 2 days or it expires. Configurations made after 2026-09-03 allow only `npm stage publish` unless direct `npm publish` is selected. A staged version needs a maintainer's 2FA approval (web or `npm stage approve`; npm 11.15.0+). npm recommends "Require two-factor authentication and disallow tokens" afterwards.
 
 **Next step:** Wyatt approves the theme publish plan. Separately, the `get.coffer.party` upload folder for 1.0.0 from `signed/`.
+
+## 2026-11-25 · Phase 09 (release 1) · Step 5: the theme package, publishable, with its release workflow; the placeholder kit
+
+Wyatt's choices: staged publishing (he approves each version on npmjs.com with 2FA), and the tag `cofferhq-astro@X.Y.Z`.
+
+- **`theme/package.json` (`a46bda4`):** version `1.0.0`, no longer `private`, `repository` (`git+https://github.com/dwightsabeast/coffer.git`, folder `theme`), `publishConfig.access: public`; `theme/LICENSE` is the repository's MIT text (npm packs a license only from the package's own folder). No dependency or lockfile change.
+  - `theme/tests/package.test.ts`, 3 tests tagged `[T38]`: the fields, no pack/publish/install lifecycle script, the license text, and npm pack's exact file list (README, LICENSE, package.json, everything under `src`, the vendored encoder's license included). Red 3 of 3, then green.
+  - Theme: 13 files, 82 passed, 1 skipped (the "zbarimg is missing" check, which runs only when it is), with `COFFER_REQUIRE_ZBAR=1`; typecheck clean (`~/xmr-pay-dev-data/theme-npm-tests.txt`).
+  - npm pack: 18 files, 98.4 kB unpacked; two packs byte-identical (SHA-256 `cfea8148a15d33fb9f3dbca905aca6e5622eb214924a325e06c15288f5ae0480` at `a46bda4`; the release run records its own). `npm stage publish --dry-run --ignore-scripts` on the folder and on the tarball: staged with tag `latest`, public access.
+- **`.github/workflows/theme-release.yml` (`da6ff33`):** `check` (CI's theme steps, no `id-token`), then `stage` (tag form, `main`'s head, npm 11.15.0 or later, package name and version, `npm pack` with its SHA-256 and integrity in the summary, `npm stage publish --ignore-scripts` of that tarball; the only job with `id-token: write`). `checkout` and `setup-node` at `ci.yml`'s pins; no new actions.
+  - **Checked locally:** all four workflows parse (strict, unique keys); every `uses:` is a full SHA; the tag patterns don't overlap. The stage job's shell steps were run with stand-in GitHub values: the tag check passed `cofferhq-astro@1.0.0` and refused `cofferhq-astro@1.0` and `coffer@1.0.0`; npm 11.19.0 passed; the version check refused a 1.0.1 tag; the pack record matched the local pack. The `main` check refused, correctly, because `main` is at `2e3c410`. The version comparison refused 11.5.1, 11.14.9 and 9.9.9, and passed 11.15.0, 11.19.0 and 12.0.0.
+  - **Not covered:** the workflow hasn't run on GitHub; the OIDC exchange, provenance on a staged version, and the npm settings are checked at the first release.
+- **Matrix:** T38 added (Partial), and the summary line re-counted from the table: 31 Covered, 7 Partial, 38 rows. **Decisions:** the workflow row. **CLAUDE.md:** a theme-release row. **Phase file:** step 5's note.
+- **Kit for Wyatt:** `~/xmr-pay-dev-data/npm-placeholder/`:
+  - `cofferhq-astro-0.0.1.tgz` (README and package.json only; SHA-256 `0bc874abf728214e44028c38f309cfa217e0910014b065854f35761ad212f8f0`);
+  - `npm-placeholder.ps1`: checks, login, publish, deprecate, read-back, logout; the output file has no token. There's no PowerShell on the dev box, so it couldn't be syntax-checked here;
+  - `NPM-STEPS.txt`: part 1, the placeholder; part 2, the trusted publisher and "disallow tokens", which starts npm's 2-day clock; part 3, the release.
+
+**Sequencing for 1.0.0:** `coffer@1.0.0` stays on `2e3c410` (the plugin workflow doesn't check `main`). The theme tag needs `main` fast-forwarded past `2e3c410` to a commit with CI green, and none of `37df19b`..`da6ff33` has run in CI (pull request #2 is closed). A new pull request from `release-1` brings CI back.
+
+**Next step:** a new pull request from `release-1` for CI. Wyatt's part 1 (the placeholder) when he's ready. Separately, the `get.coffer.party` upload folder for bridge 1.0.0 from `release-1.0.0/signed/`.

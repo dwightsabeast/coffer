@@ -6614,3 +6614,12 @@ Wyatt's choices: staged publishing (he approves each version on npmjs.com with 2
 **Sequencing for 1.0.0:** `coffer@1.0.0` stays on `2e3c410` (the plugin workflow doesn't check `main`). The theme tag needs `main` fast-forwarded past `2e3c410` to a commit with CI green, and none of `37df19b`..`da6ff33` has run in CI (pull request #2 is closed). A new pull request from `release-1` brings CI back.
 
 **Next step:** a new pull request from `release-1` for CI. Wyatt's part 1 (the placeholder) when he's ready. Separately, the `get.coffer.party` upload folder for bridge 1.0.0 from `release-1.0.0/signed/`.
+
+## 2026-11-25 · Phase 09 (release 1) · Step 5 part 1: the placeholder is on npm; an unexplained `0.0.0-stage`
+
+- **`npm-placeholder-output.txt` (the run started 16:19:15 UTC):** node v26.13.1, npm 11.20.0; tarball SHA-256 PASS; `[NAME] @cofferhq/astro@0.0.1 is already published (a re-run): skipping the publish`; login PASS; deprecate PASS; the registry's integrity is the dev box's (PASS); deprecated (PASS); `latest` is 0.0.1; logged out (PASS). No FAIL.
+- **Correction:** I told Wyatt the earlier run had stopped at the login and published nothing. That was wrong: 0.0.1 was published at 16:16:34 UTC, before this run. That earlier run's output file was overwritten, because each run starts a fresh file.
+- **npm, read from the dev box** (`npm view`, public, no login): versions `0.0.0-stage` and `0.0.1`; `latest` 0.0.1; the package was created at 16:14:57 UTC with `0.0.0-stage`, which is npm's own "Temporary package placeholder for staged publishing" (2 files, 337 bytes, no scripts, no dependencies). 0.0.1 is our tarball (integrity `sha512-ub0t…zzqA==`, 2 files, `repository` the theme folder), deprecated, no attestations (a hand publish, as planned); 1 maintainer.
+- **Open:** npm makes `0.0.0-stage` when `npm stage publish` runs for a package that doesn't exist yet, so something was staged for `@cofferhq/astro` from Wyatt's account at 16:14:57 UTC. Not from the dev box (`npm whoami`: ENEEDAUTH; no `.npmrc` with a token), not from the workflow (no tag), not from `npm-placeholder.ps1` (it runs `npm publish`, never `stage`). What was staged, and whether it's still waiting, can be seen only when logged in (npmjs.com, Staged Packages). It must not be approved. A staged 1.0.0 there would also clash with CI's 1.0.0.
+
+**Next step:** Wyatt checks Staged Packages and rejects anything staged; then deprecate `0.0.0-stage`. Part 2 (the trusted publisher) only after that.

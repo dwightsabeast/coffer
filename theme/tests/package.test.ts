@@ -15,7 +15,7 @@ function filesUnder(dir: string): string[] {
 }
 
 describe("the npm package", () => {
-	it("is publishable as @cofferhq/astro 1.0.0 from this repository", () => {
+	it("[T38] is publishable as @cofferhq/astro 1.0.0 from this repository", () => {
 		const pkg = JSON.parse(read("package.json")) as Record<string, unknown>;
 		expect(pkg.name).toBe("@cofferhq/astro");
 		expect(pkg.version).toBe("1.0.0");
@@ -27,11 +27,11 @@ describe("the npm package", () => {
 		expect(Object.keys(pkg.scripts as object).filter((s) => /^(pre|post)?(pack|publish|prepare|install)/.test(s))).toEqual([]);
 	});
 
-	it("carries Coffer's own license, the same text as the repository's", () => {
+	it("[T38] carries Coffer's own license, the same text as the repository's", () => {
 		expect(read("LICENSE")).toBe(readFileSync(new URL("../LICENSE", root), "utf8"));
 	});
 
-	it("packs exactly the README, the license, package.json and src (the vendored encoder's license included)", () => {
+	it("[T38] packs exactly the README, the license, package.json and src (the vendored encoder's license included)", () => {
 		const out = execFileSync("npm", ["pack", "--dry-run", "--json", "--ignore-scripts"], {
 			cwd: fileURLToPath(root),
 			encoding: "utf8",

@@ -6685,3 +6685,16 @@ Wyatt's choice: finish the security report and README before the GitHub Release,
 - **Report text** (waiting for Wyatt's review, not committed): the Draft banner removed; commit, CI run 45501345050 and where the results come from; the appendix; the totals with each skip's reason; T37 under "Tampered downloads"; T32's row (1.0.0 on the host, the check passed); a T38 row (published from a later commit with the same theme code). **README** (waiting too): release-1 status, tips only, stagenet-tested, three parts and where each comes from; the layout table without "(later phase)". Full diff: `~/xmr-pay-dev-data/report-1.0.0/report-readme.diff`.
 
 **Next step:** Wyatt reviews the report and README text; commit; then a `ci.yml` step that saves each suite's results as an artifact, so release 2's report comes from CI.
+
+## 2026-11-25 · Phase 09 (release 1) · CI saves test results for the security report
+
+- **`ci.yml`:** the plugin's two test steps and the theme's write `scripts/report/vitest-reporter.mjs` results (vitest's `default` and `github-actions` reporters stay on, since naming any `--reporter` replaces vitest's defaults); the bridge's test step runs `go test -json` into a file and `scripts/report/go-test-log.py` prints what plain `go test` prints. Each job writes `run.txt` (the commit, GitHub's checkout, the event, the run) and uploads `test-results-<job>` for 30 days (`actions/upload-artifact`, the pin approved for `bridge-release.yml`). No check removed or changed; the race-detector run and the T37 build save nothing.
+- **Checked locally:**
+  - all four workflows parse (strict); every `uses:` in `ci.yml` is a full SHA;
+  - the theme's new step as written (stand-in `GITHUB_WORKSPACE` and `RUNNER_TEMP`): 82 passed, 1 skipped, and the saved file has the same counts;
+  - the bridge's new step: 22 `ok` lines, exit 0; `run.txt` as expected;
+  - `go-test-log.py` on a failing test (the test's output shown, exit 1), a compile error (the error shown, exit 1), a missing file (exit 2), and the real 1.0.0 run (exit 0).
+- **Not run:** the plugin's new steps (the same command form as the dev-box run, plus `github-actions`; 10 minutes here); the workflow on GitHub.
+- **Open (Wyatt):** the script tests (`node --test scripts/*.test.mjs scripts/redteam/*.test.mjs`, 119 tests, 14 tagged T32 at the tag) have never run in CI. Adding a `scripts` job would put them in CI and in the results.
+
+**Next step:** CI on `c3f0801`, then `main` to it; the GitHub Release; the theme's parts 2 and 3; `coffer@1.0.0`. `83c3058` goes to `release-1` with Wyatt's approval; it doesn't need to be on `main` for 1.0.0.

@@ -6668,3 +6668,20 @@ Wyatt's choices: staged publishing (he approves each version on npmjs.com with 2
   - The notes name the plugin as `@dwightsabeast.tngl.sh/coffer`, which isn't on the registry until `coffer@1.0.0` is approved.
 
 **Next step:** Wyatt reviews the notes and decides the order: finish the security report and README first, or publish the GitHub Release and edit its link later.
+
+## 2026-11-25 · Phase 09 (release 1) · The security report's results for 1.0.0; README status
+
+Wyatt's choice: finish the security report and README before the GitHub Release, with results from a dev-box run of the tagged commit (CI on `2e3c410` passed but saved no per-test results). Then a CI step saves results for release 2.
+
+- **Tooling (`53edbbb`):** `scripts/security-report-results.mjs` and two reporters (`scripts/report/vitest-reporter.mjs`, `scripts/report/node-reporter.mjs`). vitest's JSON reporter shows a failed `it.fails` as `passed`, so the vitest reporter records `options.fails`. Script tests: 7 cases, 119 passed in all.
+  - **Bug found in my first version:** Go IDs were read from the last level of a test's name only, so `TestTamperedBinary/[T33]_tampered_binary/a_byte_appended` counted under no ID. T33 to T35 showed "No automated test ran". Found by checking the table's surprises against the source; fixed test first (a leaf inherits the IDs above it).
+- **The run** (a `git clone --no-local` of this repo at `2e3c410aa9280ab346941bf6a909a23f435976fb`, clean; go1.27.4, Node 24.21.0, pnpm 12.8.1, frozen lockfiles), one suite at a time, inputs in `~/xmr-pay-dev-data/report-1.0.0/`. Each reporter's count matches its runner's own summary:
+  - plugin: 547 passed, 7 expected fail, 1 skipped (555), vitest's own summary the same; switch on: 102 passed, 1 skipped (103);
+  - theme: 79 passed, 1 skipped (80) with `COFFER_REQUIRE_ZBAR=1`;
+  - bridge: `go test -json`, exit 0, 22 packages ok (1 with no tests); leaves 547 passed, 12 skipped;
+  - scripts: 113 passed (node's spec reporter: 113).
+  - **Total 1,410: 1,388 passed, 7 expected failures, 15 skipped, 0 failed.** The 15 skipped: 10 live wallet-host tests (each recorded in this file from earlier sessions), `TestOpenSSLSignature` (needs `XMR_BRIDGE_OPENSSL_DIR`), RT-21's test (Go skips it while RT-21 is open), the theme's "zbarimg is missing" check, and one switch test in each plugin config. The 7 expected failures are the five pinned Lows' 7 tests (under T05, T21, P02, P04 and F01 ×3). "No automated test ran": T37 (a CI step and the rebuild) and P01 (the scanner, by hand).
+- **`docs/security-results-1.0.0.md`** (generated; every tagged test with its result) and the report's appendix from the same run.
+- **Report text** (waiting for Wyatt's review, not committed): the Draft banner removed; commit, CI run 45501345050 and where the results come from; the appendix; the totals with each skip's reason; T37 under "Tampered downloads"; T32's row (1.0.0 on the host, the check passed); a T38 row (published from a later commit with the same theme code). **README** (waiting too): release-1 status, tips only, stagenet-tested, three parts and where each comes from; the layout table without "(later phase)". Full diff: `~/xmr-pay-dev-data/report-1.0.0/report-readme.diff`.
+
+**Next step:** Wyatt reviews the report and README text; commit; then a `ci.yml` step that saves each suite's results as an artifact, so release 2's report comes from CI.

@@ -6632,3 +6632,16 @@ Wyatt's choices: staged publishing (he approves each version on npmjs.com with 2
 - **Script fix for next time:** none needed for 1.0.0 (the placeholder is a one-off). Lesson: a re-runnable script should append to its output file, never replace it, so a first run's evidence survives a second.
 
 **Next step:** Wyatt approves pushing the seven local commits and opens a pull request from `release-1` for CI. Once it's green, part 2 (the trusted publisher) and part 3 (`main`, the tag, the approval) on the same day, inside npm's 2-day window.
+
+## 2026-11-25 · Phase 09 (release 1) · The `get.coffer.party` upload folder for bridge 1.0.0
+
+- **`~/xmr-pay-dev-data/install-host-upload/`** (15 files, 44 MB, none over 25 MiB), from `release-1.0.0/signed/` (every file compared with `cmp`: identical), laid out as `docs/install-host.md` says:
+  - top: `install.sh` (1.0.0's, `RELEASE_BASE="https://get.coffer.party/1.0.0"`, `CURL_PROTO="=https"`), `coffer-release.pub.pem` (identical to `installer/coffer-release.pub.pem`, key 1), `404.html` (the probe's), and `versions.json` (format 1, the seven 1.0.0 files; SHA-256 `32c1d20b467b21229402a1961f1fa387280f55edd9924aa6f24e1d159d764ec5`);
+  - `latest/`: `release.json`, `release.json.sig`, both binaries; `1.0.0/`: all seven release files.
+  - **The 0.0.0 probe is dropped**, as planned on 2026-11-20 ("The 1.0.0 upload will replace `0.0.0/`, which was never a release"). This becomes Wyatt's one upload folder from now on.
+- **The checker on loopback** (`python3 -m http.server` on 127.0.0.1:8098, http side pointed at an unused port): 31 PASS, 20 FAIL, 1 WARN (`~/xmr-pay-dev-data/install-host-precheck-1.0.0.txt`). Every folder, layout, no-redirect, bytes-match, wget and curl check passed. The FAILs are all expected on loopback: `install.sh` names the real host (1), python's 404 body isn't `404.html` (2), and nothing listens for http (17); the WARN is python listing the root. The server was stopped (port free).
+  - **Snag, mine:** the first attempt put a whole `&&` chain behind `&`, so the variables were set in the background job and the checker got no folder (exit 2). That run's server was found by its port and stopped; the rerun is the one above.
+- **Dev bridges don't see it:** a dev build's `releaseBase()` is its own `devReleaseURL` (`127.0.0.1:8099`); only release builds poll `https://get.coffer.party/latest`.
+- **Kit for Wyatt:** `~/xmr-pay-dev-data/install-host-kit/`: `UPLOAD-STEPS.txt` (copy, check, back up, upload, send back) and `upload-check.ps1` (all 15 files present with their SHA-256 and no extra file; writes `upload-check-output.txt`). No PowerShell on the dev box, so it isn't syntax-checked here.
+
+**Next step:** Wyatt uploads; then, with his go-ahead, the live check against `https://get.coffer.party` (`docs/install-host.md`, "The check"). CI on `e9bf2f7` was still running at this commit.

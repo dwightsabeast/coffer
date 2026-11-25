@@ -6568,3 +6568,16 @@ PASS/FAIL lines go to the terminal and `~/xmr-pay-dev-data/release-<version>/reb
 8. The mainnet tips trial on wyattdilley.com, when Wyatt decides (checklist and rollback plan from Claude).
 
 **Next step:** step 1 above, then the signing handoff for Wyatt.
+
+## 2026-11-25 · Phase 09 (release 1) · The pre-publish audit; the signature check built; the signing sheet for Wyatt
+
+- **`pnpm audit --prod --audit-level high` in `plugin/`:** "No known vulnerabilities found", exit 0. `plugin/` and `theme/` are unchanged since `2e3c410` (`git diff --stat 2e3c410 HEAD -- plugin theme` is empty), so this is the released lockfile. govulncheck in binary mode ran on both 1.0.0 binaries in the release run (45502956358), with no finding.
+- **Section 4's second check had no test yet** ("a test runs `VerifyManifest` with the build's pinned `releaseKeys()` on these exact files"). It's now `bridge/cmd/xmr-bridge/signed_release_release_test.go` (release build only):
+  - `checkSignedRelease(dir, keys, version)`: `VerifyManifest` accepts; the version matches; one changed bit in `release.json`, and one in the signature, are refused; every listed file has its listed size and SHA-256.
+  - `TestSignedReleaseCheck` (RFC 8032 test keys 1 and 2, always runs): 1 pass case and 8 refusals (another key, another version, no signature, `release.json` edited after signing, a binary changed, missing or one byte longer, no keys). **Red first:** with a stub that accepted everything, all 8 refusals failed; then 9 of 9 green.
+  - `TestLiveSignedRelease` (`XMR_BRIDGE_LIVE_SIGNED_RELEASE`, `XMR_BRIDGE_LIVE_SIGNED_VERSION`): key 1 alone, then the full pinned list. On a scratch copy of the real 1.0.0 files it **failed unsigned** (no `release.json.sig`) and **failed with an RFC 8032 test-key signature** ("isn't signed by a pinned release key"), as it should. OpenSSL with `installer/coffer-release.pub.pem` refused that signature too. The scratch copy was deleted.
+  - Bridge: gofmt clean, `go vet ./...` clean, `go test ./...` 22 packages ok (`~/xmr-pay-dev-data/signcheck-bridge-tests.txt`); `-tags devrelease` on `cmd/xmr-bridge` ok.
+- **Matrix:** T16's coverage and tests name the two new tests. **CLAUDE.md:** a "check the returned signature" row.
+- **Signing sheet for Wyatt:** `~/xmr-pay-dev-data/release-1.0.0/SIGN-1.0.0.txt`: fetch `release.json` (SHA-256 `e6160c58…c396`), the offline checks (the hash, the content, copy A's fingerprint), signing, OpenSSL's verify, and `release.json.sig` back to `~/xmr-pay-dev-data/release-1.0.0/`. No installed bridge pins key 1 (dev builds pin only the dev key), so the 48-hour delay from `release.json`'s date doesn't matter for 1.0.0.
+
+**Next step:** once `release.json.sig` is back, copy the artifact's six files plus the signature into a new folder (the artifact stays as downloaded), run OpenSSL's check and `TestLiveSignedRelease` on it, and both must pass. Then prepare the 1.0.0 upload folder for `get.coffer.party` (`docs/install-host.md`) and the check after upload.

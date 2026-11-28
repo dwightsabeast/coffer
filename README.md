@@ -4,9 +4,17 @@ Coffer is a sandboxed [EmDash](https://docs.emdashcms.com) plugin for taking Mon
 
 ## Status
 
-**In development, not ready for use.** Nothing here has been released, and the design may still change. Do not use it to take real payments.
+**Release 1 (1.0.0) takes tips only.** Visitors can tip in Monero, with an open amount and a note, and you see each tip and the totals per entry in your admin. Orders, payment for goods and the pay button come in release 2, which is in development.
 
-Once released, the plugin comes from the EmDash plugin registry, and the wallet host's installer and the bridge from `https://get.coffer.party` (`docs/install.md`).
+Release 1 was tested on Monero's test network (stagenet). The project reviewed itself; there was no outside review. The security report says what was tested and which limits were accepted: [`docs/security-report.md`](docs/security-report.md).
+
+Release 1 has three parts:
+
+- **The plugin**, version 1.0.0, from the EmDash plugin registry: `@dwightsabeast.tngl.sh/coffer`.
+- **The theme components**, `@cofferhq/astro` on npm: the tip button, its endpoint and the pay page.
+- **The wallet host program**, `xmr-bridge` 1.0.0, installed with the one command on your site's **Monero payments** page. It downloads from `https://get.coffer.party`. The files, their checksums and the release key's fingerprint are on the [GitHub release](https://github.com/dwightsabeast/coffer/releases/tag/xmr-bridge%401.0.0).
+
+The install guide: [`docs/install.md`](docs/install.md).
 
 ## Security model
 
@@ -22,12 +30,12 @@ Once released, the plugin comes from the EmDash plugin registry, and the wallet 
 | --- | --- |
 | `docs/` | Design spec, decisions, build phases, progress log, proof of concept and references |
 | `scripts/` | Development helpers |
-| `plugin/` | The sandboxed EmDash plugin (later phase) |
-| `bridge/` | The Go bridge, `xmr-bridge` (later phase) |
-| `installer/` | `install.sh` and the systemd unit (later phase) |
-| `theme/` | Astro components: pay button and `/pay` page (later phase) |
-| `contract/` | Payment contract doc and conformance tests (later phase) |
-| `spikes/` | Throwaway experiments, never shipped (later phase) |
+| `plugin/` | The sandboxed EmDash plugin, slug `coffer` |
+| `bridge/` | The Go bridge, `xmr-bridge` (Go standard library only) |
+| `installer/` | `install.sh` and the release public keys |
+| `theme/` | `@cofferhq/astro`: the tip button, its endpoint and the pay page |
+| `contract/` | Test vectors that the plugin's and the bridge's tests share; the payment contract for stores comes in release 2 |
+| `spikes/` | Throwaway experiments, never shipped |
 
 ## License
 
